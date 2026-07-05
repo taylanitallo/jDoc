@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -43,22 +42,9 @@ export default function LoginPage() {
       className="relative flex min-h-screen items-center justify-center bg-black bg-cover px-4"
       style={{ backgroundImage: "url('/background.png')", backgroundPosition: 'right center' }}
     >
-      <div className="flex w-full max-w-5xl flex-col items-center gap-12 lg:flex-row lg:justify-between">
-        {/* Marca */}
-        <section className="flex flex-col items-center text-center lg:items-start lg:text-left">
-          <Image
-            src="/logo.png"
-            alt="jDoc"
-            width={320}
-            height={320}
-            priority
-            className="h-auto w-48 sm:w-64"
-          />
-          <p className="mt-4 max-w-md text-sm text-app-muted">
-            Tecnologia inteligente para uma{' '}
-            <strong className="text-neon-magenta">gestão documental</strong> mais eficiente
-          </p>
-        </section>
+      <div className="flex w-full max-w-5xl flex-col items-center gap-12 lg:flex-row lg:justify-end">
+        {/* A marca (logo + nome + slogan) ja vem desenhada dentro do proprio
+            background.png — nao duplicar com outra imagem/texto por cima. */}
 
         {/* Card de login */}
         <section className="w-full max-w-md rounded-2xl border border-white/10 bg-black/60 p-8 shadow-2xl backdrop-blur">
