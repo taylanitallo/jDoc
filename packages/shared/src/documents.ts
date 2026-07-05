@@ -1,0 +1,189 @@
+import { z } from 'zod';
+
+/**
+ * Documentos (Fase 3).
+ * Modulos de documento = subconjunto de MODULES (sem configuracoes/prestacao).
+ */
+export const DOC_MODULES = ['receitas', 'despesas', 'balancete', 'extrato', 'outros'] as const;
+export const docModuleSchema = z.enum(DOC_MODULES);
+export type DocModule = z.infer<typeof docModuleSchema>;
+
+export const DOC_SUBTYPES = ['orcamentaria', 'extraorcamentaria', 'resto_a_pagar'] as const;
+export const docSubtypeSchema = z.enum(DOC_SUBTYPES);
+export type DocSubtype = z.infer<typeof docSubtypeSchema>;
+
+export const DOC_STATUS = ['disponivel', 'processando', 'substituido'] as const;
+
+/** Competencia no formato YYYY-MM. */
+export const competenciaSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Competencia deve ser YYYY-MM');
+
+const base = {
+  exercicio: z.coerce.number().int().min(2000).max(2100),
+  budgetUnitId: z.string().uuid().nullable().optional(),
+  orgaoId: z.string().uuid().nullable().optional(),
+};
+
+/** Campos por modulo (validacao espelhada no front e no back). */
+export const despesaFieldsSchema = z
+  .object({
+    module: z.literal('despesas'),
+    docCaixa: z.string().min(1).max(60),
+    empenho: z.string().min(1).max(60),
+    credor: z.string().min(1).max(200),
+    subtype: docSubtypeSchema,
+    historico: z.string().max(2000).optional(),
+    documentDate: z.coerce.date(),
+    value: z.coerce.number().nonnegative().optional(),
+    ...base,
+  })
+  .strict();
+
+export const receitaFieldsSchema = z
+  .object({
+    module: z.literal('receitas'),
+    subtype: docSubtypeSchema,
+    historico: z.string().max(2000).optional(),
+    documentDate: z.coerce.date(),
+    value: z.coerce.number().nonnegative().optional(),
+    conta: z.string().max(30).optional(),
+    ...base,
+  })
+  .strict();
+
+export const balanceteFieldsSchema = z
+  .object({
+    module: z.literal('balancete'),
+    competencia: competenciaSchema,
+    documentDate: z.coerce.date(),
+    ...base,
+  })
+  .strict();
+
+export const extratoFieldsSchema = z
+  .object({
+    module: z.literal('extrato'),
+    banco: z.string().min(1).max(100),
+    agencia: z.string().min(1).max(20),
+    conta: z.string().min(1).max(30),
+    competencia: competenciaSchema,
+    documentDate: z.coerce.date(),
+    ...base,
+  })
+  .strict();
+
+export const outroFieldsSchema = z
+  .object({
+    module: z.literal('outros'),
+    documentTypeId: z.string().uuid(),
+    descricao: z.string().min(1).max(2000),
+    documentDate: z.coerce.date(),
+    ...base,
+  })
+  .strict();
+
+export const documentFieldsSchema = z.discriminatedUnion('module', [
+  despesaFieldsSchema,
+  receitaFieldsSchema,
+  balanceteFieldsSchema,
+  extratoFieldsSchema,
+  outroFieldsSchema,
+]);
+export type DocumentFields = z.infer<typeof documentFieldsSchema>;
+
+/** Atualizacao de metadados (sem trocar arquivo). */
+export const updateDocumentSchema = z
+  .object({
+    docCaixa: z.string().min(1).max(60).optional(),
+    empenho: z.string().min(1).max(60).optional(),
+    credor: z.string().min(1).max(200).optional(),
+    subtype: docSubtypeSchema.optional(),
+    historico: z.string().max(2000).nullable().optional(),
+    descricao: z.string().max(2000).optional(),
+    documentDate: z.coerce.date().optional(),
+    value: z.coerce.number().nonnegative().nullable().optional(),
+    competencia: competenciaSchema.optional(),
+    banco: z.string().max(100).optional(),
+    agencia: z.string().max(20).optional(),
+    conta: z.string().max(30).optional(),
+    budgetUnitId: z.string().uuid().nullable().optional(),
+    orgaoId: z.string().uuid().nullable().optional(),
+    documentTypeId: z.string().uuid().optional(),
+    exercicio: z.coerce.number().int().min(2000).max(2100).optional(),
+  })
+  .strict();
+export type UpdateDocumentInput = z.infer<typeof updateDocumentSchema>;
+
+/** Busca server-side com filtros avancados. */
+export const searchDocumentsSchema = z
+  .object({
+    module: docModuleSchema,
+    q: z.string().max(200).optional(),
+    subtype: docSubtypeSchema.optional(),
+    exercicio: z.coerce.number().int().min(2000).max(2100).optional(),
+    competencia: competenciaSchema.optional(),
+    budgetUnitId: z.string().uuid().optional(),
+    orgaoId: z.string().uuid().optional(),
+    credor: z.string().max(200).optional(),
+    empenho: z.string().max(60).optional(),
+    de: z.coerce.date().optional(),
+    ate: z.coerce.date().optional(),
+    valorMin: z.coerce.number().nonnegative().optional(),
+    valorMax: z.coerce.number().nonnegative().optional(),
+    sort: z.enum(['data_desc', 'data_asc', 'valor_desc', 'valor_asc', 'criado_desc']).default('data_desc'),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+export type SearchDocumentsQuery = z.infer<typeof searchDocumentsSchema>;
+
+export const trashQuerySchema = z
+  .object({
+    module: docModuleSchema.optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+export type TrashQuery = z.infer<typeof trashQuerySchema>;
+
+/** Visao de documento devolvida pela API. */
+export interface DocumentView {
+  id: string;
+  module: DocModule;
+  subtype: string | null;
+  docCaixa: string | null;
+  empenho: string | null;
+  credor: string | null;
+  historico: string | null;
+  descricao: string | null;
+  budgetUnitId: string | null;
+  budgetUnitNome: string | null;
+  orgaoId: string | null;
+  orgaoCodigo: string | null;
+  orgaoNome: string | null;
+  documentTypeId: string | null;
+  documentTypeNome: string | null;
+  documentDate: string | null;
+  value: number | null;
+  competencia: string | null;
+  exercicio: number;
+  banco: string | null;
+  agencia: string | null;
+  conta: string | null;
+  originalName: string;
+  fileSize: number;
+  fileHash: string;
+  pageCount: number | null;
+  status: string;
+  criadoEm: string;
+  deletedAt: string | null;
+}
+
+export interface DocumentPage {
+  items: DocumentView[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/** Retencao da lixeira em dias. */
+export const TRASH_RETENTION_DAYS = 7;

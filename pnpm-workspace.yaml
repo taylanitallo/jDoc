@@ -1,0 +1,28 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+allowBuilds:
+  argon2: true
+  esbuild: true
+  '@nestjs/core': true
+  '@swc/core': true
+  sharp: true
+  msgpackr-extract: true
+  electron: true
+  keytar: true
+  pkcs11js: true
+
+onlyBuiltDependencies:
+  - argon2
+  - esbuild
+  - '@nestjs/core'
+  - '@swc/core'
+  - sharp
+  - msgpackr-extract
+  - electron
+  - keytar
+  - pkcs11js
+
+overrides:
+  ioredis: ^5.11.1

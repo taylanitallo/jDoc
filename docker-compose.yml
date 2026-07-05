@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: jdoc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: jdoc
+      POSTGRES_PASSWORD: jdoc_dev_pwd
+      POSTGRES_DB: jdoc
+    ports:
+      - "5432:5432"
+    volumes:
+      - jdoc_pgdata:/var/lib/postgresql/data
+      - ./packages/database/docker/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jdoc -d jdoc"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: jdoc-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - jdoc_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  jdoc_pgdata:
+  jdoc_redisdata:

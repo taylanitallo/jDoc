@@ -1,0 +1,43 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# env
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# os / editor
+.DS_Store
+Thumbs.db
+
+# test / coverage
+coverage/
+.nyc_output/
+
+# drizzle
+drizzle/meta/_journal.json.bak
+
+.vercel
+.env*
+
+# storage local de dev (arquivos reais enviados, nao faz parte do codigo)
+apps/api/.storage/
+
+# sessao/config local do Claude Code
+.claude/
+
+# cache local da CLI do supabase
+supabase/.temp/

@@ -1,0 +1,23 @@
+FROM node:22-slim AS build
+RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
+WORKDIR /app
+
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/shared/package.json packages/shared/package.json
+COPY packages/database/package.json packages/database/package.json
+
+RUN pnpm install --frozen-lockfile
+
+COPY packages/shared packages/shared
+COPY packages/database packages/database
+COPY apps/api apps/api
+
+RUN pnpm --filter @jdoc/shared build \
+ && pnpm --filter @jdoc/database build \
+ && pnpm --filter @jdoc/api build
+
+WORKDIR /app/apps/api
+EXPOSE 3333
+CMD ["node", "dist/main.js"]

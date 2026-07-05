@@ -1,0 +1,56 @@
+# Configuracao do instalador (electron-builder) — Marco 6.
+# ATENCAO: rodar `electron-builder` (scripts `dist`/`pack:dir`) baixa o NSIS na
+# primeira execucao e empacota o .exe. Isso NAO e feito neste marco — ver BUILD.md.
+appId: br.gov.jeos.jdoc-desktop
+productName: jDoc Desktop
+copyright: © JEOS Sistemas
+
+directories:
+  output: release
+  buildResources: build
+
+# Saida do electron-vite + package.json (main = out/main/main.js).
+files:
+  - out/**/*
+  - package.json
+
+# Modulos nativos NAO podem ir comprimidos no asar (carregam .node em runtime).
+asarUnpack:
+  - '**/*.node'
+  - node_modules/keytar/**
+  - node_modules/pkcs11js/**
+
+# Nao deixar o electron-builder recompilar nativos (usamos `pnpm run rebuild`).
+npmRebuild: false
+nodeGypRebuild: false
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.ico
+  # ---------------------------------------------------------------------------
+  # CODE SIGNING — DESATIVADO POR DEFAULT (exige certificado EV; pendencia do
+  # operador). Quando o EV estiver disponivel, defina no AMBIENTE do build:
+  #   CSC_LINK          = caminho/URL do .pfx (ou o proprio conteudo em base64)
+  #   CSC_KEY_PASSWORD  = senha do certificado
+  # O electron-builder detecta CSC_LINK/CSC_KEY_PASSWORD sozinho e assina.
+  # SEM eles o instalador sai NAO ASSINADO: o SmartScreen do Windows alertara
+  # "editor desconhecido" ate o EV ser configurado. O build funciona mesmo assim.
+  # ---------------------------------------------------------------------------
+
+nsis:
+  oneClick: false # instalacao assistida (nao silenciosa)
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  shortcutName: jDoc Desktop
+  uninstallDisplayName: jDoc Desktop
+
+# Auto-update (electron-updater). Provider generico: troque a URL abaixo, ou
+# sobreponha em runtime com JDOC_UPDATE_URL (ver electron/updater.ts).
+# Alternativa: provider github (owner/repo) quando for publicar via Releases.
+publish:
+  provider: generic
+  url: https://updates.jeos.example/jdoc-desktop/

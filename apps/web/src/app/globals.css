@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tokens de tema.
+ * - Light: usado por padrao. JEOS usa gradiente sutil cinza-azulado para fundo.
+ * - Dark: acionados quando <html class="dark">. Sidebar JEOS (azul-marinho) NAO muda -
+ *   e a identidade institucional e ja e escura por design.
+ */
+:root {
+  --app-bg: #f8f9fb;
+  --app-card: #ffffff;
+  --app-border: #e5e7eb;
+  --app-text: #1f2937;
+  --app-muted: #6b7280;
+  --app-input-bg: #ffffff;
+  --app-input-border: #d1d5db;
+  --app-skeleton: #e5e7eb;
+  --app-error-bg: #fef2f2;
+  --app-error-text: #dc2626;
+  --app-badge-gray-bg: #f3f4f6;
+  --app-badge-gray-text: #4b5563;
+  --app-table-head: #f9fafb;
+  --app-hover: #f9fafb;
+
+  /* Identidade JEOS (nao muda com tema) */
+  --content-bg: #f8f9fb;
+}
+
+.dark {
+  --app-bg: #0f1424;
+  --app-card: #1a2036;
+  --app-border: #2d3550;
+  --app-text: #e5e7eb;
+  --app-muted: #9ca3af;
+  --app-input-bg: #1a2036;
+  --app-input-border: #3a4366;
+  --app-skeleton: #2d3550;
+  --app-error-bg: #3b1212;
+  --app-error-text: #fca5a5;
+  --app-badge-gray-bg: #2d3550;
+  --app-badge-gray-text: #9ca3af;
+  --app-table-head: #232a44;
+  --app-hover: #232a44;
+
+  --content-bg: #0f1424;
+}
+
+body {
+  background: var(--content-bg);
+  color: var(--app-text);
+}
+
+/* Particulas/circuito sutil do login (CSS puro, sem unsafe-inline) */
+.login-circuit {
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(168, 85, 247, 0.12) 0, transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(217, 70, 239, 0.10) 0, transparent 40%),
+    linear-gradient(rgba(124, 58, 237, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 58, 237, 0.05) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 48px 48px, 48px 48px;
+}
+
+/* * Acentos institucionais dos cards (nao mudam por tema; cores fortes por design). */
+.card-accent-blue { border-top: 4px solid #3b82f6; }
+.card-accent-green { border-top: 4px solid #22c55e; }
+.card-accent-orange { border-top: 4px solid #f97316; }
+.card-accent-purple { border-top: 4px solid #a855f7; }

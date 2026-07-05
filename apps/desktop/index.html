@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- CSP restritiva: sem inline-script, sem origem externa. -->
+    <!--
+      frame-src/object-src liberam o visualizador de PDF a apontar para a signed
+      URL do documento: API local (dev, http://localhost:3333) ou Supabase (https).
+      script/connect seguem restritos a 'self'.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'self' http://localhost:3333 https:; object-src 'self' http://localhost:3333 https:"
+    />
+    <title>jDoc Desktop — JEOS Sistemas</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
