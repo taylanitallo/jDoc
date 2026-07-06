@@ -166,6 +166,89 @@ body {
   font-size: 0.75rem;
 }
 
+/* --- Escolha de orgao (2+ vinculos) ---------------------------------------- */
+
+.login-tenant-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.login-tenant-hint {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  color: var(--app-muted);
+}
+
+.login-tenant-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--app-input-border);
+  border-radius: 0.6rem;
+  background: var(--app-input-bg);
+  color: var(--app-text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.login-tenant-item:hover {
+  border-color: var(--neon-purple);
+}
+
+.login-tenant-item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.login-tenant-brasao {
+  height: 2.25rem;
+  width: 2.25rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  object-fit: cover;
+  background: linear-gradient(135deg, var(--neon-purple), var(--neon-violet));
+}
+
+.login-tenant-brasao--placeholder {
+  display: block;
+}
+
+.login-tenant-info {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.login-tenant-nome {
+  font-size: 0.85rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.login-tenant-slug {
+  font-size: 0.7rem;
+  color: var(--app-muted);
+}
+
+.login-back {
+  margin-top: 0.25rem;
+  border: none;
+  background: none;
+  color: var(--app-muted);
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.login-back:hover {
+  color: var(--app-text);
+}
+
 /* --- Shell autenticado ---------------------------------------------------- */
 
 .boot-splash {

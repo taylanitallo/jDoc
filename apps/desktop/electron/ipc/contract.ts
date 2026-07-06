@@ -37,6 +37,8 @@ export const WATCH_PENDING_CHANGED_CHANNEL = 'jdoc:watch-pending' as const;
 export const INVOKE_KINDS = [
   'ping',
   'auth:login',
+  'auth:resolve',
+  'auth:select-tenant',
   'auth:logout',
   'auth:session',
   'auth:me',

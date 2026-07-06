@@ -4,6 +4,8 @@ import { IPC_INVOKE_CHANNEL, INVOKE_KINDS, isInvokeKind, type InvokeKind } from 
 import { checkForUpdate } from '../updater';
 import {
   loginPayloadSchema,
+  resolveLoginPayloadSchema,
+  selectTenantPayloadSchema,
   emptyPayloadSchema,
   enqueuePayloadSchema,
   cancelPayloadSchema,
@@ -57,6 +59,10 @@ function defineHandler<T>(schema: ZodType<T>, handle: (payload: T) => Promise<un
 const registry: { [K in InvokeKind]: Handler } = {
   ping: defineHandler(emptyPayloadSchema, async () => ({ ok: true, marco: 2 })),
   'auth:login': defineHandler(loginPayloadSchema, (p) => auth.login(p.slug, p.email, p.senha)),
+  // Login nativo sem slug: tenta as credenciais em todos os orgaos e entra
+  // direto (1 orgao) ou devolve a lista pra escolher (2+ orgaos).
+  'auth:resolve': defineHandler(resolveLoginPayloadSchema, (p) => auth.resolveLogin(p.email, p.senha)),
+  'auth:select-tenant': defineHandler(selectTenantPayloadSchema, (p) => auth.selectTenant(p.slug)),
   'auth:logout': defineHandler(emptyPayloadSchema, async () => {
     await auth.logout();
     return { ok: true };

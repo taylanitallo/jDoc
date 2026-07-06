@@ -1,9 +1,10 @@
 import { app } from 'electron';
-import { emailSchema } from '@jdoc/shared';
+import { emailSchema, type ResolveLoginResponse, type ResolvedTenantSession } from '@jdoc/shared';
 import { decodeAccessClaims, toSessionView, type SessionView } from '../session/types';
 import { sessionStore } from '../session/session-store';
 import { idleMonitor } from '../session/idle';
 import * as keychain from '../session/keychain';
+import { openMainWindowForSession } from '../window-manager';
 
 /**
  * Cliente HTTP do processo MAIN. Toda ida ao backend passa por aqui.
@@ -166,7 +167,70 @@ export async function restore(): Promise<SessionView | null> {
   await keychain.saveSession(found.slug, claims.sub, { rt: rotated, email: found.session.email });
   sessionStore.set({ accessToken: body.accessToken, slug: found.slug, userId: claims.sub, view });
   idleMonitor.start();
+  await openMainWindowForSession(found.slug, rotated);
   return view;
+}
+
+// --- Login por e-mail (sem slug) ---------------------------------------------
+
+export type TenantChoice = ResolvedTenantSession['tenant'];
+
+export type ResolveLoginResult =
+  | { status: 'entered'; session: SessionView }
+  | { status: 'choose'; tenants: TenantChoice[] };
+
+/** Sessoes resolvidas (com token) aguardando o usuario escolher o orgao, e
+ *  o e-mail digitado (pra exibir apos restore) — vive so no processo main,
+ *  nunca e exposto ao renderer inteiro. */
+let pendingSessions: ResolvedTenantSession[] | null = null;
+let pendingEmail: string | null = null;
+
+async function enterTenantSession(s: ResolvedTenantSession): Promise<SessionView> {
+  const claims = decodeAccessClaims(s.accessToken);
+  const view = toSessionView(claims, pendingEmail, s.mustChangePassword);
+  await keychain.saveSession(s.tenant.slug, claims.sub, { rt: s.refreshToken, email: pendingEmail ?? '' });
+  sessionStore.set({ accessToken: s.accessToken, slug: s.tenant.slug, userId: claims.sub, view });
+  idleMonitor.start();
+  await openMainWindowForSession(s.tenant.slug, s.refreshToken);
+  pendingSessions = null;
+  pendingEmail = null;
+  return view;
+}
+
+/**
+ * Login pela tela nativa: so e-mail + senha, sem o usuario saber/digitar o
+ * slug. Tenta as credenciais em todos os orgaos ativos (backend) e entra
+ * direto se so um bateu, ou devolve a lista pra escolher (auth:select-tenant).
+ */
+export async function resolveLogin(email: string, senha: string): Promise<ResolveLoginResult> {
+  await keychain.assertAvailable();
+  const normEmail = emailSchema.parse(email);
+
+  const res = await rawFetch('/auth/resolve-login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: normEmail, senha }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, 'E-mail ou senha invalidos.'));
+
+  const body = (await res.json()) as ResolveLoginResponse;
+  if (body.sessions.length === 0) throw new Error('E-mail ou senha invalidos.');
+
+  pendingEmail = normEmail;
+  if (body.sessions.length === 1) {
+    const view = await enterTenantSession(body.sessions[0]!);
+    return { status: 'entered', session: view };
+  }
+
+  pendingSessions = body.sessions;
+  return { status: 'choose', tenants: body.sessions.map((s) => s.tenant) };
+}
+
+/** Segundo passo: usuario escolheu o orgao dentre os resolvidos acima. */
+export async function selectTenant(slug: string): Promise<SessionView> {
+  const chosen = pendingSessions?.find((s) => s.tenant.slug === slug);
+  if (!chosen) throw new Error('Selecao invalida — faca login novamente.');
+  return enterTenantSession(chosen);
 }
 
 /** Logout: revoga no backend (best-effort) E apaga a credencial do keychain. */

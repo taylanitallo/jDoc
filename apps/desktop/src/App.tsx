@@ -1,59 +1,34 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { LoginScreen } from './components/LoginScreen';
-import { Shell } from './components/Shell';
 import type { SessionView } from './types';
 
 /**
- * Shell do app. No boot tenta restaurar a sessao do keychain (auth:session).
- * Reage a expiracao por inatividade (onSessionExpired) voltando ao login.
+ * Janela de login nativa. A restauracao de sessao (keychain) acontece no
+ * processo main ANTES desta janela sequer ser criada (ver main.ts) — se
+ * chegou aqui, e porque nao havia sessao valida. Ao logar com sucesso, o
+ * main abre a janela principal (site) e fecha esta; nao ha um "Shell"
+ * proprio pra renderizar depois do login.
  */
 export function App() {
-  const [session, setSession] = useState<SessionView | null>(null);
-  const [booting, setBooting] = useState(true);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('notice');
+  });
+  const [entering, setEntering] = useState(false);
 
-  useEffect(() => {
-    let alive = true;
+  function handleSuccess(_session: SessionView): void {
+    // A janela principal ja esta sendo aberta pelo main; so mantem um
+    // estado visual de "entrando" ate esta janela fechar.
+    setEntering(true);
+  }
 
-    void (async () => {
-      try {
-        const restored = (await window.jdoc.invoke('auth:session')) as SessionView | null;
-        if (alive && restored) setSession(restored);
-      } finally {
-        if (alive) setBooting(false);
-      }
-    })();
-
-    const off = window.jdoc.onSessionExpired(() => {
-      setSession(null);
-      setNotice('Sua sessão expirou por inatividade. Entre novamente.');
-    });
-
-    return () => {
-      alive = false;
-      off();
-    };
-  }, []);
-
-  if (booting) {
+  if (entering) {
     return (
       <div className="boot-splash">
-        <span>Carregando…</span>
+        <span>Entrando…</span>
       </div>
     );
   }
 
-  if (session) {
-    return <Shell session={session} onLogout={() => setSession(null)} />;
-  }
-
-  return (
-    <LoginScreen
-      notice={notice}
-      onSuccess={(s) => {
-        setNotice(null);
-        setSession(s);
-      }}
-    />
-  );
+  return <LoginScreen notice={notice} onSuccess={handleSuccess} />;
 }

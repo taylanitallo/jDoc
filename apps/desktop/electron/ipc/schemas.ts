@@ -17,6 +17,19 @@ export const loginPayloadSchema = z
   .strict();
 export type LoginPayload = z.infer<typeof loginPayloadSchema>;
 
+/** auth:resolve — so e-mail + senha; o main descobre a qual(is) orgao(s) pertence. */
+export const resolveLoginPayloadSchema = z
+  .object({
+    email: emailSchema,
+    senha: z.string().min(1).max(200),
+  })
+  .strict();
+export type ResolveLoginPayload = z.infer<typeof resolveLoginPayloadSchema>;
+
+/** auth:select-tenant — usuario escolhe um orgao dentre os resolvidos no passo anterior. */
+export const selectTenantPayloadSchema = z.object({ slug: tenantSlugSchema }).strict();
+export type SelectTenantPayload = z.infer<typeof selectTenantPayloadSchema>;
+
 /** Sem payload: auth:logout, auth:session, auth:me, ping. */
 export const emptyPayloadSchema = z.object({}).strict();
 
