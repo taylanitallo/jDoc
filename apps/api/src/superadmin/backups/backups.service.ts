@@ -94,21 +94,24 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
     this.redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
     this.queue = new Queue<BackupsQueueData>(BACKUPS_QUEUE, { connection: this.redis });
 
-    // Limpeza do agendamento antigo (um cron fixo global) — substituido por
-    // um job repetivel por tenant, agendado logo abaixo.
-    const existing = await this.queue.getRepeatableJobs();
-    for (const j of existing) {
-      if (j.id === 'daily-backup-all-tenants') {
-        await this.queue.removeRepeatableByKey(j.key);
-      }
-    }
-
-    // Garante settings + agendamento pra todo tenant ativo (idempotente:
-    // BullMQ dedupe por jobId, entao reagendar o mesmo padrao e um no-op).
     const sql = this.db.catalog();
     const tenants = await sql<Array<{ id: string; slug: string }>>`
       SELECT id, slug FROM public.tenants WHERE status = 'ativo'
     `;
+
+    // Remove qualquer job repetivel orfao: o cron global legado de antes do
+    // agendamento por tenant, chaves hasheadas de uma versao anterior (que
+    // nao usava `repeat.key` estavel) e agendamentos de tenants que nao
+    // existem mais. Mantem so as chaves estaveis `tenant-backup-<id>` dos
+    // tenants ativos.
+    const validKeys = new Set(tenants.map((t) => repeatableJobId(t.id)));
+    const existing = await this.queue.getRepeatableJobs();
+    for (const j of existing) {
+      if (!validKeys.has(j.key)) await this.queue.removeRepeatableByKey(j.key);
+    }
+
+    // Garante settings + agendamento pra todo tenant ativo (idempotente:
+    // BullMQ dedupe por repeat.key, entao reagendar o mesmo padrao e um no-op).
     for (const t of tenants) {
       const settings = await this.getSettings(t.id);
       if (settings.enabled) await this.scheduleRepeatable(t.id, t.slug, settings);
