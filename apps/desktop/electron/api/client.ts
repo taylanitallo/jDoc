@@ -1,3 +1,4 @@
+import { app } from 'electron';
 import { emailSchema } from '@jdoc/shared';
 import { decodeAccessClaims, toSessionView, type SessionView } from '../session/types';
 import { sessionStore } from '../session/session-store';
@@ -13,7 +14,9 @@ import * as keychain from '../session/keychain';
  *   guardado no keychain; reenviado manualmente no refresh/logout.
  * - Single-flight refresh on 401: um unico refresh em voo por vez.
  */
-const API_URL = process.env['JDOC_API_URL'] ?? 'http://localhost:3333';
+// So o dev local usa localhost; empacotado (instalado no usuario final) aponta
+// pra producao por padrao — sem isso o .exe instalado nao conseguiria logar.
+const API_URL = process.env['JDOC_API_URL'] ?? (app.isPackaged ? 'https://docapi.jeossistemas.com' : 'http://localhost:3333');
 const REFRESH_COOKIE = 'jdoc_rt';
 
 interface AuthBody {

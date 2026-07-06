@@ -69,8 +69,14 @@ function createWindow(): void {
   });
 }
 
+/** Origem padrao quando o app esta empacotado (instalado no usuario final) —
+ *  so o dev local usa localhost; sem isso o .exe instalado abriria uma pagina
+ *  em branco, ja que localhost:3000/3333 nao existem na maquina do usuario. */
+const DEFAULT_API_ORIGIN = app.isPackaged ? 'https://docapi.jeossistemas.com' : 'http://localhost:3333';
+const DEFAULT_WEB_ORIGIN = app.isPackaged ? 'https://jeossistemas.com' : 'http://localhost:3000';
+
 /** Origem da API (para permitir o iframe do visualizador carregar a signed URL). */
-const API_ORIGIN = process.env['JDOC_API_URL'] ?? 'http://localhost:3333';
+const API_ORIGIN = process.env['JDOC_API_URL'] ?? DEFAULT_API_ORIGIN;
 
 /**
  * Origem do site jDoc (Next.js) que a janela carrega. O executavel e agora
@@ -80,7 +86,7 @@ const API_ORIGIN = process.env['JDOC_API_URL'] ?? 'http://localhost:3333';
  * processo main e ficam disponiveis ao site via `window.jdoc` (preload) —
  * o site pode detectar essa ponte e oferecer essas acoes so quando presente.
  */
-const WEB_ORIGIN = process.env['JDOC_WEB_URL'] ?? 'http://localhost:3000';
+const WEB_ORIGIN = process.env['JDOC_WEB_URL'] ?? DEFAULT_WEB_ORIGIN;
 
 /** O iframe do visualizador so pode navegar para a signed URL (API local ou https). */
 function isAllowedFrameUrl(url: string): boolean {

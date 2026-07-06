@@ -1,3 +1,4 @@
+
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 
@@ -11,7 +12,13 @@ export default defineConfig({
   main: {
     // Externaliza deps (@jdoc/shared, zod) — resolvidas em runtime como CJS,
     // sem o rollup tentar bundlar/tracejar os named exports do dist do shared.
-    plugins: [externalizeDepsPlugin()],
+    // electron-updater fica de fora da externalizacao (ou seja, VAI bundlado
+    // no main.js): em monorepo pnpm o electron-builder nao segue os symlinks
+    // do virtual store pra copiar as deps transitivas dele (fs-extra,
+    // builder-util-runtime, js-yaml, semver...), entao o .exe empacotado
+    // quebrava com "Cannot find module 'fs-extra'" ao carregar o updater.
+    // Bundlar elimina a resolucao de node_modules em runtime pra essa lib.
+    plugins: [externalizeDepsPlugin({ exclude: ['electron-updater'] })],
     build: {
       lib: { entry: 'electron/main.ts' },
       rollupOptions: { output: { entryFileNames: 'main.js' } },
