@@ -17,6 +17,7 @@ import { ConfiguracoesModule } from './configuracoes/configuracoes.module';
 import { ReportsModule } from './reports/reports.module';
 import { ThrottlerConfigModule } from './common/throttler.module';
 import { HealthController } from './health.controller';
+import { TenantsPublicController } from './tenants-public.controller';
 
 @Module({
   imports: [
@@ -37,7 +38,7 @@ import { HealthController } from './health.controller';
     ConfiguracoesModule,
     ReportsModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, TenantsPublicController],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
