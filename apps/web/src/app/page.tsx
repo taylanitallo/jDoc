@@ -1,7 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Download } from 'lucide-react';
+import { isDesktopApp } from '@/lib/desktop-bridge';
+
+const DESKTOP_DOWNLOAD_URL =
+  'https://buknzokboidzhenafwpi.supabase.co/storage/v1/object/public/downloads/jDoc-Desktop-1.0.0-x64.exe';
 
 /**
  * Landing da raiz do site — sem tenant na URL ainda. Alem de servir o
@@ -12,6 +17,11 @@ import { useRouter } from 'next/navigation';
 export default function Home() {
   const router = useRouter();
   const [slug, setSlug] = useState('');
+  const [desktop, setDesktop] = useState(false);
+
+  useEffect(() => {
+    setDesktop(isDesktopApp());
+  }, []);
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,8 +63,27 @@ export default function Home() {
           </button>
         </form>
 
+        {!desktop && (
+          <a
+            href={DESKTOP_DOWNLOAD_URL}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 py-2.5 text-xs font-bold uppercase tracking-wide text-app-muted transition hover:border-accent hover:text-white"
+          >
+            <Download className="h-4 w-4" aria-hidden />
+            Baixar o jDoc Desktop (Windows)
+          </a>
+        )}
+
         <p className="mt-8 text-xs text-app-muted">
-          © 2026 JEOS SISTEMAS E ASSESSORIAS LTDA • V1.0.0
+          © 2026{' '}
+          <a
+            href="https://jeossistemas.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-white hover:underline"
+          >
+            JEOS SISTEMAS E ASSESSORIAS LTDA
+          </a>{' '}
+          • V1.0.0
         </p>
       </div>
     </main>

@@ -143,7 +143,16 @@ export default function LoginPage() {
       </div>
 
       <footer className="absolute bottom-4 w-full text-center text-xs text-app-muted">
-        © 2026 JEOS SISTEMAS E ASSESSORIAS LTDA • V1.0.0
+        © 2026{' '}
+        <a
+          href="https://jeossistemas.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-white hover:underline"
+        >
+          JEOS SISTEMAS E ASSESSORIAS LTDA
+        </a>{' '}
+        • V1.0.0
       </footer>
     </main>
   );
