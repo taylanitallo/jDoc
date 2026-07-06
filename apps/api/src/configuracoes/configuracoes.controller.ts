@@ -45,7 +45,7 @@ import {
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { TenantJwtGuard } from '../auth/tenant-jwt.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
-import { CurrentUser, Permissions } from '../auth/decorators';
+import { CurrentUser, Permissions, Public } from '../auth/decorators';
 import { ConfiguracoesService } from './configuracoes.service';
 
 const uuidSchema = z.string().uuid();
@@ -504,6 +504,15 @@ export class ConfiguracoesController {
   @Permissions()
   @Get('branding')
   getBranding(): Promise<TenantBranding> {
+    return this.service.getBranding();
+  }
+
+  /** Mesma identidade visual, sem autenticacao — usada na propria tela de login
+   *  (mostrar o brasao/nome real do orgao antes do usuario entrar). So expoe
+   *  campos ja publicos por natureza (nome, cor, imagem do brasao). */
+  @Public()
+  @Get('public-branding')
+  getPublicBranding(): Promise<TenantBranding> {
     return this.service.getBranding();
   }
 

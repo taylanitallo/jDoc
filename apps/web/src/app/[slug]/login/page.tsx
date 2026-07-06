@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { loginSchema, type LoginInput } from '@jdoc/shared';
-import { Landmark, LogIn, Lock, Mail } from 'lucide-react';
+import { loginSchema, type LoginInput, type TenantBranding } from '@jdoc/shared';
+import { Eye, EyeOff, Landmark, LogIn, Lock, Mail } from 'lucide-react';
 import { api, setAccessToken, ApiError } from '@/lib/api';
 import { desktopLoginBestEffort } from '@/lib/desktop-bridge';
 
@@ -13,11 +13,23 @@ export default function LoginPage() {
   const { slug } = useParams<{ slug: string }>();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [showSenha, setShowSenha] = useState(false);
+  const [branding, setBranding] = useState<TenantBranding | null>(null);
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<LoginInput>({ resolver: zodResolver(loginSchema) });
+
+  // Sem QueryClientProvider nesta tela (so existe dentro do grupo (app), pos-login)
+  // — busca simples, so pra mostrar o brasao/nome reais antes de autenticar.
+  useEffect(() => {
+    let active = true;
+    api<TenantBranding>(`/t/${slug}/public-branding`)
+      .then((b) => { if (active) setBranding(b); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [slug]);
 
   const onSubmit = async (data: LoginInput) => {
     setError(null);
@@ -37,6 +49,8 @@ export default function LoginPage() {
     }
   };
 
+  const nome = branding?.nomeExibido || String(slug).replace(/_/g, ' ');
+
   return (
     <main
       className="relative flex min-h-screen items-center justify-center bg-black bg-cover px-4"
@@ -46,14 +60,20 @@ export default function LoginPage() {
         {/* A marca (logo + nome + slogan) ja vem desenhada dentro do proprio
             background.png — nao duplicar com outra imagem/texto por cima. */}
 
-        {/* Card de login */}
-        <section className="w-full max-w-md rounded-2xl border border-white/10 bg-black/60 p-8 shadow-2xl backdrop-blur">
+        {/* Card de login — borda com brilho neon roxo, igual ao padrao jVeiculos */}
+        <section
+          className="w-full max-w-md rounded-2xl border-2 border-neon-purple/60 bg-black/70 p-8 shadow-[0_0_35px_rgba(168,85,247,0.35)] backdrop-blur"
+        >
           <div className="mb-6 flex flex-col items-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-primary">
-              <Landmark className="h-8 w-8 text-white" aria-hidden />
+            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-gradient-primary">
+              {branding?.brasaoUrl ? (
+                <img src={branding.brasaoUrl} alt={nome} className="h-full w-full object-cover" />
+              ) : (
+                <Landmark className="h-8 w-8 text-white" aria-hidden />
+              )}
             </div>
-            <p className="mt-3 text-sm font-semibold uppercase tracking-wide text-app-muted">
-              {String(slug).replace(/_/g, ' ')}
+            <p className="mt-3 text-center text-sm font-semibold uppercase tracking-wide text-white">
+              {nome}
             </p>
             <p className="text-xs text-app-muted">Informe suas credenciais</p>
           </div>
@@ -70,7 +90,7 @@ export default function LoginPage() {
                   type="email"
                   autoComplete="email"
                   placeholder="seu@email.gov.br"
-                  className="w-full rounded-lg border border-white/10 bg-black/30 py-2 pl-9 pr-3 text-sm text-white placeholder-app-muted outline-none focus:border-accent"
+                  className="w-full rounded-lg border border-white/10 bg-black/30 py-2 pl-9 pr-3 text-sm text-white placeholder-app-muted outline-none focus:border-neon-purple"
                   {...register('email')}
                 />
               </div>
@@ -85,12 +105,21 @@ export default function LoginPage() {
                 <Lock className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-app-muted" aria-hidden />
                 <input
                   id="senha"
-                  type="password"
+                  type={showSenha ? 'text' : 'password'}
                   autoComplete="current-password"
                   placeholder="••••••••••"
-                  className="w-full rounded-lg border border-white/10 bg-black/30 py-2 pl-9 pr-3 text-sm text-white placeholder-app-muted outline-none focus:border-accent"
+                  className="w-full rounded-lg border border-white/10 bg-black/30 py-2 pl-9 pr-9 text-sm text-white placeholder-app-muted outline-none focus:border-neon-purple"
                   {...register('senha')}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowSenha((v) => !v)}
+                  tabIndex={-1}
+                  aria-label={showSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                  className="absolute right-3 top-2.5 text-app-muted hover:text-white"
+                >
+                  {showSenha ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+                </button>
               </div>
               {errors.senha && <p className="mt-1 text-xs text-app-error-text">{errors.senha.message}</p>}
             </div>

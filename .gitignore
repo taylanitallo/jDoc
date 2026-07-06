@@ -5,6 +5,7 @@ node_modules/
 # builds
 dist/
 build/
+!apps/desktop/build/
 .next/
 out/
 *.tsbuildinfo
