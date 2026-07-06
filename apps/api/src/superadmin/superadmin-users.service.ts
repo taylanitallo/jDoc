@@ -82,6 +82,17 @@ export class SuperadminUsersService {
     `;
     const id = rows[0]?.id ?? '';
 
+    // Admin ja tem acesso total (bypassa checagem de permissao) — so grava
+    // permissoes granulares para operador/consulta.
+    if (input.role !== 'admin' && input.permissions?.length) {
+      for (const p of input.permissions) {
+        await sql`
+          INSERT INTO user_permissions (user_id, permission_key)
+          VALUES (${id}, ${p}) ON CONFLICT DO NOTHING
+        `;
+      }
+    }
+
     await this.audit.logGlobal({
       actorType: 'superadmin',
       actorId,

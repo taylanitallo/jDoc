@@ -23,8 +23,11 @@ import { DatabaseService } from '../database/database.service';
 
 export const SIGNED_URL_TTL_S = 60;
 
-/** file_key: uuid.<ext> gerado pelo servidor — allowlist estrita (anti path-traversal). */
-const FILE_KEY_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(pdf|zip|png|jpg|jpeg)$/;
+/** file_key: uuid.<ext> gerado pelo servidor — allowlist estrita (anti path-traversal).
+ *  Prefixo opcional `backup-` + extensao composta `.dump.gz` cobre os dumps
+ *  gerados pelo BackupsWorker, que reaproveita este mesmo storage. */
+const FILE_KEY_REGEX =
+  /^(?:backup-)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(pdf|zip|png|jpg|jpeg|dump\.gz)$/;
 
 export function assertSafeFileKey(key: string): void {
   if (!FILE_KEY_REGEX.test(key)) {
@@ -38,6 +41,7 @@ const MIME_BY_EXT: Record<string, string> = {
   png: 'image/png',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
+  gz: 'application/gzip',
 };
 
 function extOf(key: string): string {
@@ -228,11 +232,11 @@ export class LocalFilesController {
     }
 
     const data = await this.storage.readLocal(slugParsed.data, key);
-    const isZip = key.endsWith('.zip');
+    const isAttachment = key.endsWith('.zip') || key.endsWith('.dump.gz');
     const isImage = ['png', 'jpg', 'jpeg'].includes(extOf(key));
     const displayName = name ? `${sanitizeDownloadName(name)}.${extOf(key)}` : key;
     res.setHeader('Content-Type', mimeForKey(key));
-    res.setHeader('Content-Disposition', isZip ? `attachment; filename="${displayName}"` : 'inline');
+    res.setHeader('Content-Disposition', isAttachment ? `attachment; filename="${displayName}"` : 'inline');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     // Imagens (brasao) sao incorporadas via <img> de outra origem (app web em outra porta) —
     // o CORP padrao do Helmet (same-origin) bloquearia esse carregamento entre origens.

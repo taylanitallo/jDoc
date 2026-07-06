@@ -1,12 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { KeyRound, Plus, Power } from 'lucide-react';
 import {
   createTenantUserSchema,
+  MODULES,
+  MODULE_ACTIONS,
   TENANT_ROLES,
   type CreateTenantUserInput,
   type TenantOverview,
@@ -32,9 +35,28 @@ interface TenantUserView {
   ultimoAcesso: string | null;
 }
 
+const MODULE_LABELS: Record<string, string> = {
+  receitas: 'Receitas',
+  despesas: 'Despesas',
+  balancete: 'Balancete',
+  extrato: 'Extrato',
+  outros: 'Outros',
+  configuracoes: 'Configurações',
+  prestacao_contas: 'Prestação de Contas',
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  read: 'Ler',
+  create: 'Criar',
+  update: 'Editar',
+  delete: 'Excluir',
+  export: 'Exportar',
+};
+
 export default function UsuariosPage() {
   const qc = useQueryClient();
   const toast = useToast();
+  const searchParams = useSearchParams();
   const [tenantId, setTenantId] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [resetting, setResetting] = useState<TenantUserView | null>(null);
@@ -44,6 +66,12 @@ export default function UsuariosPage() {
     queryKey: ['sa-tenants'],
     queryFn: () => api<TenantOverview[]>('/superadmin/tenants'),
   });
+
+  // Preseleciona o orgao quando chega via link (ex: card do dashboard).
+  useEffect(() => {
+    const fromQuery = searchParams.get('tenantId');
+    if (fromQuery) setTenantId(fromQuery);
+  }, [searchParams]);
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['sa-users', tenantId],
@@ -210,16 +238,27 @@ function CreateUserModal({
 }) {
   const toast = useToast();
   const [error, setError] = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<string[]>([]);
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<CreateTenantUserInput>({ resolver: zodResolver(createTenantUserSchema) });
+
+  const role = watch('role');
+
+  const togglePermission = (key: string) => {
+    setPermissions((cur) => (cur.includes(key) ? cur.filter((p) => p !== key) : [...cur, key]));
+  };
 
   const onSubmit = async (data: CreateTenantUserInput) => {
     setError(null);
     try {
-      await api(`/superadmin/tenants/${tenantId}/users`, { method: 'POST', body: data });
+      await api(`/superadmin/tenants/${tenantId}/users`, {
+        method: 'POST',
+        body: { ...data, permissions: data.role === 'admin' ? undefined : permissions },
+      });
       onDone();
       onClose();
       toast.success('Usuário criado.');
@@ -260,6 +299,44 @@ function CreateUserModal({
             {errors.role && <p className="mt-1 text-xs text-app-error-text">Papel obrigatório</p>}
           </div>
         </div>
+
+        {role && role !== 'admin' && (
+          <div>
+            <p className={labelCls}>Permissões por módulo</p>
+            <div className={`${cardCls} overflow-x-auto`}>
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-app-border text-app-muted">
+                    <th className="px-3 py-2">Módulo</th>
+                    {MODULE_ACTIONS.map((a) => (
+                      <th key={a} className="px-2 py-2 text-center">{ACTION_LABELS[a] ?? a}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {MODULES.map((m) => (
+                    <tr key={m} className="border-b border-app-border last:border-0">
+                      <td className="px-3 py-1.5 text-app">{MODULE_LABELS[m] ?? m}</td>
+                      {MODULE_ACTIONS.map((a) => {
+                        const key = `${m}:${a}`;
+                        return (
+                          <td key={a} className="px-2 py-1.5 text-center">
+                            <input
+                              type="checkbox"
+                              checked={permissions.includes(key)}
+                              onChange={() => togglePermission(key)}
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {error && (
           <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">
             {error}

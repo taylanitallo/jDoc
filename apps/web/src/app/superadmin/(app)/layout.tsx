@@ -4,7 +4,16 @@ import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { LayoutDashboard, Landmark, Users, ScrollText, ShieldCheck, KeyRound, LogOut } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Landmark,
+  Users,
+  ScrollText,
+  ShieldCheck,
+  KeyRound,
+  DatabaseBackup,
+  LogOut,
+} from 'lucide-react';
 import { api, setAccessToken } from '@/lib/api';
 import { ThemeToggle } from '@/components/theme-toggle';
 
@@ -12,6 +21,7 @@ const items = [
   { href: '/superadmin/dashboard', label: 'DASHBOARD', icon: LayoutDashboard },
   { href: '/superadmin/orgaos', label: 'ÓRGÃOS', icon: Landmark },
   { href: '/superadmin/usuarios', label: 'USUÁRIOS', icon: Users },
+  { href: '/superadmin/backups', label: 'BACKUPS', icon: DatabaseBackup },
   { href: '/superadmin/logs', label: 'LOGS', icon: ScrollText },
   { href: '/superadmin/2fa-setup', label: '2FA', icon: KeyRound },
 ] as const;

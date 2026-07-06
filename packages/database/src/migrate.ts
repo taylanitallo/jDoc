@@ -117,6 +117,38 @@ async function main(): Promise<void> {
       await tx.unsafe(
         `CREATE INDEX IF NOT EXISTS idx_backups_criado ON public.backups (criado_em DESC)`,
       );
+      // Backup de seguranca automatico, gerado antes de um restore (Fase 7b).
+      await tx.unsafe(
+        `ALTER TABLE public.backups ADD COLUMN IF NOT EXISTS is_safety_backup boolean NOT NULL DEFAULT false`,
+      );
+
+      // Config de agendamento/retencao de backup por tenant (Fase 7b).
+      await tx.unsafe(`
+        CREATE TABLE IF NOT EXISTS public.tenant_backup_settings (
+          tenant_id uuid PRIMARY KEY REFERENCES public.tenants(id) ON DELETE CASCADE,
+          enabled boolean NOT NULL DEFAULT true,
+          frequencia varchar(10) NOT NULL DEFAULT 'diario',
+          hora smallint NOT NULL DEFAULT 3,
+          retencao smallint NOT NULL DEFAULT 7,
+          atualizado_em timestamptz NOT NULL DEFAULT now()
+        )
+      `);
+
+      // Restauracao de backup a partir de arquivo enviado (Fase 7b).
+      await tx.unsafe(`
+        CREATE TABLE IF NOT EXISTS public.restore_jobs (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id uuid NOT NULL,
+          status varchar(20) NOT NULL DEFAULT 'pendente',
+          safety_backup_id uuid,
+          erro_mensagem text,
+          criado_em timestamptz NOT NULL DEFAULT now(),
+          concluido_em timestamptz
+        )
+      `);
+      await tx.unsafe(
+        `CREATE INDEX IF NOT EXISTS idx_restore_jobs_tenant ON public.restore_jobs (tenant_id)`,
+      );
     });
 
     // Re-provisiona schemas de tenants existentes (idempotente) —

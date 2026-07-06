@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { tenantSlugSchema, tenantStatusSchema } from './tenant.js';
 import { emailSchema, passwordSchema } from './auth.js';
-import { tenantRoleSchema } from './constants.js';
+import { tenantRoleSchema, permissionSchema } from './constants.js';
 
 /**
  * Schemas do painel superadmin (Fase 2).
@@ -57,6 +57,8 @@ export const createTenantUserSchema = z
     nome: z.string().min(3).max(200),
     senha: passwordSchema,
     role: tenantRoleSchema,
+    /** Ignorado quando role = 'admin' (acesso total, sem necessidade de marcar). */
+    permissions: z.array(permissionSchema).optional(),
   })
   .strict();
 export type CreateTenantUserInput = z.infer<typeof createTenantUserSchema>;

@@ -93,6 +93,48 @@ export function uploadBrasao(
   });
 }
 
+/** Envia um arquivo de backup (.dump.gz) pra restaurar o schema de um tenant. */
+export function restoreTenantBackup(
+  tenantId: string,
+  file: File,
+  onProgress: (percent: number) => void,
+): Promise<{ ok: true; body: unknown } | { ok: false; status: number; message: string }> {
+  return new Promise((resolvePromise) => {
+    const form = new FormData();
+    form.append('tenantId', tenantId);
+    form.append('file', file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_URL}/superadmin/backups/restore`);
+    const token = getAccessToken();
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.withCredentials = true;
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      let body: unknown = null;
+      try {
+        body = JSON.parse(xhr.responseText) as unknown;
+      } catch {
+        // sem corpo
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolvePromise({ ok: true, body });
+      } else {
+        const message =
+          (body as { message?: string } | null)?.message ?? 'Falha ao enviar arquivo de restauração';
+        resolvePromise({ ok: false, status: xhr.status, message });
+      }
+    };
+    xhr.onerror = () =>
+      resolvePromise({ ok: false, status: 0, message: 'Erro de rede durante o upload' });
+
+    xhr.send(form);
+  });
+}
+
 /** Anexa o PDF a um documento existente (etiqueta aguardando arquivo). */
 export function attachDocumentFile(
   slug: string,

@@ -1,7 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Landmark,
   CheckCircle2,
@@ -10,13 +11,24 @@ import {
   FileText,
   Upload,
   Plus,
+  LogIn,
+  Sliders,
+  Users,
+  Pencil,
+  Power,
+  Settings2,
 } from 'lucide-react';
 import type { MasterDashboard, TenantOverview } from '@jdoc/shared';
-import { api } from '@/lib/api';
-import { cardCls, formatBytes, Badge, UsageBar } from '@/components/ui';
+import { api, ApiError } from '@/lib/api';
+import { cardCls, formatBytes, Badge, UsageBar, btnGhost } from '@/components/ui';
 import { EmptyState } from '@/components/empty-state';
+import { useToast } from '@/components/toast';
+import { EditModal, QuotaModal } from '@/components/superadmin/tenant-modals';
+import { TenantManageModal } from '@/components/superadmin/tenant-manage-modal';
 
 export default function SuperadminDashboardPage() {
+  const qc = useQueryClient();
+  const toast = useToast();
   const { data, isLoading } = useQuery({
     queryKey: ['sa-dashboard'],
     queryFn: () => api<MasterDashboard>('/superadmin/dashboard'),
@@ -24,6 +36,25 @@ export default function SuperadminDashboardPage() {
   const { data: tenants, isLoading: loadingTenants } = useQuery({
     queryKey: ['sa-tenants'],
     queryFn: () => api<TenantOverview[]>('/superadmin/tenants'),
+  });
+
+  const [editing, setEditing] = useState<TenantOverview | null>(null);
+  const [quotaEditing, setQuotaEditing] = useState<TenantOverview | null>(null);
+  const [managing, setManaging] = useState<TenantOverview | null>(null);
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['sa-tenants'] });
+
+  const toggleStatus = useMutation({
+    mutationFn: (t: TenantOverview) =>
+      api(`/superadmin/tenants/${t.id}/status`, {
+        method: 'PATCH',
+        body: { status: t.status === 'ativo' ? 'inativo' : 'ativo' },
+      }),
+    onSuccess: () => {
+      invalidate();
+      toast.success('Status do órgão atualizado.');
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Erro ao alterar status'),
   });
 
   if (isLoading || !data) {
@@ -104,7 +135,7 @@ export default function SuperadminDashboardPage() {
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {tenants.map((t) => (
-              <div key={t.id} className={`${cardCls} p-4`}>
+              <div key={t.id} className={`${cardCls} border-t-4 ${t.status === 'ativo' ? 'border-t-green-500' : 'border-t-red-500'} p-4`}>
                 <div className="mb-3 flex items-start justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-primary">
@@ -127,9 +158,54 @@ export default function SuperadminDashboardPage() {
                 </p>
 
                 <UsageBar percent={t.usoPercent} />
-                <p className="mt-1 text-[11px] text-app-muted">
+                <p className="mb-3 mt-1 text-[11px] text-app-muted">
                   {formatBytes(t.usoBytes)} de {(t.quotaDiscoMb / 1024).toFixed(2)} GB
                 </p>
+
+                <div className="space-y-1.5">
+                  <a
+                    href={`/${t.slug}/login`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-gradient-primary py-2 text-xs font-bold uppercase text-white transition hover:opacity-90"
+                  >
+                    <LogIn className="h-3.5 w-3.5" aria-hidden />
+                    Acessar Sistema
+                  </a>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button type="button" onClick={() => setQuotaEditing(t)} className={`${btnGhost} text-[11px]`}>
+                      <Sliders className="mr-1 inline h-3.5 w-3.5" aria-hidden />
+                      Configurar
+                    </button>
+                    <Link
+                      href={`/superadmin/usuarios?tenantId=${t.id}`}
+                      className={`${btnGhost} text-center text-[11px]`}
+                    >
+                      <Users className="mr-1 inline h-3.5 w-3.5" aria-hidden />
+                      Usuários
+                    </Link>
+                    <button type="button" onClick={() => setEditing(t)} className={`${btnGhost} text-[11px]`}>
+                      <Pencil className="mr-1 inline h-3.5 w-3.5" aria-hidden />
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleStatus.mutate(t)}
+                      className={`${btnGhost} text-[11px]`}
+                    >
+                      <Power className="mr-1 inline h-3.5 w-3.5" aria-hidden />
+                      {t.status === 'ativo' ? 'Desativar' : 'Ativar'}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setManaging(t)}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-app-border py-2 text-[11px] font-bold uppercase text-accent transition hover:bg-app-hover"
+                  >
+                    <Settings2 className="h-3.5 w-3.5" aria-hidden />
+                    Gerenciar (Backup &amp; Logs)
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -161,6 +237,12 @@ export default function SuperadminDashboardPage() {
           </div>
         )}
       </div>
+
+      {editing && <EditModal tenant={editing} onClose={() => setEditing(null)} onDone={invalidate} />}
+      {quotaEditing && (
+        <QuotaModal tenant={quotaEditing} onClose={() => setQuotaEditing(null)} onDone={invalidate} />
+      )}
+      {managing && <TenantManageModal tenant={managing} onClose={() => setManaging(null)} />}
     </div>
   );
 }
