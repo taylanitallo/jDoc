@@ -25,7 +25,7 @@ export default function LoginPage() {
   // — busca simples, so pra mostrar o brasao/nome reais antes de autenticar.
   useEffect(() => {
     let active = true;
-    api<TenantBranding>(`/t/${slug}/public-branding`)
+    api<TenantBranding>(`/t/${slug}/configuracoes/public-branding`)
       .then((b) => { if (active) setBranding(b); })
       .catch(() => undefined);
     return () => { active = false; };
