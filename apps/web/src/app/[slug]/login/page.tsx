@@ -5,9 +5,12 @@ import { useParams, useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { loginSchema, type LoginInput, type TenantBranding } from '@jdoc/shared';
-import { Eye, EyeOff, Landmark, LogIn, Lock, Mail } from 'lucide-react';
+import { Download, Eye, EyeOff, Landmark, LogIn, Lock, Mail } from 'lucide-react';
 import { api, setAccessToken, ApiError } from '@/lib/api';
-import { desktopLoginBestEffort } from '@/lib/desktop-bridge';
+import { desktopLoginBestEffort, isDesktopApp } from '@/lib/desktop-bridge';
+
+const DESKTOP_DOWNLOAD_URL =
+  'https://buknzokboidzhenafwpi.supabase.co/storage/v1/object/public/downloads/jDoc-Desktop-1.0.0-x64.exe';
 
 export default function LoginPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -15,6 +18,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [showSenha, setShowSenha] = useState(false);
   const [branding, setBranding] = useState<TenantBranding | null>(null);
+  const [desktop, setDesktop] = useState(false);
   const {
     register,
     handleSubmit,
@@ -30,6 +34,10 @@ export default function LoginPage() {
       .catch(() => undefined);
     return () => { active = false; };
   }, [slug]);
+
+  useEffect(() => {
+    setDesktop(isDesktopApp());
+  }, []);
 
   const onSubmit = async (data: LoginInput) => {
     setError(null);
@@ -139,6 +147,16 @@ export default function LoginPage() {
               {isSubmitting ? 'Entrando…' : 'Entrar'}
             </button>
           </form>
+
+          {!desktop && (
+            <a
+              href={DESKTOP_DOWNLOAD_URL}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 py-2 text-xs font-bold uppercase tracking-wide text-app-muted transition hover:border-neon-purple hover:text-white"
+            >
+              <Download className="h-4 w-4" aria-hidden />
+              Baixar o jDoc Desktop (Windows)
+            </a>
+          )}
         </section>
       </div>
 
