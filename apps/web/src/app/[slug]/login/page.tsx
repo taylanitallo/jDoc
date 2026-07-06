@@ -54,7 +54,7 @@ export default function LoginPage() {
   return (
     <main
       className="relative flex min-h-screen items-center justify-center bg-black bg-cover px-4"
-      style={{ backgroundImage: "url('/background.png')", backgroundPosition: 'right center' }}
+      style={{ backgroundImage: "url('/background.png')", backgroundPosition: 'right 15%' }}
     >
       <div className="flex w-full max-w-5xl flex-col items-center gap-12 lg:flex-row lg:justify-end">
         {/* A marca (logo + nome + slogan) ja vem desenhada dentro do proprio
