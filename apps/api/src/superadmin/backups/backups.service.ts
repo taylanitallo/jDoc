@@ -52,6 +52,15 @@ export type BackupsQueueData = ManualBackupJobData | ScheduledBackupJobData | Re
 const BACKUP_FILE_KEY_REGEX =
   /^backup-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.dump\.gz$/;
 
+/**
+ * Chave estavel do job repetivel no BullMQ, usada tanto como `jobId` quanto
+ * como `repeat.key` explicito. Sem passar `repeat.key`, o BullMQ deriva a
+ * chave interna de nome+jobId+padrao-cron — mudar o padrao (ex: trocar o
+ * horario) geraria uma chave DIFERENTE, deixando o job antigo orfao (nunca
+ * removido, ja que `getRepeatableJobs()` nao devolve nenhum campo `id`
+ * comparavel). Fixando `repeat.key` como esta string estavel, reagendar
+ * sempre atualiza o mesmo job em vez de duplicar.
+ */
 function repeatableJobId(tenantId: string): string {
   return `tenant-backup-${tenantId}`;
 }
@@ -126,7 +135,11 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
       'scheduled-backup',
       { kind: 'scheduled-backup', tenantId, slug, schemaName },
       {
-        repeat: { pattern: cronPatternFor(settings.frequencia, settings.hora), tz: 'America/Sao_Paulo' },
+        repeat: {
+          pattern: cronPatternFor(settings.frequencia, settings.hora),
+          tz: 'America/Sao_Paulo',
+          key: repeatableJobId(tenantId),
+        },
         jobId: repeatableJobId(tenantId),
         removeOnComplete: 100,
         removeOnFail: 100,
@@ -136,7 +149,7 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
 
   private async unscheduleRepeatable(tenantId: string): Promise<void> {
     const jobs = await this.requireQueue().getRepeatableJobs();
-    const mine = jobs.filter((j) => j.id === repeatableJobId(tenantId));
+    const mine = jobs.filter((j) => j.key === repeatableJobId(tenantId));
     for (const j of mine) await this.requireQueue().removeRepeatableByKey(j.key);
   }
 
@@ -161,11 +174,8 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
     let proximoBackup: string | null = null;
     if (row?.enabled && this.queue) {
       const jobs = await this.queue.getRepeatableJobs();
-      const mine = jobs.find((j) => j.id === repeatableJobId(tenantId));
-      // BullMQ tipagem nao expoe `next` diretamente em todas as versoes —
-      // best-effort, so cosmetico (nao afeta o agendamento real).
-      const next = (mine as unknown as { next?: number } | undefined)?.next;
-      proximoBackup = next ? new Date(next).toISOString() : null;
+      const mine = jobs.find((j) => j.key === repeatableJobId(tenantId));
+      proximoBackup = mine?.next ? new Date(mine.next).toISOString() : null;
     }
 
     return {
@@ -324,7 +334,9 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
     if (!BACKUP_FILE_KEY_REGEX.test(b.fileKey)) {
       throw new ConflictException('Chave de arquivo invalida');
     }
-    const url = await this.storage.createSignedUrl(b.tenantSlug, b.fileKey, 60, b.fileKey);
+    const dataHora = b.criadoEm.slice(0, 19).replace(/[:T]/g, '-');
+    const friendlyName = `backup-${b.tenantSlug}-${dataHora}`;
+    const url = await this.storage.createSignedUrl(b.tenantSlug, b.fileKey, 60, friendlyName);
     return { url, expiresInSeconds: 60 };
   }
 
