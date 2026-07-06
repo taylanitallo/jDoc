@@ -73,7 +73,7 @@ function createWindow(): void {
  *  so o dev local usa localhost; sem isso o .exe instalado abriria uma pagina
  *  em branco, ja que localhost:3000/3333 nao existem na maquina do usuario. */
 const DEFAULT_API_ORIGIN = app.isPackaged ? 'https://docapi.jeossistemas.com' : 'http://localhost:3333';
-const DEFAULT_WEB_ORIGIN = app.isPackaged ? 'https://jeossistemas.com' : 'http://localhost:3000';
+const DEFAULT_WEB_ORIGIN = app.isPackaged ? 'https://doc.jeossistemas.com' : 'http://localhost:3000';
 
 /** Origem da API (para permitir o iframe do visualizador carregar a signed URL). */
 const API_ORIGIN = process.env['JDOC_API_URL'] ?? DEFAULT_API_ORIGIN;
