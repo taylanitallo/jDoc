@@ -1,4 +1,5 @@
 
+import { readFileSync } from 'node:fs';
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 
@@ -8,17 +9,34 @@ import react from '@vitejs/plugin-react';
  * - preload:  ponte blindada, saida CommonJS obrigatoria (sandbox nao suporta ESM)
  * - renderer: SPA React, raiz no diretorio do app (index.html)
  */
+
+/**
+ * Em monorepo pnpm o electron-builder so copia pro app.asar as deps DIRETAS
+ * listadas no package.json, sem seguir os symlinks do virtual store pra
+ * pegar as dependencias transitivas delas — ja quebrou 2x em producao
+ * ("Cannot find module 'fs-extra'" via electron-updater, depois "Cannot
+ * find module '@signpdf/placeholder-pdfkit010'" via @signpdf/placeholder-
+ * plain). Em vez de excluir pacote por pacote da externalizacao (whack-a-
+ * mole a cada nova lib pura-JS adicionada), bundla tudo que nao precisa
+ * ficar de fora, eliminando a resolucao de node_modules em runtime.
+ *
+ * Ficam de fora do bundle (continuam externalizadas, resolvidas via
+ * node_modules em runtime):
+ * - keytar / pkcs11js: nativas de verdade (carregam um .node), nao dao
+ *   pra bundlar — tambem tem entrada em `asarUnpack` no electron-builder.yml.
+ * - @jdoc/shared: workspace package com barrel export (__exportStar) — o
+ *   commonjs plugin do rollup nao extrai os named exports corretamente se
+ *   ele for bundlado junto; funciona bem externalizado.
+ */
+const KEEP_EXTERNAL = new Set(['keytar', 'pkcs11js', '@jdoc/shared']);
+const pkgJson = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8')) as {
+  dependencies?: Record<string, string>;
+};
+const bundledDeps = Object.keys(pkgJson.dependencies ?? {}).filter((dep) => !KEEP_EXTERNAL.has(dep));
+
 export default defineConfig({
   main: {
-    // Externaliza deps (@jdoc/shared, zod) — resolvidas em runtime como CJS,
-    // sem o rollup tentar bundlar/tracejar os named exports do dist do shared.
-    // electron-updater fica de fora da externalizacao (ou seja, VAI bundlado
-    // no main.js): em monorepo pnpm o electron-builder nao segue os symlinks
-    // do virtual store pra copiar as deps transitivas dele (fs-extra,
-    // builder-util-runtime, js-yaml, semver...), entao o .exe empacotado
-    // quebrava com "Cannot find module 'fs-extra'" ao carregar o updater.
-    // Bundlar elimina a resolucao de node_modules em runtime pra essa lib.
-    plugins: [externalizeDepsPlugin({ exclude: ['electron-updater'] })],
+    plugins: [externalizeDepsPlugin({ exclude: bundledDeps })],
     build: {
       lib: { entry: 'electron/main.ts' },
       rollupOptions: { output: { entryFileNames: 'main.js' } },
