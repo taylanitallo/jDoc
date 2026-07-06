@@ -19,22 +19,11 @@ import {
 import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.module';
 import { RefreshTokenService } from '../auth/refresh-token.service';
-import { StorageService } from '../storage/storage.module';
+import { StorageService, detectImageExt } from '../storage/storage.module';
 import { requireTenantContext } from '../tenancy/tenant-context';
 
 const BRASAO_URL_TTL_S = 3600;
 const BRASAO_MAX_BYTES = 2 * 1024 * 1024;
-
-/** Detecta PNG/JPEG pelos magic bytes (nao confia no Content-Type do multipart). */
-function detectImageExt(buf: Buffer): 'png' | 'jpg' | null {
-  if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
-    return 'png';
-  }
-  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
-    return 'jpg';
-  }
-  return null;
-}
 
 interface ListResult<T> {
   items: T[];

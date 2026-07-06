@@ -1,6 +1,8 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -8,8 +10,11 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { z } from 'zod';
 import {
@@ -124,6 +129,28 @@ export class SuperadminController {
   ): Promise<void> {
     const a = actor(req);
     await this.tenants.setQuota(id, body, a.id, a.ip);
+  }
+
+  @Post('tenants/:id/brasao')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadTenantBrasao(
+    @Param('id', new ZodValidationPipe(uuidSchema)) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Req() req: Request,
+  ): Promise<{ brasaoUrl: string }> {
+    if (!file) throw new BadRequestException('Imagem obrigatória');
+    const a = actor(req);
+    return this.tenants.uploadBrasao(id, file, a.id, a.ip);
+  }
+
+  @Delete('tenants/:id/brasao')
+  @HttpCode(204)
+  async deleteTenantBrasao(
+    @Param('id', new ZodValidationPipe(uuidSchema)) id: string,
+    @Req() req: Request,
+  ): Promise<void> {
+    const a = actor(req);
+    await this.tenants.deleteBrasao(id, a.id, a.ip);
   }
 
   // ---- Usuarios de tenant ----

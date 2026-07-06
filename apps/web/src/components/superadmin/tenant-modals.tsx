@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type DragEvent } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { FileUp, Trash2 } from 'lucide-react';
 import {
   updateTenantSchema,
   UFS,
@@ -10,6 +11,7 @@ import {
   type TenantOverview,
 } from '@jdoc/shared';
 import { api, ApiError } from '@/lib/api';
+import { uploadTenantBrasao } from '@/lib/upload';
 import {
   Modal,
   UsageBar,
@@ -68,6 +70,57 @@ export function EditModal({
     }
   };
 
+  const [brasaoUrl, setBrasaoUrl] = useState(tenant.brasaoUrl);
+  const [dragOver, setDragOver] = useState(false);
+  const [uploadingBrasao, setUploadingBrasao] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [removingBrasao, setRemovingBrasao] = useState(false);
+
+  async function handleBrasaoFile(file: File) {
+    if (file.type !== 'image/png' && file.type !== 'image/jpeg') {
+      toast.error('Envie uma imagem PNG ou JPEG.');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('A imagem deve ter no máximo 2MB.');
+      return;
+    }
+    setUploadingBrasao(true);
+    setProgress(0);
+    const result = await uploadTenantBrasao(tenant.id, file, setProgress);
+    setUploadingBrasao(false);
+    setProgress(null);
+    if (!result.ok) {
+      toast.error(result.message);
+      return;
+    }
+    const { brasaoUrl: url } = result.body as { brasaoUrl: string };
+    setBrasaoUrl(url);
+    onDone();
+    toast.success('Brasão atualizado.');
+  }
+
+  async function handleRemoveBrasao() {
+    setRemovingBrasao(true);
+    try {
+      await api(`/superadmin/tenants/${tenant.id}/brasao`, { method: 'DELETE' });
+      setBrasaoUrl(null);
+      onDone();
+      toast.success('Brasão removido.');
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : 'Erro ao remover brasão');
+    } finally {
+      setRemovingBrasao(false);
+    }
+  }
+
+  function onDropBrasao(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragOver(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) void handleBrasaoFile(f);
+  }
+
   return (
     <Modal title="Editar Órgão" subtitle={`/${tenant.slug}`} open onClose={onClose}>
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
@@ -108,6 +161,69 @@ export function EditModal({
               <p className="mt-1 text-xs text-app-error-text">{errors.email.message}</p>
             )}
           </div>
+        </div>
+
+        <div>
+          <label className={labelCls}>Brasão do Município</label>
+          <div className="flex items-center gap-3">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-app-border bg-app-table-head">
+              {brasaoUrl ? (
+                <img src={brasaoUrl} alt="Brasão atual" className="h-full w-full object-cover" />
+              ) : (
+                <span className="text-[9px] text-app-muted">Sem brasão</span>
+              )}
+            </div>
+
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Área de upload do brasão"
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={onDropBrasao}
+              onClick={() => document.getElementById('sa-brasao-file-input')?.click()}
+              onKeyDown={(e) => e.key === 'Enter' && document.getElementById('sa-brasao-file-input')?.click()}
+              className={`flex flex-1 cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed p-3 text-center transition ${
+                dragOver ? 'border-accent bg-purple-50 dark:bg-purple-900/10' : 'border-app-border hover:border-app-muted'
+              }`}
+            >
+              <FileUp className="h-4 w-4 text-app-muted" aria-hidden />
+              <p className="text-[11px] text-app-muted">
+                PNG/JPEG até 2MB —{' '}
+                <span className="font-semibold text-accent">clique para selecionar</span>
+              </p>
+              <input
+                id="sa-brasao-file-input"
+                type="file"
+                accept="image/png,image/jpeg"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void handleBrasaoFile(f);
+                }}
+              />
+            </div>
+
+            {brasaoUrl && (
+              <button
+                type="button"
+                onClick={handleRemoveBrasao}
+                disabled={removingBrasao}
+                className={`${btnGhost} shrink-0`}
+                title="Remover brasão"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden />
+              </button>
+            )}
+          </div>
+          {uploadingBrasao && progress !== null && (
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-app-skeleton">
+              <div className="h-full bg-gradient-primary transition-all" style={{ width: `${progress}%` }} />
+            </div>
+          )}
         </div>
 
         {error && (
