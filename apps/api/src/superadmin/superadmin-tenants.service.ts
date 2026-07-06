@@ -12,6 +12,7 @@ import { TenancyService } from '../tenancy/tenancy.service';
 import { ProvisioningService } from '../provisioning/provisioning.service';
 import { AuditService } from '../audit/audit.module';
 import { StorageService, detectImageExt } from '../storage/storage.module';
+import { resolveBrasaoUrl } from '../tenancy/brasao.util';
 
 const BRASAO_URL_TTL_S = 3600;
 const BRASAO_MAX_BYTES = 2 * 1024 * 1024;
@@ -60,21 +61,6 @@ export class SuperadminTenantsService {
     };
   }
 
-  /** Le o brasao real do tenant (tenant_settings.brasaoKey) e assina a URL —
-   *  mesma fonte de verdade usada na propria tela de login do orgao. A coluna
-   *  `public.tenants.brasao_url` foi descontinuada (nunca era escrita por
-   *  nenhum fluxo real de upload, so aceitava uma URL externa colada a mao). */
-  private async resolveBrasaoUrl(schemaName: string, slug: string): Promise<string | null> {
-    const sql = this.db.tenant(schemaName);
-    const rows = await sql<Array<{ valor: string | unknown }>>`
-      SELECT valor FROM tenant_settings WHERE chave = 'brasaoKey'
-    `;
-    const raw = rows[0]?.valor;
-    if (!raw) return null;
-    const key = typeof raw === 'string' ? (JSON.parse(raw) as string) : (raw as string);
-    return this.storage.createSignedUrl(slug, key, BRASAO_URL_TTL_S);
-  }
-
   async list(): Promise<TenantOverview[]> {
     const sql = this.db.catalog();
     const rows = await sql<TenantRow[]>`
@@ -87,7 +73,7 @@ export class SuperadminTenantsService {
         this.toOverview(
           r,
           await this.storage.usageBytes(r.slug),
-          await this.resolveBrasaoUrl(r.schema_name, r.slug),
+          await resolveBrasaoUrl(this.db, this.storage, r.schema_name, r.slug),
         ),
       ),
     );
@@ -110,7 +96,7 @@ export class SuperadminTenantsService {
     return this.toOverview(
       row,
       await this.storage.usageBytes(row.slug),
-      await this.resolveBrasaoUrl(row.schema_name, row.slug),
+      await resolveBrasaoUrl(this.db, this.storage, row.schema_name, row.slug),
     );
   }
 

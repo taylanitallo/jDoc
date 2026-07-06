@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { CrossTenantLoginController } from './cross-tenant-login.controller';
 import { PasswordService } from './password.service';
 import { BruteForceService } from './brute-force.service';
 import { RefreshTokenService } from './refresh-token.service';
@@ -10,7 +11,7 @@ import { PermissionsGuard } from './permissions.guard';
 
 @Module({
   imports: [JwtModule.register({})],
-  controllers: [AuthController],
+  controllers: [AuthController, CrossTenantLoginController],
   providers: [
     AuthService,
     PasswordService,

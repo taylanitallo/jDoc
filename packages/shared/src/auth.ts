@@ -84,3 +84,20 @@ export const loginResponseSchema = z.object({
   mustChangePassword: z.boolean().optional(),
 });
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
+
+/**
+ * Login por e-mail sem slug (desktop): tenta as credenciais em todos os
+ * orgaos ativos e devolve uma sessao pronta pra cada um em que baterem —
+ * o cliente (app desktop) decide sozinho se entra direto (1 sessao) ou
+ * pede pra escolher o orgao (2+ sessoes). So usado pelo processo main do
+ * Electron (nunca pelo site, que sempre sabe o slug pela URL).
+ */
+export interface ResolvedTenantSession {
+  tenant: { slug: string; nome: string; brasaoUrl: string | null };
+  accessToken: string;
+  refreshToken: string;
+  mustChangePassword: boolean;
+}
+export interface ResolveLoginResponse {
+  sessions: ResolvedTenantSession[];
+}
