@@ -138,9 +138,16 @@ async function handleIdleExpiry(): Promise<void> {
  * bootstrap de sessao do site (`POST /t/:slug/auth/refresh` no mount do
  * layout autenticado) encontra o cookie e loga sozinho, sem o usuario
  * digitar credenciais de novo dentro do site.
+ *
+ * O cookie tem que ser gravado pro dominio da API (docapi.jeossistemas.com),
+ * NAO do site (doc.jeossistemas.com) — e exatamente o mesmo host que
+ * recebe o Set-Cookie quando um navegador normal faz login pela pagina:
+ * quem LE o cookie e sempre a chamada fetch pra API, nunca o site em si.
+ * Gravar no dominio errado faz o refresh sempre falhar silenciosamente e
+ * o site cair de volta pro /slug/login (ou pra lista de orgaos).
  */
 async function seedRefreshCookie(slug: string, refreshToken: string): Promise<void> {
-  const url = new URL(WEB_ORIGIN);
+  const url = new URL(API_ORIGIN);
   await session.defaultSession.cookies.set({
     url: url.origin,
     domain: url.hostname,
