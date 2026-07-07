@@ -1,7 +1,9 @@
 'use client';
 
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
-import { CalendarDays, CircleUserRound } from 'lucide-react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { CalendarDays, CircleUserRound, LogOut } from 'lucide-react';
+import { api, setAccessToken } from '@/lib/api';
 import { ThemeToggle } from './theme-toggle';
 
 /** Seletor global de EXERCICIO (ano) — filtra todo o sistema. */
@@ -34,6 +36,31 @@ export function Topbar({ userName = 'USUÁRIO' }: { userName?: string }) {
   const anoAtual = new Date().getFullYear();
   const anos = Array.from({ length: 6 }, (_, i) => anoAtual - i);
 
+  const router = useRouter();
+  const { slug } = useParams<{ slug: string }>();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [menuOpen]);
+
+  async function logout() {
+    try {
+      await api(`/t/${slug}/auth/logout`, { method: 'POST' });
+    } finally {
+      setAccessToken(null);
+      router.replace(`/${slug}/login`);
+    }
+  }
+
   return (
     <header className="flex h-16 items-center justify-between border-b border-app-border bg-app-card px-6">
       <p className="text-sm font-bold text-app">
@@ -57,7 +84,30 @@ export function Topbar({ userName = 'USUÁRIO' }: { userName?: string }) {
           </select>
         </label>
         <ThemeToggle />
-        <CircleUserRound className="h-8 w-8 text-app-muted" aria-label="Perfil do usuário" />
+        <div className="relative" ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label="Perfil do usuário"
+            aria-expanded={menuOpen}
+            className="flex items-center rounded-full text-app-muted transition hover:text-app"
+          >
+            <CircleUserRound className="h-8 w-8" aria-hidden />
+          </button>
+
+          {menuOpen && (
+            <div className="absolute right-0 top-full z-10 mt-2 w-40 overflow-hidden rounded-lg border border-app-border bg-app-card shadow-lg">
+              <button
+                type="button"
+                onClick={() => void logout()}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs font-semibold text-app-muted transition hover:bg-app-hover hover:text-app"
+              >
+                <LogOut className="h-4 w-4" aria-hidden />
+                SAIR
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );
