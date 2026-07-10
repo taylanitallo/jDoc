@@ -7,6 +7,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/sidebar';
 import { ExercicioProvider, Topbar } from '@/components/topbar';
 import { BrandingProvider } from '@/components/branding';
+import { DesktopUpdateBanner } from '@/components/desktop-update-banner';
 import { api, setAccessToken, setLastTenantSlug } from '@/lib/api';
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
@@ -54,6 +55,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
             <Sidebar />
             <div className="flex min-w-0 flex-1 flex-col">
               <Topbar />
+              <DesktopUpdateBanner />
               <main className="flex-1 p-6">{children}</main>
             </div>
           </div>

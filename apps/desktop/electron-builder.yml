@@ -44,13 +44,16 @@ nsis:
   oneClick: false # instalacao assistida (nao silenciosa)
   perMachine: false
   allowToChangeInstallationDirectory: true
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  # Nome SEM espaco (jDoc-Desktop-...) para casar com o link de download do
+  # site e com o latest.yml do auto-update — espaco no nome vira %20 e ja
+  # causou divergencia entre o arquivo publicado e o que o updater procura.
+  artifactName: jDoc-Desktop-${version}-${arch}.${ext}
   shortcutName: jDoc Desktop
   uninstallDisplayName: jDoc Desktop
 
-# Auto-update (electron-updater). Provider generico: troque a URL abaixo, ou
-# sobreponha em runtime com JDOC_UPDATE_URL (ver electron/updater.ts).
-# Alternativa: provider github (owner/repo) quando for publicar via Releases.
+# Auto-update (electron-updater). Feed no mesmo bucket publico do Supabase que
+# serve o download do site — o electron-updater le `<url>/latest.yml`. Pode ser
+# sobreposto em runtime por JDOC_UPDATE_URL (ver electron/updater.ts).
 publish:
   provider: generic
-  url: https://updates.jeos.example/jdoc-desktop/
+  url: https://buknzokboidzhenafwpi.supabase.co/storage/v1/object/public/downloads/
