@@ -23,8 +23,8 @@ interface UsoDisco {
   usoPercent: number;
 }
 
-function formatMb(bytes: number): string {
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+function formatGb(bytes: number): string {
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 const cards = [
@@ -77,7 +77,7 @@ export default function DashboardPage() {
         </div>
         <p className="mt-2 text-[10px] text-app-muted">
           {uso
-            ? `${formatMb(uso.usoBytes)} de ${formatMb(uso.quotaBytes)} utilizados (${uso.usoPercent}%)`
+            ? `${formatGb(uso.usoBytes)} de ${formatGb(uso.quotaBytes)} utilizados (${uso.usoPercent}%)`
             : 'Carregando...'}
         </p>
       </div>
