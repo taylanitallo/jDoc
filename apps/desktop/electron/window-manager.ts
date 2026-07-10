@@ -10,12 +10,7 @@ import { idleMonitor } from './session/idle';
 import { logout as authLogout } from './api/client';
 import { setProgressSink } from './upload/queue';
 import { setPendingSink } from './watch/folder-watcher';
-import {
-  getPendingUpdate,
-  setOnUpdateAvailable,
-  setUpdateProgressSink,
-  setUpdateReadySink,
-} from './updater';
+import { setUpdateProgressSink, setUpdateReadySink } from './updater';
 
 /**
  * Dono do ciclo de vida das janelas do app.
@@ -230,9 +225,30 @@ async function seedRefreshCookie(slug: string, refreshToken: string): Promise<vo
  * restaurado do keychain) — injeta o cookie, abre a janela principal
  * carregando o dashboard do orgao e fecha a janela de login, se aberta.
  */
+/**
+ * Liga os sinks do updater — mandam progresso/conclusao pra janela do
+ * Atualizador (se aberta) ou pra principal. Chamado uma vez no boot, ANTES de
+ * qualquer janela, porque o Atualizador aparece antes do login.
+ */
+export function initUpdateSinks(): void {
+  setUpdateProgressSink((snapshot) => {
+    (updateModal ?? mainWindow)?.webContents.send(UPDATE_PROGRESS_CHANNEL, snapshot);
+  });
+  setUpdateReadySink((payload) => {
+    (updateModal ?? mainWindow)?.webContents.send(UPDATE_READY_CHANNEL, payload);
+  });
+}
+
 export async function openMainWindowForSession(slug: string, refreshToken: string): Promise<void> {
   await seedRefreshCookie(slug, refreshToken);
+  // A atualizacao ja foi tratada ANTES do login (ver main.ts) — aqui so abre o
+  // sistema, sempre ja na versao mais recente.
+  openDashboard(slug);
+  loginWindow?.close();
+}
 
+/** Cria a janela principal (dashboard do site) e liga as pontes nativas. */
+function openDashboard(slug: string): void {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -274,54 +290,36 @@ export async function openMainWindowForSession(slug: string, refreshToken: strin
   idleMonitor.onExpire = () => void handleIdleExpiry();
   setProgressSink((snapshot) => mainWindow?.webContents.send(UPLOAD_PROGRESS_CHANNEL, snapshot));
   setPendingSink((items) => mainWindow?.webContents.send(WATCH_PENDING_CHANGED_CHANNEL, items));
-  // Sinks do updater: enviam o push IPC para a janela correta (modal > main).
-  setUpdateProgressSink((snapshot) => {
-    const target = updateModal ?? mainWindow;
-    target?.webContents.send(UPDATE_PROGRESS_CHANNEL, snapshot);
-  });
-  setUpdateReadySink((payload) => {
-    const target = updateModal ?? mainWindow;
-    target?.webContents.send(UPDATE_READY_CHANNEL, payload);
-  });
-  // Quando chega update-available DEPOIS da janela principal existir, abre o modal agora.
-  setOnUpdateAvailable(() => {
-    if (mainWindow) openUpdateModal(mainWindow);
-  });
-
   mainWindow.on('closed', () => {
     mainWindow = null;
     updateModal?.close();
     updateModal = null;
   });
 
-  await mainWindow.loadURL(`${WEB_ORIGIN}/${slug}/dashboard`);
-
-  // Se um update ja chegou durante o login (antes da main existir), abrir agora.
-  if (getPendingUpdate()) {
-    openUpdateModal(mainWindow);
-  }
-
-  loginWindow?.close();
+  void mainWindow.loadURL(`${WEB_ORIGIN}/${slug}/dashboard`);
 }
 
-/** Modal de atualizacao (electron-updater). Janela-filha da main, sem frame e
- *  sem icone na barra de tarefas: o usuario so ve uma janela centralizada com
- *  a barra de progresso ate `quitAndInstall()` ser chamado pelo updater. */
+/**
+ * Janela "Atualizador". Dois modos:
+ * - STANDALONE (sem `parent`): e a UNICA janela — usada quando ha atualizacao
+ *   pendente no login, pra bloquear o sistema (o dashboard nem carrega) ate o
+ *   app se atualizar e reiniciar. Aparece na barra de tarefas.
+ * - FILHA (`parent` = main): caso raro do update chegar depois do login; abre
+ *   modal por cima do dashboard, bloqueando a interacao.
+ */
 let updateModal: BrowserWindow | null = null;
 
-export function openUpdateModal(parent: BrowserWindow): BrowserWindow {
+export function openUpdateModal(parent?: BrowserWindow): BrowserWindow {
   if (updateModal) {
     updateModal.focus();
     return updateModal;
   }
+  const asChild = parent !== undefined && !parent.isDestroyed();
   updateModal = new BrowserWindow({
     width: 560,
-    height: 420,
-    parent,
-    modal: true,
+    height: 520,
+    ...(asChild ? { parent, modal: true, skipTaskbar: true, alwaysOnTop: true } : {}),
     frame: false,
-    skipTaskbar: true,
-    alwaysOnTop: true,
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -329,7 +327,7 @@ export function openUpdateModal(parent: BrowserWindow): BrowserWindow {
     show: false,
     center: true,
     backgroundColor: '#0f1424',
-    title: 'jdoc-update-modal',
+    title: 'Atualizador do jDoc',
     webPreferences: {
       preload: join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
@@ -340,11 +338,19 @@ export function openUpdateModal(parent: BrowserWindow): BrowserWindow {
   });
   updateModal.once('ready-to-show', () => updateModal?.show());
   void updateModal.loadFile(join(__dirname, '../renderer/assets/update-modal/index.html'));
+  // ESC = valvula de escape (ex.: sem internet nao da pra atualizar): confirma
+  // e sai do app. Sem barra de titulo, ESC e a unica forma de fechar.
+  updateModal.webContents.on('before-input-event', (_event, input) => {
+    const noModifier = !input.control && !input.alt && !input.shift && !input.meta;
+    if (input.type === 'keyDown' && input.key === 'Escape' && noModifier && updateModal) {
+      void confirmExit(updateModal);
+    }
+  });
   updateModal.on('closed', () => {
     updateModal = null;
   });
-  // Se a janela-pai fechar, fecha o modal junto (evita orfa).
-  if (!parent.isDestroyed()) {
+  // Modo filho: se a janela-pai fechar, fecha o Atualizador junto (evita orfa).
+  if (asChild) {
     parent.once('closed', () => {
       if (updateModal && !updateModal.isDestroyed()) updateModal.close();
     });

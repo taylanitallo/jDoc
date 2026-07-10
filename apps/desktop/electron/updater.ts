@@ -2,33 +2,25 @@ import { app } from 'electron';
 import electronUpdater from 'electron-updater';
 
 /**
- * Auto-update (electron-updater). servico vem do app-update.yml gerado pelo
- * electron-builder (publish: generic), e pode ser sobreposto em runtime por
- * JDOC_UPDATE_URL. Toda falha (rede, config ausente) e engolida: NUNCA quebra o app.
+ * Auto-update (electron-updater). O feed vem do app-update.yml gerado pelo
+ * electron-builder (publish: generic -> bucket do Supabase), e pode ser
+ * sobreposto por JDOC_UPDATE_URL. Toda falha (rede, config) e engolida:
+ * NUNCA quebra o app. Em desenvolvimento (app nao empacotado) fica inativo.
  *
- * Em desenvolvimento (app nao empacotado) o auto-update fica inativo.
- *
- * Fluxo da UI:
- *   1. `initAutoUpdateOnBoot()` dispara checkForUpdates() silencioso em background.
- *   2. Quando chega `update-available`, guarda `pendingUpdate` e chama
- *      `onUpdateAvailable(version)` (registrado pelo window-manager) — que abre
- *      o modal centralizado se a janela principal ja existe.
- *   3. `download-progress` e empurrado para a modal via `UPDATE_PROGRESS_CHANNEL`.
- *   4. `update-downloaded` empurra `UPDATE_READY_CHANNEL` e, apos 800ms (para o
- *      usuario ver a barra em 100%), chama `quitAndInstall()` para reiniciar o .exe.
- *      `autoInstallOnAppQuit` segue true como rede de seguranca.
- */
-/**
- * Acesso PREGUICOSO ao autoUpdater: `electronUpdater.autoUpdater` e um
- * getter que constroi o updater na primeira leitura (`new NsisUpdater()`),
- * e esse construtor chama `app.getVersion()` internamente — se isso
- * acontecer no import de main.ts (antes de `app.whenReady()`), o Electron
- * `app` ainda nao esta pronto e o processo morre com "Cannot read
- * properties of undefined (reading 'getVersion')" no boot, sem log nem
- * dialog. Toda funcao abaixo so roda DEPOIS de app.whenReady() (ver
- * main.ts), entao chamar getAutoUpdater() ali dentro e seguro.
+ * Fluxo da UI (janela "Atualizador" — ver src/assets/update-modal):
+ *   1. `initAutoUpdateOnBoot()` checa em silencio. Se ha versao nova, guarda
+ *      `pendingUpdate` (NAO baixa ainda — autoDownload=false).
+ *   2. Apos o login, o window-manager abre a janela do Atualizador (via
+ *      getPendingUpdate/onUpdateAvailable). Ela mostra a versao e um botao
+ *      "Executar atualizacao".
+ *   3. O usuario clica -> `startDownload()` baixa; `download-progress` alimenta
+ *      a barra via `progressSink`.
+ *   4. `update-downloaded` -> `readySink` (a janela mostra "concluida") e, apos
+ *      um instante, `quitAndInstall()` reinicia o app ja na versao nova.
  */
 function getAutoUpdater() {
+  // Acesso PREGUICOSO: o getter constroi o updater na 1a leitura chamando
+  // app.getVersion() — so seguro DEPOIS de app.whenReady() (ver main.ts).
   return electronUpdater.autoUpdater;
 }
 
@@ -47,27 +39,17 @@ export interface PendingUpdate {
 }
 
 let configured = false;
-
-/** Estado em memoria — sobrevive ate o app fechar. */
 let pendingUpdate: PendingUpdate | null = null;
-
-/** Callback registrado pelo window-manager: disparado quando chega um update novo
- *  e ja existe (ou passou a existir) uma janela principal para hospedar o modal. */
 let onUpdateAvailableCb: ((version: string) => void) | null = null;
 
-/** Listener para o callback — apenas o window-manager chama. */
 export function setOnUpdateAvailable(cb: ((version: string) => void) | null): void {
   onUpdateAvailableCb = cb;
 }
 
-/** Getter usado pelo window-manager para decidir se abre o modal apos a main carregar. */
 export function getPendingUpdate(): PendingUpdate | null {
   return pendingUpdate;
 }
 
-/** Sinks registrados pelo window-manager: encaminham o push IPC para a
- *  BrowserWindow correta (main ou modal). Mantem o updater desacoplado das
- *  referencias de janela — segue o mesmo padrao de setProgressSink/setPendingSink. */
 let progressSink: ((snapshot: { percent: number; transferred: number; total: number }) => void) | null = null;
 let readySink: ((payload: { version: string }) => void) | null = null;
 
@@ -85,8 +67,10 @@ function configure(): void {
   if (configured) return;
   configured = true;
   const autoUpdater = getAutoUpdater();
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  // NAO baixa sozinho: a janela do Atualizador (mostrada ANTES do login)
+  // controla o download quando o usuario clica "Executar atualizacao".
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
   const url = process.env['JDOC_UPDATE_URL'];
   if (url) {
     autoUpdater.setFeedURL({ provider: 'generic', url });
@@ -115,11 +99,25 @@ function configure(): void {
   autoUpdater.on('update-downloaded', (info) => {
     if (pendingUpdate) pendingUpdate.downloaded = true;
     readySink?.({ version: info.version });
-    // delay curto para o usuario perceber 100% antes do app fechar.
+    // Como o Atualizador aparece ANTES do login, ninguem esta usando o sistema:
+    // aplica na hora, em silencio (sem wizard) e reabre ja na versao nova, que
+    // entao mostra a tela de login. (isSilent=true, isForceRunAfter=true)
     setTimeout(() => {
-      getAutoUpdater().quitAndInstall();
-    }, 800);
+      getAutoUpdater().quitAndInstall(true, true);
+    }, 1200);
   });
+}
+
+/** Inicia o download da versao ja detectada (chamado quando o usuario clica). */
+export async function startDownload(): Promise<{ ok: boolean; error?: string }> {
+  if (!app.isPackaged) return { ok: false, error: 'Auto-update indisponivel em desenvolvimento.' };
+  try {
+    configure();
+    await getAutoUpdater().downloadUpdate();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 function status(extra?: Partial<UpdateStatus>): UpdateStatus {

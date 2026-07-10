@@ -1,7 +1,7 @@
 import { app, dialog, ipcMain } from 'electron';
 import type { ZodType } from 'zod';
 import { IPC_INVOKE_CHANNEL, INVOKE_KINDS, isInvokeKind, type InvokeKind } from './contract';
-import { checkForUpdate } from '../updater';
+import { checkForUpdate, startDownload } from '../updater';
 import {
   loginPayloadSchema,
   resolveLoginPayloadSchema,
@@ -181,6 +181,9 @@ const registry: { [K in InvokeKind]: Handler } = {
   // App / auto-update.
   'app:version': defineHandler(emptyPayloadSchema, async () => ({ version: app.getVersion() })),
   'app:check-update': defineHandler(emptyPayloadSchema, () => checkForUpdate()),
+  // Inicia o download da versao nova (a janela do Atualizador acompanha o
+  // progresso via UPDATE_PROGRESS_CHANNEL e o app reinicia sozinho ao concluir).
+  'update:download': defineHandler(emptyPayloadSchema, () => startDownload()),
 };
 
 /**
