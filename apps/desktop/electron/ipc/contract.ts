@@ -73,6 +73,7 @@ export const INVOKE_KINDS = [
   'watch:dismiss',
   'app:version',
   'app:check-update',
+  'update:download',
 ] as const;
 
 export type InvokeKind = (typeof INVOKE_KINDS)[number];

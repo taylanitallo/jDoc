@@ -2,9 +2,9 @@ import { useEffect, useState, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 
 /**
- * Janela-filha modal de atualizacao (electron-updater).
- * Mostra a barra de progresso do download e avisa o usuario que o app vai
- * reiniciar sozinho assim que chegar a 100% (sem clique necessario).
+ * Janela "Atualizador" (electron-updater). Mostra a versao atual -> nova, um
+ * botao "Executar atualizacao" e a barra de progresso do download. Ao concluir,
+ * mostra "Atualizacao concluida" e o app reinicia sozinho na versao nova.
  *
  * A ponte com o main vive em window.jdoc (preload). Sem deps externas.
  */
@@ -12,17 +12,6 @@ import { createRoot } from 'react-dom/client';
 type UpdateInfo = {
   currentVersion: string;
   latestVersion: string | null;
-  updateAvailable: boolean;
-  downloaded: boolean;
-  error: string | null;
-};
-
-const EMPTY: UpdateInfo = {
-  currentVersion: '0.0.0',
-  latestVersion: null,
-  updateAvailable: false,
-  downloaded: false,
-  error: null,
 };
 
 function formatBytes(n: number): string {
@@ -57,94 +46,110 @@ function UpdateIcon(): ReactElement {
   );
 }
 
-function AppUpdateModal(): ReactElement {
-  const [info, setInfo] = useState<UpdateInfo>(EMPTY);
-  const [percent, setPercent] = useState<number>(0);
-  const [transferred, setTransferred] = useState<number>(0);
-  const [total, setTotal] = useState<number>(0);
-  const [ready, setReady] = useState<boolean>(false);
+type Phase = 'idle' | 'downloading' | 'done';
+
+function Atualizador(): ReactElement {
+  const [info, setInfo] = useState<UpdateInfo>({ currentVersion: '', latestVersion: null });
+  const [phase, setPhase] = useState<Phase>('idle');
+  const [percent, setPercent] = useState(0);
+  const [transferred, setTransferred] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    void window.jdoc
-      .invoke('app:check-update')
-      .then((res) => {
-        if (cancelled) return;
-        const r = res as Partial<UpdateInfo> | null;
-        if (r && typeof r.currentVersion === 'string') {
-          setInfo({
-            currentVersion: r.currentVersion,
-            latestVersion: typeof r.latestVersion === 'string' ? r.latestVersion : null,
-            updateAvailable: Boolean(r.updateAvailable),
-            downloaded: Boolean(r.downloaded),
-            error: null,
-          });
-        }
-      })
-      .catch(() => {
-        /* a modal ja mostra fallback abaixo */
-      });
+    void (async () => {
+      try {
+        const v = (await window.jdoc.invoke('app:version')) as { version?: string };
+        const st = (await window.jdoc.invoke('app:check-update')) as { latestVersion?: string | null };
+        setInfo({ currentVersion: v?.version ?? '', latestVersion: st?.latestVersion ?? null });
+      } catch {
+        /* mantem placeholders */
+      }
+    })();
 
-    const offProgress = window.jdoc.onUpdateProgress((snapshot) => {
-      const p = Math.max(0, Math.min(100, Number(snapshot.percent) || 0));
-      setPercent(p);
-      setTransferred(Number(snapshot.transferred) || 0);
-      setTotal(Number(snapshot.total) || 0);
+    const offProgress = window.jdoc.onUpdateProgress((s) => {
+      setPercent(Math.max(0, Math.min(100, Number(s.percent) || 0)));
+      setTransferred(Number(s.transferred) || 0);
+      setTotal(Number(s.total) || 0);
     });
     const offReady = window.jdoc.onUpdateReady(() => {
-      setReady(true);
+      setPercent(100);
+      setPhase('done');
     });
-
     return () => {
-      cancelled = true;
       offProgress();
       offReady();
     };
   }, []);
 
-  const targetVersion = info.latestVersion ?? '—';
-  const percentLabel = `${Math.round(percent)}%`;
-  const sizeLabel = total > 0 ? `${formatBytes(transferred)} / ${formatBytes(total)}` : '';
+  async function executar() {
+    setError(null);
+    setPhase('downloading');
+    try {
+      const r = (await window.jdoc.invoke('update:download')) as { ok?: boolean; error?: string };
+      if (!r?.ok) {
+        setError(r?.error ?? 'Nao foi possivel baixar a atualizacao.');
+        setPhase('idle');
+      }
+      // sucesso: os eventos de progresso/ready cuidam do resto.
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao atualizar.');
+      setPhase('idle');
+    }
+  }
+
+  const target = info.latestVersion ?? '—';
+  const sizeLabel = total > 0 ? `${formatBytes(transferred)} de ${formatBytes(total)}` : '';
 
   return (
-    <div className="up-modal-screen">
-      <div className="up-modal-card">
-        <div className="up-modal-icon">
+    <div className="up-screen">
+      <div className="up-card">
+        <div className="up-icon">
           <UpdateIcon />
         </div>
-        <h1 className="up-modal-title">Atualizador</h1>
-        <p className="up-modal-subtitle">
-          É muito importante que mantenha o sistema sempre atualizado para garantir a segurança e o bom
-          funcionamento.
+        <h1 className="up-title">Atualizador</h1>
+        <p className="up-subtitle">
+          É muito importante manter o sistema sempre atualizado. Temos uma nova versão do jDoc pronta para você.
         </p>
 
-        <hr className="up-modal-divider" />
+        <hr className="up-divider" />
 
-        <div className="up-modal-versions">
-          <span className="up-modal-label">Versão atual:</span>
-          <code className="up-modal-version">{info.currentVersion}</code>
-          <span className="up-modal-arrow">→</span>
-          <span className="up-modal-label">Nova versão:</span>
-          <code className="up-modal-version">{targetVersion}</code>
+        <div className="up-versions">
+          <span className="up-label">Versão atual:</span>
+          <code className="up-version">{info.currentVersion || '—'}</code>
+          <span className="up-arrow">→</span>
+          <span className="up-label">Nova versão:</span>
+          <code className="up-version">{target}</code>
         </div>
 
-        <div
-          className="up-modal-progress"
-          role="progressbar"
-          aria-valuenow={Math.round(percent)}
-          aria-valuemin={0}
-          aria-valuemax={100}
-        >
-          <div className="up-modal-progress-fill" style={{ width: `${percent}%` }} />
-          <span className="up-modal-progress-label">{ready ? '100%' : percentLabel}</span>
-        </div>
+        {phase === 'idle' && (
+          <>
+            <button type="button" className="up-btn" onClick={() => void executar()}>
+              ⭳ Executar atualização
+            </button>
+            {error && <p className="up-error">{error}</p>}
+          </>
+        )}
 
-        <p className="up-modal-foot">
-          {ready
-            ? 'O jDoc será reiniciado em instantes para concluir a atualização.'
-            : 'O jDoc será reiniciado automaticamente ao concluir o download.'}
-        </p>
-        {sizeLabel && <p className="up-modal-foot-sub">{sizeLabel}</p>}
+        {phase === 'downloading' && (
+          <>
+            <div className="up-progress" role="progressbar" aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100}>
+              <div className="up-progress-fill" style={{ width: `${percent}%` }} />
+              <span className="up-progress-label">{Math.round(percent)}%</span>
+            </div>
+            <p className="up-foot">Baixando atualização… {sizeLabel}</p>
+          </>
+        )}
+
+        {phase === 'done' && (
+          <>
+            <div className="up-progress">
+              <div className="up-progress-fill" style={{ width: '100%' }} />
+              <span className="up-progress-label">100%</span>
+            </div>
+            <p className="up-foot up-foot-ok">✓ Atualização concluída — abrindo o jDoc…</p>
+          </>
+        )}
       </div>
     </div>
   );
@@ -152,7 +157,7 @@ function AppUpdateModal(): ReactElement {
 
 const root = document.getElementById('root');
 if (root) {
-  createRoot(root).render(<AppUpdateModal />);
+  createRoot(root).render(<Atualizador />);
 }
 
 /* --- CSS local ------------------------------------------------------------ */
@@ -177,7 +182,7 @@ body {
   color: var(--app-text);
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
-.up-modal-screen {
+.up-screen {
   display: flex;
   height: 100vh;
   align-items: center;
@@ -190,7 +195,7 @@ body {
     linear-gradient(90deg, rgba(124, 58, 237, 0.05) 1px, transparent 1px);
   background-size: 100% 100%, 100% 100%, 48px 48px, 48px 48px;
 }
-.up-modal-card {
+.up-card {
   width: 100%;
   max-width: 28rem;
   padding: 1.75rem;
@@ -200,7 +205,7 @@ body {
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
   text-align: center;
 }
-.up-modal-icon {
+.up-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -211,77 +216,42 @@ body {
   color: #fff;
   margin-bottom: 0.85rem;
 }
-.up-modal-title {
-  margin: 0 0 0.5rem;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: #fff;
+.up-title { margin: 0 0 0.5rem; font-size: 1.25rem; font-weight: 700; color: #fff; }
+.up-subtitle { margin: 0 auto 1rem; max-width: 22rem; font-size: 0.78rem; color: var(--app-muted); line-height: 1.4; }
+.up-divider { margin: 1rem 0; border: none; border-top: 1px solid var(--app-border); }
+.up-versions {
+  display: flex; align-items: center; justify-content: center; gap: 0.45rem;
+  flex-wrap: wrap; font-size: 0.8rem; margin-bottom: 1.1rem;
 }
-.up-modal-subtitle {
-  margin: 0 auto 1rem;
-  max-width: 22rem;
-  font-size: 0.78rem;
-  color: var(--app-muted);
-  line-height: 1.4;
+.up-label { color: var(--app-muted); }
+.up-version {
+  padding: 0.15rem 0.5rem; border-radius: 0.35rem;
+  background: var(--app-input-bg); border: 1px solid var(--app-border);
+  color: var(--app-text); font-size: 0.78rem;
 }
-.up-modal-divider {
-  margin: 1rem 0 1rem;
-  border: none;
-  border-top: 1px solid var(--app-border);
+.up-arrow { color: var(--neon-violet); }
+.up-btn {
+  width: 100%; padding: 0.7rem; border: none; border-radius: 0.6rem;
+  background: linear-gradient(135deg, var(--neon-purple), var(--neon-violet));
+  color: #fff; font-size: 0.9rem; font-weight: 700; cursor: pointer;
+  transition: opacity 0.15s ease;
 }
-.up-modal-versions {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-  flex-wrap: wrap;
-  font-size: 0.8rem;
-  margin-bottom: 1rem;
+.up-btn:hover { opacity: 0.9; }
+.up-progress {
+  position: relative; height: 1.6rem; border-radius: 9999px; overflow: hidden;
+  border: 1px solid var(--app-input-border); background: var(--app-input-bg);
+  margin: 0.25rem 0 0.85rem;
 }
-.up-modal-label { color: var(--app-muted); }
-.up-modal-version {
-  padding: 0.15rem 0.5rem;
-  border-radius: 0.35rem;
-  background: var(--app-input-bg);
-  border: 1px solid var(--app-border);
-  color: var(--app-text);
-  font-size: 0.78rem;
-}
-.up-modal-arrow { color: var(--neon-violet); }
-.up-modal-progress {
-  position: relative;
-  height: 1.5rem;
-  border-radius: 9999px;
-  overflow: hidden;
-  border: 1px solid var(--app-input-border);
-  background: var(--app-input-bg);
-  margin: 0.5rem 0 0.85rem;
-}
-.up-modal-progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--neon-purple), var(--neon-violet));
+.up-progress-fill {
+  height: 100%; background: linear-gradient(90deg, var(--neon-purple), var(--neon-violet));
   transition: width 0.25s ease;
 }
-.up-modal-progress-label {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: #fff;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+.up-progress-label {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 0.78rem; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
-.up-modal-foot {
-  margin: 0;
-  font-size: 0.72rem;
-  color: var(--app-muted);
-}
-.up-modal-foot-sub {
-  margin: 0.4rem 0 0;
-  font-size: 0.7rem;
-  color: var(--app-muted);
-}
+.up-foot { margin: 0; font-size: 0.75rem; color: var(--app-muted); }
+.up-foot-ok { color: #6ee7b7; font-weight: 700; }
+.up-error { margin: 0.75rem 0 0; font-size: 0.78rem; color: #fca5a5; }
 `;
 document.head.appendChild(style);
