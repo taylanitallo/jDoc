@@ -1,4 +1,4 @@
-import { watch as fsWatch, existsSync, mkdirSync, readdirSync, statSync, renameSync, readFileSync, type FSWatcher } from 'node:fs';
+import { watch as fsWatch, existsSync, mkdirSync, readdirSync, statSync, renameSync, readFileSync, promises as fsp, type FSWatcher } from 'node:fs';
 import { join, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -61,6 +61,32 @@ function emit(): void {
 
 export function currentConfig(): { folder: string | null } {
   return { folder: currentFolder };
+}
+
+/**
+ * Sonda se da pra ESCREVER na pasta, sem nunca congelar a UI. Criar uma
+ * subpasta de teste de forma ASSINCRONA (roda no threadpool do libuv, fora da
+ * thread principal) e essencial: o "Acesso Controlado a Pastas" (Seguranca do
+ * Windows) nao devolve um erro limpo quando bloqueia — ele faz a escrita
+ * TRAVAR na camada nativa. Um mkdir sincrono nessa situacao congela o processo
+ * inteiro (o famoso "Nao esta respondendo"). Com a versao async + timeout, o
+ * travamento fica confinado a uma thread do pool e a UI continua viva; se nao
+ * concluir a tempo (ou falhar), tratamos a pasta como nao-gravavel.
+ *
+ * Retorna true so se conseguiu criar E remover a subpasta de teste.
+ */
+export async function probeWritable(folder: string): Promise<boolean> {
+  const probe = join(folder, `.jdoc-probe-${randomUUID()}`);
+  try {
+    await Promise.race([
+      fsp.mkdir(probe),
+      new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
+    ]);
+    await fsp.rm(probe, { recursive: true, force: true }).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function ensureSubdirs(folder: string): void {

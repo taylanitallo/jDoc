@@ -5,7 +5,7 @@ import type { BrowserWindow } from 'electron';
  * da janela — qualquer tecla/mouse reinicia a contagem. Ao expirar, dispara
  * `onExpire` (logout + aviso ao renderer). So conta enquanto ha sessao ativa.
  */
-const DEFAULT_IDLE_MS = 15 * 60 * 1000;
+const DEFAULT_IDLE_MS = 120 * 60 * 1000;
 
 class IdleMonitor {
   private timer: NodeJS.Timeout | null = null;

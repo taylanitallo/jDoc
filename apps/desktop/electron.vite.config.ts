@@ -39,7 +39,17 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin({ exclude: bundledDeps })],
     build: {
       lib: { entry: 'electron/main.ts' },
-      rollupOptions: { output: { entryFileNames: 'main.js' } },
+      // format: 'cjs' + extensao .cjs obrigatorios (nao so preload): o
+      // package.json tem "type": "module", entao um main.js ESM tentando
+      // importar estaticamente uma dep externalizada em CJS (@jdoc/shared)
+      // aciona um bug do proprio Node no interop ESM/CJS
+      // (cjsPreparseModuleExports lanca "Cannot read properties of
+      // undefined (reading 'exports')") — o app morre no boot, antes de
+      // qualquer linha de main.ts rodar, sem log nem crash dialog. A
+      // extensao .cjs forca o Node a tratar o arquivo como CommonJS
+      // incondicionalmente, ignorando o "type": "module" do package.json
+      // (so o format:'cjs' com extensao .js NAO e suficiente).
+      rollupOptions: { output: { format: 'cjs', entryFileNames: 'main.cjs' } },
     },
   },
   preload: {
@@ -52,7 +62,16 @@ export default defineConfig({
   renderer: {
     root: '.',
     build: {
-      rollupOptions: { input: 'index.html' },
+      // Duas entradas separadas no renderer: o app principal
+      // (`index.html` + `src/main.tsx`) e o modal nativo de atualizacao
+      // (`assets/update-modal/index.html` + `src/assets/update-modal/update-modal.tsx`),
+      // carregado pelo electron-updater via `loadFile`.
+      rollupOptions: {
+        input: {
+          main: 'index.html',
+          'update-modal': 'assets/update-modal/index.html',
+        },
+      },
       // @jdoc/shared e um symlink de workspace (path real fora de node_modules);
       // incluir explicitamente faz o plugin CJS processar o __exportStar do dist,
       // expondo os named exports para o bundle do renderer.

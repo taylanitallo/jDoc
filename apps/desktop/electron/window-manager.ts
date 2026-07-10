@@ -1,10 +1,21 @@
-import { app, BrowserWindow, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, session, shell } from 'electron';
 import { join } from 'node:path';
-import { UPLOAD_PROGRESS_CHANNEL, WATCH_PENDING_CHANGED_CHANNEL } from './ipc/contract';
+import {
+  UPLOAD_PROGRESS_CHANNEL,
+  WATCH_PENDING_CHANGED_CHANNEL,
+  UPDATE_PROGRESS_CHANNEL,
+  UPDATE_READY_CHANNEL,
+} from './ipc/contract';
 import { idleMonitor } from './session/idle';
 import { logout as authLogout } from './api/client';
 import { setProgressSink } from './upload/queue';
 import { setPendingSink } from './watch/folder-watcher';
+import {
+  getPendingUpdate,
+  setOnUpdateAvailable,
+  setUpdateProgressSink,
+  setUpdateReadySink,
+} from './updater';
 
 /**
  * Dono do ciclo de vida das janelas do app.
@@ -15,6 +26,32 @@ import { setPendingSink } from './watch/folder-watcher';
  */
 
 const REFRESH_COOKIE = 'jdoc_rt';
+
+/**
+ * Confirmacao nativa antes de fechar via ESC (as janelas nao tem frame, entao
+ * ESC e o unico "botao de fechar" — sem confirmacao, um toque acidental
+ * derruba o app). O flag evita empilhar dialogos se ESC for pressionado de
+ * novo enquanto um ja esta aberto.
+ */
+let exitConfirmOpen = false;
+async function confirmExit(win: BrowserWindow): Promise<void> {
+  if (exitConfirmOpen || win.isDestroyed()) return;
+  exitConfirmOpen = true;
+  try {
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'question',
+      buttons: ['Sair', 'Cancelar'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+      title: 'Sair do jDoc',
+      message: 'Deseja realmente sair do jDoc?',
+    });
+    if (response === 0 && !win.isDestroyed()) win.close();
+  } finally {
+    exitConfirmOpen = false;
+  }
+}
 
 let loginWindow: BrowserWindow | null = null;
 let mainWindow: BrowserWindow | null = null;
@@ -91,11 +128,11 @@ export function createLoginWindow(notice?: string): BrowserWindow {
   loginWindow = new BrowserWindow({
     width: 460,
     height: 640,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
+    minimizable: true,
+    maximizable: true,
     show: false,
     backgroundColor: '#0f1424',
+    center: true,
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/preload.js'),
@@ -107,6 +144,13 @@ export function createLoginWindow(notice?: string): BrowserWindow {
   loginWindow.once('ready-to-show', () => loginWindow?.show());
   void loginWindow.loadFile(join(__dirname, '../renderer/index.html'), {
     query: notice ? { notice } : undefined,
+  });
+  // ESC tambem fecha (com confirmacao), alem do botao X da barra de titulo.
+  loginWindow.webContents.on('before-input-event', (_event, input) => {
+    const noModifier = !input.control && !input.alt && !input.shift && !input.meta;
+    if (input.type === 'keyDown' && input.key === 'Escape' && noModifier && loginWindow) {
+      void confirmExit(loginWindow);
+    }
   });
   loginWindow.on('closed', () => {
     loginWindow = null;
@@ -148,9 +192,29 @@ async function handleIdleExpiry(): Promise<void> {
  */
 async function seedRefreshCookie(slug: string, refreshToken: string): Promise<void> {
   const url = new URL(API_ORIGIN);
+
+  // O jar de cookies do Electron PERSISTE em disco entre execucoes. Um
+  // jdoc_rt morto de uma sessao anterior (ex.: o Set-Cookie host-only que a
+  // API devolve ao rotacionar) convive com o cookie novo se os atributos nao
+  // baterem exatamente — e o header Cookie envia AMBOS, com o mais antigo
+  // primeiro (RFC 6265). O cookie-parser da API le o primeiro valor, tenta
+  // rotacionar um token ja consumido e devolve 401 "Sessao expirada" — o site
+  // cai pro login mesmo com o login nativo tendo funcionado. Remove qualquer
+  // residuo antes de gravar o novo.
+  const stale = await session.defaultSession.cookies.get({ name: REFRESH_COOKIE });
+  for (const c of stale) {
+    const scheme = c.secure ? 'https' : 'http';
+    const host = c.domain?.startsWith('.') ? c.domain.slice(1) : (c.domain ?? '');
+    await session.defaultSession.cookies
+      .remove(`${scheme}://${host}${c.path ?? '/'}`, REFRESH_COOKIE)
+      .catch(() => {});
+  }
+
   await session.defaultSession.cookies.set({
     url: url.origin,
-    domain: url.hostname,
+    // SEM `domain`: cookie host-only, com identidade IGUAL ao Set-Cookie que a
+    // API emite ao rotacionar — a rotacao sobrescreve este cookie em vez de
+    // criar uma duplicata (domain-cookie vs host-only) que reintroduz o bug.
     path: `/t/${slug}/auth`,
     name: REFRESH_COOKIE,
     value: refreshToken,
@@ -174,8 +238,12 @@ export async function openMainWindowForSession(slug: string, refreshToken: strin
     height: 800,
     minWidth: 1024,
     minHeight: 680,
+    minimizable: true,
+    maximizable: true,
     show: false,
     backgroundColor: '#0f1424',
+    center: true,
+    title: 'jDoc Desktop',
     webPreferences: {
       preload: join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
@@ -193,20 +261,95 @@ export async function openMainWindowForSession(slug: string, refreshToken: strin
   mainWindow.webContents.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL) => {
     console.log(`[did-fail-load] ${errorCode} ${errorDescription} ${validatedURL}`);
   });
+  // ESC tambem fecha (com confirmacao), alem do botao X da barra de titulo.
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    const noModifier = !input.control && !input.alt && !input.shift && !input.meta;
+    if (input.type === 'keyDown' && input.key === 'Escape' && noModifier && mainWindow) {
+      void confirmExit(mainWindow);
+    }
+  });
   hardenNavigation(mainWindow);
 
   idleMonitor.attach(mainWindow);
   idleMonitor.onExpire = () => void handleIdleExpiry();
   setProgressSink((snapshot) => mainWindow?.webContents.send(UPLOAD_PROGRESS_CHANNEL, snapshot));
   setPendingSink((items) => mainWindow?.webContents.send(WATCH_PENDING_CHANGED_CHANNEL, items));
+  // Sinks do updater: enviam o push IPC para a janela correta (modal > main).
+  setUpdateProgressSink((snapshot) => {
+    const target = updateModal ?? mainWindow;
+    target?.webContents.send(UPDATE_PROGRESS_CHANNEL, snapshot);
+  });
+  setUpdateReadySink((payload) => {
+    const target = updateModal ?? mainWindow;
+    target?.webContents.send(UPDATE_READY_CHANNEL, payload);
+  });
+  // Quando chega update-available DEPOIS da janela principal existir, abre o modal agora.
+  setOnUpdateAvailable(() => {
+    if (mainWindow) openUpdateModal(mainWindow);
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    updateModal?.close();
+    updateModal = null;
   });
 
   await mainWindow.loadURL(`${WEB_ORIGIN}/${slug}/dashboard`);
 
+  // Se um update ja chegou durante o login (antes da main existir), abrir agora.
+  if (getPendingUpdate()) {
+    openUpdateModal(mainWindow);
+  }
+
   loginWindow?.close();
+}
+
+/** Modal de atualizacao (electron-updater). Janela-filha da main, sem frame e
+ *  sem icone na barra de tarefas: o usuario so ve uma janela centralizada com
+ *  a barra de progresso ate `quitAndInstall()` ser chamado pelo updater. */
+let updateModal: BrowserWindow | null = null;
+
+export function openUpdateModal(parent: BrowserWindow): BrowserWindow {
+  if (updateModal) {
+    updateModal.focus();
+    return updateModal;
+  }
+  updateModal = new BrowserWindow({
+    width: 560,
+    height: 420,
+    parent,
+    modal: true,
+    frame: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    show: false,
+    center: true,
+    backgroundColor: '#0f1424',
+    title: 'jdoc-update-modal',
+    webPreferences: {
+      preload: join(__dirname, '../preload/preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+    },
+  });
+  updateModal.once('ready-to-show', () => updateModal?.show());
+  void updateModal.loadFile(join(__dirname, '../renderer/assets/update-modal/index.html'));
+  updateModal.on('closed', () => {
+    updateModal = null;
+  });
+  // Se a janela-pai fechar, fecha o modal junto (evita orfa).
+  if (!parent.isDestroyed()) {
+    parent.once('closed', () => {
+      if (updateModal && !updateModal.isDestroyed()) updateModal.close();
+    });
+  }
+  return updateModal;
 }
 
 /** Fecha a janela principal e mostra o login de novo (logout / expiracao por inatividade). */

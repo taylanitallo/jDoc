@@ -29,6 +29,19 @@ export const UPLOAD_PROGRESS_CHANNEL = 'jdoc:upload-progress' as const;
 export const WATCH_PENDING_CHANGED_CHANNEL = 'jdoc:watch-pending' as const;
 
 /**
+ * Canal de push main -> renderer com o progresso percentual do download da
+ * nova versao (electron-updater `download-progress`). Payload:
+ *   { percent: number, transferred: number, total: number }
+ */
+export const UPDATE_PROGRESS_CHANNEL = 'jdoc:update-progress' as const;
+
+/**
+ * Canal de push main -> renderer quando o download da nova versao terminou
+ * (electron-updater `update-downloaded`). Payload: { version: string }.
+ */
+export const UPDATE_READY_CHANNEL = 'jdoc:update-ready' as const;
+
+/**
  * Allowlist de operacoes permitidas. Qualquer kind fora desta lista e
  * rejeitado tanto no preload quanto no main (deny-by-default).
  * Marco 4: + lookups, listagem e visualizador de documentos.
