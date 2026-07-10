@@ -1,0 +1,110 @@
+name: Release Desktop
+
+# Builda o instalador Windows do jDoc Desktop e publica no bucket publico do
+# Supabase (instalador + latest.yml + version.json) — o mesmo lugar de onde o
+# site baixa e o auto-update le. Com isso, "sempre atualizado" fica automatico:
+# bumpe a versao em apps/desktop/package.json e rode este workflow.
+#
+# Como disparar:
+#   - Manual: aba Actions > Release Desktop > Run workflow (botao).
+#   - Por tag: crie e envie uma tag comecando com "desktop-v" (ex.: desktop-v1.0.2).
+#
+# Secret obrigatorio (Settings > Secrets and variables > Actions):
+#   - SUPABASE_STORAGE_KEY : a secret key do Supabase (sb_secret_...).
+# Secrets opcionais (assinatura de codigo; sem eles o .exe sai NAO assinado):
+#   - CSC_LINK           : .pfx em base64 (ou caminho/URL).
+#   - CSC_KEY_PASSWORD   : senha do certificado.
+
+on:
+  workflow_dispatch: {}
+  push:
+    tags:
+      - 'desktop-v*'
+
+jobs:
+  build-and-publish:
+    runs-on: windows-latest
+    # Nivel do JOB para que os steps possam checar `env.SUPABASE_STORAGE_KEY`
+    # nas condicoes `if:` (secret direto em `if:` nao e permitido).
+    env:
+      SUPABASE_STORAGE_KEY: ${{ secrets.SUPABASE_STORAGE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Buildar instalador (NSIS)
+        working-directory: apps/desktop
+        run: pnpm dist
+        env:
+          # Se os secrets de assinatura existirem, o electron-builder assina
+          # sozinho; se nao, o build prossegue sem assinar.
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+
+      - name: Gerar version.json
+        working-directory: apps/desktop
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $obj = [ordered]@{
+            version = $v
+            url     = "https://buknzokboidzhenafwpi.supabase.co/storage/v1/object/public/downloads/jDoc-Desktop-$v-x64.exe"
+          }
+          $obj | ConvertTo-Json | Set-Content -Path release/version.json -Encoding utf8
+          Write-Host "version.json gerado para $v"
+
+      - name: Publicar no Supabase Storage
+        if: ${{ env.SUPABASE_STORAGE_KEY != '' }}
+        working-directory: apps/desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://buknzokboidzhenafwpi.supabase.co/storage/v1/object/downloads"
+          V="$(node -p "require('./package.json').version")"
+          EXE="jDoc-Desktop-${V}-x64.exe"
+          upload() {
+            local file="$1" ctype="$2"
+            echo "-> subindo $file"
+            curl -sf -X POST "${BASE}/${file}" \
+              -H "Authorization: Bearer ${SUPABASE_STORAGE_KEY}" \
+              -H "apikey: ${SUPABASE_STORAGE_KEY}" \
+              -H "x-upsert: true" \
+              -H "Content-Type: ${ctype}" \
+              --data-binary @"release/${file}"
+            echo ""
+          }
+          upload "${EXE}" "application/octet-stream"
+          [ -f "release/${EXE}.blockmap" ] && upload "${EXE}.blockmap" "application/octet-stream" || true
+          upload "latest.yml" "text/yaml"
+          upload "version.json" "application/json"
+          echo "Publicado ${V} no Supabase."
+
+      - name: Aviso se faltar a chave do Supabase
+        if: ${{ env.SUPABASE_STORAGE_KEY == '' }}
+        shell: bash
+        run: |
+          echo "::warning::Secret SUPABASE_STORAGE_KEY nao configurado — o instalador foi buildado mas NAO publicado. Configure em Settings > Secrets and variables > Actions."
+
+      - name: Guardar instalador como artifact do run
+        uses: actions/upload-artifact@v4
+        with:
+          name: jdoc-desktop-installer
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/latest.yml
+            apps/desktop/release/version.json
+          if-no-files-found: error

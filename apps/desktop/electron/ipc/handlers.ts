@@ -24,6 +24,53 @@ import { sessionStore } from '../session/session-store';
 import * as folderWatcher from '../watch/folder-watcher';
 import { writeSettings } from '../settings';
 
+/**
+ * Pastas de sistema protegidas por padrao pelo "Acesso Controlado a Pastas"
+ * (Seguranca do Windows). Escrever nelas com o app nao autorizado TRAVA o
+ * processo (o CFA nao devolve erro, ele congela a chamada nativa). Detectamos
+ * ANTES de tentar qualquer escrita para nunca cair nesse travamento.
+ */
+function protectedSystemRoots(): string[] {
+  const names = ['documents', 'desktop', 'pictures', 'videos', 'music'] as const;
+  const roots: string[] = [];
+  for (const n of names) {
+    try {
+      roots.push(app.getPath(n));
+    } catch {
+      // path indisponivel neste SO — ignora.
+    }
+  }
+  return roots;
+}
+
+/** true se `folder` e (ou esta dentro de) uma pasta de sistema protegida. */
+function isUnderProtectedRoot(folder: string): boolean {
+  const norm = (p: string): string => p.replace(/[\\/]+$/, '').toLowerCase();
+  const f = norm(folder);
+  return protectedSystemRoots().some((root) => {
+    const r = norm(root);
+    return f === r || f.startsWith(`${r}\\`) || f.startsWith(`${r}/`);
+  });
+}
+
+/** Aviso padrao quando a pasta nao pode ser monitorada (protegida/sem escrita). */
+async function warnProtectedFolder(folder: string): Promise<void> {
+  await dialog.showMessageBox({
+    type: 'warning',
+    buttons: ['Entendi'],
+    noLink: true,
+    title: 'Pasta protegida pelo Windows',
+    message: 'Nao foi possivel monitorar esta pasta.',
+    detail:
+      `O jDoc precisa criar subpastas de controle (_enviados, _erros, _ignorados) e mover os PDFs, ` +
+      `mas a Seguranca do Windows (Acesso Controlado a Pastas) bloqueia isso em:\n\n${folder}\n\n` +
+      `A Area de Trabalho, Documentos, Imagens, Videos e Musicas sao protegidas por padrao. ` +
+      `Escolha uma pasta fora dessas (por exemplo, crie uma pasta em C:\\ ou no seu perfil), ou ` +
+      `libere o jDoc em: Seguranca do Windows > Protecao contra virus e ameacas > Acesso controlado ` +
+      `a pastas > Permitir um aplicativo pelo Acesso controlado a pastas.`,
+  });
+}
+
 /** Slug do tenant da sessao ativa, ou erro claro se nao autenticado. */
 function requireSlug(): string {
   const slug = sessionStore.current?.slug;
@@ -97,6 +144,22 @@ const registry: { [K in InvokeKind]: Handler } = {
     const res = await dialog.showOpenDialog({ properties: ['openDirectory'] });
     if (res.canceled || !res.filePaths[0]) return folderWatcher.currentConfig();
     const folder = res.filePaths[0];
+
+    // 1) Pasta de sistema protegida por padrao (Documentos, Area de Trabalho...):
+    //    recusa na hora, sem tentar escrever (evita o travamento do CFA).
+    if (isUnderProtectedRoot(folder)) {
+      await warnProtectedFolder(folder);
+      return folderWatcher.currentConfig();
+    }
+
+    // 2) Catch-all para CFA customizado / permissao negada: sonda a escrita de
+    //    forma assincrona (nao congela a UI mesmo se o CFA travar a chamada).
+    if (!(await folderWatcher.probeWritable(folder))) {
+      await warnProtectedFolder(folder);
+      return folderWatcher.currentConfig();
+    }
+
+    // 3) Escrita confirmada — seguro iniciar o monitoramento.
     folderWatcher.start(folder);
     writeSettings({ watchedFolder: folder });
     return folderWatcher.currentConfig();

@@ -10,7 +10,7 @@ import { api, setAccessToken, ApiError } from '@/lib/api';
 import { desktopLoginBestEffort, isDesktopApp } from '@/lib/desktop-bridge';
 
 const DESKTOP_DOWNLOAD_URL =
-  'https://buknzokboidzhenafwpi.supabase.co/storage/v1/object/public/downloads/jDoc-Desktop-1.0.0-x64.exe';
+  'https://buknzokboidzhenafwpi.supabase.co/storage/v1/object/public/downloads/jDoc-Desktop-1.0.1-x64.exe';
 
 export default function LoginPage() {
   const { slug } = useParams<{ slug: string }>();

@@ -1,9 +1,9 @@
 {
   "name": "@jdoc/desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
-  "main": "out/main/main.js",
+  "main": "out/main/main.cjs",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",

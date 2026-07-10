@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="pt-BR" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- CSP restritiva: mesmo padrao do renderer principal; a janela-filha
+         nao conversa com o site nem com a API, so recebe push do main. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+    />
+    <title>jDoc Atualizador</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/assets/update-modal/update-modal.tsx"></script>
+  </body>
+</html>
