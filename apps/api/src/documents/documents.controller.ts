@@ -119,7 +119,9 @@ export class DocumentsController {
     @UploadedFile() file: Express.Multer.File | undefined,
     @Req() req: Request,
   ): Promise<DocumentView> {
-    if (!file) throw new BadRequestException('Arquivo PDF obrigatorio');
+    // PDF e opcional na inclusao manual: sem arquivo, o documento nasce como
+    // etiqueta 'aguardando_arquivo' (mesmo estado de uma etiqueta importada),
+    // e o PDF pode ser anexado depois (upload normal ou Pasta Monitorada).
     return this.docs.create(user, fields, file, req.ip ?? '');
   }
 
