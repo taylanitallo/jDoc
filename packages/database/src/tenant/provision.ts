@@ -166,6 +166,17 @@ export async function provisionTenantSchema(sql: Sql, slug: string): Promise<str
     await tx.unsafe(
       `ALTER TABLE "${schemaName}".documents ADD COLUMN IF NOT EXISTS paginas integer`,
     );
+    // Conferencia por IA: cruza o conteudo do PDF anexado com os dados da
+    // etiqueta (valor/credor/doc caixa) e sinaliza divergencias. Assincrono
+    // e opcional (so roda se ANTHROPIC_API_KEY estiver configurada). Nome
+    // "conferencia" (nao "auditoria") para nao colidir com o AuditService
+    // de log de auditoria (apps/api/src/audit) ja existente no sistema.
+    await tx.unsafe(
+      `ALTER TABLE "${schemaName}".documents
+         ADD COLUMN IF NOT EXISTS conferencia_status varchar(20),
+         ADD COLUMN IF NOT EXISTS conferencia_resultado jsonb,
+         ADD COLUMN IF NOT EXISTS conferencia_verificada_em timestamptz`,
+    );
     // Etiquetas importadas viram despesas pendentes SEM arquivo (status
     // 'aguardando_arquivo'); as colunas de arquivo passam a ser opcionais.
     await tx.unsafe(

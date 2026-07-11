@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState, type DragEvent } from 'react';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  CircleCheck,
   Eye,
   FileSignature,
   FileUp,
@@ -93,6 +94,43 @@ function formatCompetencia(competencia: string | null): string {
   const [ano, mes] = competencia.split('-');
   const nome = MESES.find((m) => m.value === mes)?.label;
   return nome ? `${nome.toUpperCase()}/${ano}` : competencia;
+}
+
+/**
+ * Selo da conferência por IA: cruza o PDF anexado com os dados da etiqueta.
+ * 'pendente' e 'null'/'falha' não poluem a lista — só mostra quando há um
+ * veredito (conforme/divergente).
+ */
+function ConferenciaBadge({ documento }: { documento: DocumentView }) {
+  if (documento.conferenciaStatus === 'divergente') {
+    const resumo = documento.conferenciaResultado?.resumo;
+    const divergencias = documento.conferenciaResultado?.divergencias ?? [];
+    const title = [
+      resumo,
+      ...divergencias.map((d) => `${d.campo}: esperado ${d.esperado ?? '—'}, encontrado ${d.encontrado ?? '—'}`),
+    ]
+      .filter(Boolean)
+      .join('\n');
+    return (
+      <span title={title || 'Divergência encontrada pela conferência automática'}>
+        <TriangleAlert
+          className="mx-auto h-4 w-4 text-orange-500"
+          aria-label="Conferência por IA: divergência encontrada"
+        />
+      </span>
+    );
+  }
+  if (documento.conferenciaStatus === 'conforme') {
+    return (
+      <span title="Conferência automática: dados conferem com o PDF">
+        <CircleCheck
+          className="mx-auto h-4 w-4 text-green-600 dark:text-green-400"
+          aria-label="Conferência por IA: conforme"
+        />
+      </span>
+    );
+  }
+  return null;
 }
 
 /** Colunas de detalhe por modulo — cada modulo tem seus proprios campos relevantes.
@@ -552,6 +590,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
               ))}
               {hasValor && <th className="w-24 whitespace-nowrap px-2 py-2 text-right">Valor</th>}
               <th className="w-16 whitespace-nowrap px-3 py-2 text-right">Páginas</th>
+              <th className="w-8 px-1 py-2" title="Conferência por IA" aria-label="Conferência por IA" />
               <th className="w-24 whitespace-nowrap py-2 pl-4 pr-2 text-right">Ações</th>
             </tr>
           </thead>
@@ -611,6 +650,9 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                 )}
                 <td className="w-16 whitespace-nowrap px-3 py-1.5 text-right text-app">
                   {d.pageCount ?? '—'}
+                </td>
+                <td className="w-8 px-1 py-1.5 text-center">
+                  <ConferenciaBadge documento={d} />
                 </td>
                 <td className="w-24 py-1.5 pl-4 pr-2" onClick={(e) => e.stopPropagation()}>
                   <div className="flex justify-end gap-0.5">

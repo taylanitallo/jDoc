@@ -176,6 +176,31 @@ export interface DocumentView {
   status: string;
   criadoEm: string;
   deletedAt: string | null;
+  conferenciaStatus: ConferenciaStatus | null;
+  conferenciaResultado: ConferenciaResultado | null;
+  conferenciaVerificadaEm: string | null;
+}
+
+/**
+ * Conferencia por IA: cruza o PDF anexado com os dados da etiqueta (valor,
+ * credor, doc de caixa) e sinaliza divergencias. Assincrona (roda apos o
+ * anexo) e opcional — so ativa se a API tiver ANTHROPIC_API_KEY configurada.
+ */
+export const CONFERENCIA_STATUS = ['pendente', 'conforme', 'divergente', 'falha'] as const;
+export type ConferenciaStatus = (typeof CONFERENCIA_STATUS)[number];
+
+export interface ConferenciaDivergencia {
+  campo: string;
+  esperado: string | null;
+  encontrado: string | null;
+}
+
+export interface ConferenciaResultado {
+  valorEncontrado: number | null;
+  credorEncontrado: string | null;
+  docCaixaEncontrado: string | null;
+  divergencias: ConferenciaDivergencia[];
+  resumo: string;
 }
 
 export interface DocumentPage {
