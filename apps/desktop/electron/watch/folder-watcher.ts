@@ -1,21 +1,20 @@
 import { watch as fsWatch, existsSync, mkdirSync, readdirSync, statSync, renameSync, readFileSync, promises as fsp, type FSWatcher } from 'node:fs';
 import { join, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { docCaixaFromFilename } from '@jdoc/shared';
 
 /**
- * Pasta monitorada (Marco 9): detecta PDFs soltos numa pasta local e os
- * disponibiliza como "pendentes" para o usuario revisar campos e enviar,
- * sem precisar abrir o seletor de arquivo a cada anexo. Roda inteiramente
- * no processo MAIN (acesso a disco nunca e exposto ao renderer).
- *
- * Assinatura ICP-Brasil NAO e suportada para arquivos desta origem na v1
- * (exigiria trazer os bytes ao renderer antes de enviar) — o botao
- * "assinar" fica oculto para itens vindos da pasta monitorada.
+ * Pasta monitorada: detecta PDFs soltos numa pasta local e os disponibiliza
+ * como "pendentes" para o site casar cada um com a etiqueta (despesa importada
+ * sem PDF) pelo numero do DOCUMENTO DE CAIXA — que e o proprio nome do arquivo.
+ * Roda inteiramente no processo MAIN (acesso a disco nunca vai ao renderer).
  */
 
 export interface PendingFile {
   fileId: string;
   name: string;
+  /** Doc de caixa extraido do nome (sem extensao e sem sufixo "-N"). */
+  docCaixa: string;
   size: number;
   detectedAt: string;
 }
@@ -130,7 +129,14 @@ function settle(folder: string, fileName: string): void {
   }
 
   const fileId = randomUUID();
-  pending.set(fileId, { fileId, name: fileName, size, detectedAt: new Date().toISOString(), path: full });
+  pending.set(fileId, {
+    fileId,
+    name: fileName,
+    docCaixa: docCaixaFromFilename(fileName),
+    size,
+    detectedAt: new Date().toISOString(),
+    path: full,
+  });
   emit();
 }
 
@@ -199,21 +205,38 @@ export function stop(): void {
 }
 
 /**
- * Consome um arquivo pendente: le + revalida os bytes, move para _enviados
- * e remove da lista de pendentes. Lanca se invalido ou ja consumido.
+ * Le os bytes de um pendente (revalida), SEM mover nem remover — o anexo pode
+ * falhar na API, e nesse caso o arquivo deve continuar pendente. Chame
+ * markSent() so depois que a API confirmar o anexo.
  */
-export function consume(fileId: string): { name: string; content: Uint8Array } {
+export function readPending(fileId: string): { name: string; docCaixa: string; content: Uint8Array } {
   const item = pending.get(fileId);
   if (!item) throw new Error('Arquivo nao encontrado na pasta monitorada.');
-
   const buf = readFileSync(item.path);
   const err = validate(buf);
   if (err) throw new Error(err);
+  return { name: item.name, docCaixa: item.docCaixa, content: new Uint8Array(buf) };
+}
 
+/** Marca um pendente como enviado: move para _enviados e tira da lista. */
+export function markSent(fileId: string): void {
+  const item = pending.get(fileId);
+  if (!item) return;
   if (currentFolder) moveTo(currentFolder, item.name, SENT_SUBDIR);
   pending.delete(fileId);
   emit();
-  return { name: item.name, content: new Uint8Array(buf) };
+}
+
+/**
+ * Consome um arquivo pendente: le + revalida os bytes, move para _enviados
+ * e remove da lista de pendentes. Lanca se invalido ou ja consumido.
+ * (Mantido para o fluxo antigo de enqueue; o vinculo por doc de caixa usa
+ * readPending + markSent para so mover apos a API confirmar.)
+ */
+export function consume(fileId: string): { name: string; content: Uint8Array } {
+  const { name, content } = readPending(fileId);
+  markSent(fileId);
+  return { name, content };
 }
 
 /** Descarta um pendente sem enviar (move para _ignorados). */

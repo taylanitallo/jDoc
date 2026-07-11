@@ -14,6 +14,7 @@ import {
   type DocumentFields,
   type DocumentPage,
   type DocumentView,
+  type EtiquetaCandidate,
   type SearchDocumentsQuery,
   type TenantAccessClaims,
   type TrashQuery,
@@ -229,6 +230,50 @@ export class DocumentsService {
     }
 
     return toView(rows[0] as DocRow);
+  }
+
+  /**
+   * Busca as ETIQUETAS (documentos importados sem PDF, status aguardando_arquivo)
+   * de um modulo com o doc de caixa informado. Usado pela Pasta Monitorada pra
+   * casar cada PDF (nomeado pelo doc de caixa) com a etiqueta certa. Pode voltar
+   * 0 (sem etiqueta), 1, ou varias (o usuario escolhe qual, pelo empenho/valor).
+   */
+  async findEtiquetasByDocCaixa(
+    user: TenantAccessClaims,
+    module: DocModule,
+    docCaixa: string,
+  ): Promise<EtiquetaCandidate[]> {
+    const ctx = requireTenantContext();
+    this.assertPermission(user, module, 'read');
+    const sql = this.db.tenant(ctx.schemaName);
+    const rows = await sql<
+      Array<{
+        id: string;
+        doc_caixa: string | null;
+        empenho: string | null;
+        credor: string | null;
+        subtype: string | null;
+        document_date: Date | null;
+        value: string | number | null;
+      }>
+    >`
+      SELECT id, doc_caixa, empenho, credor, subtype, document_date, value
+      FROM documents
+      WHERE module = ${module}
+        AND status = 'aguardando_arquivo'
+        AND deleted_at IS NULL
+        AND doc_caixa = ${docCaixa}
+      ORDER BY document_date ASC NULLS LAST, value ASC NULLS LAST, id ASC
+    `;
+    return rows.map((r) => ({
+      id: r.id,
+      docCaixa: r.doc_caixa,
+      empenho: r.empenho,
+      credor: r.credor,
+      subtype: r.subtype,
+      documentDate: r.document_date ? r.document_date.toISOString().slice(0, 10) : null,
+      value: r.value === null ? null : Number(r.value),
+    }));
   }
 
   /** Anexa o PDF a uma etiqueta (documento importado sem arquivo, status aguardando_arquivo). */

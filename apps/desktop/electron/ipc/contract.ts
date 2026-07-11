@@ -70,6 +70,7 @@ export const INVOKE_KINDS = [
   'watch:stop',
   'watch:list-pending',
   'watch:enqueue',
+  'watch:attach',
   'watch:dismiss',
   'app:version',
   'app:check-update',

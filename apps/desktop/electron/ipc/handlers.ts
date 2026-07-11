@@ -13,6 +13,7 @@ import {
   viewPayloadSchema,
   signPayloadSchema,
   watchEnqueuePayloadSchema,
+  watchAttachPayloadSchema,
   watchDismissPayloadSchema,
 } from './schemas';
 import * as auth from '../api/client';
@@ -173,6 +174,14 @@ const registry: { [K in InvokeKind]: Handler } = {
   'watch:enqueue': defineHandler(watchEnqueuePayloadSchema, async (p) => {
     const { name, content } = folderWatcher.consume(p.fileId);
     return queue.enqueue(prepareWatchedEnqueue(p.fileId, name, content, p.fields));
+  }),
+  // Anexa o PDF pendente a uma etiqueta (documento aguardando_arquivo). So move
+  // o arquivo pra _enviados DEPOIS que a API confirma — se falhar, fica pendente.
+  'watch:attach': defineHandler(watchAttachPayloadSchema, async (p) => {
+    const { name, content } = folderWatcher.readPending(p.fileId);
+    await auth.attachDocument(requireSlug(), p.documentId, content, name);
+    folderWatcher.markSent(p.fileId);
+    return { ok: true };
   }),
   'watch:dismiss': defineHandler(watchDismissPayloadSchema, async (p) => {
     folderWatcher.dismiss(p.fileId);
