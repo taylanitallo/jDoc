@@ -1006,10 +1006,8 @@ function IncludeModal({
       setError(`${first?.path.join('.')}: ${first?.message}`);
       return;
     }
-    if (!file) {
-      setError('Selecione o arquivo PDF');
-      return;
-    }
+    // PDF e opcional: sem arquivo, o documento fica "aguardando arquivo" e o
+    // PDF pode ser anexado depois (upload normal ou Pasta Monitorada).
     setProgress(0);
     const result = await uploadDocument(slug, fields, file, setProgress);
     if (result.ok) {
@@ -1150,7 +1148,8 @@ function IncludeModal({
             </p>
           ) : (
             <p className="text-sm text-app-muted">
-              Arraste o PDF aqui ou <span className="font-semibold text-accent">clique para selecionar</span>
+              Arraste o PDF aqui ou <span className="font-semibold text-accent">clique para selecionar</span>{' '}
+              <span className="text-app-muted">(opcional — pode anexar depois)</span>
             </p>
           )}
           <input

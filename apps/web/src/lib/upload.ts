@@ -11,7 +11,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3333';
 export function uploadDocument(
   slug: string,
   fields: Record<string, string>,
-  file: File,
+  file: File | null,
   onProgress: (percent: number) => void,
 ): Promise<{ ok: true; body: unknown } | { ok: false; status: number; message: string }> {
   return new Promise((resolvePromise) => {
@@ -19,7 +19,7 @@ export function uploadDocument(
     for (const [k, v] of Object.entries(fields)) {
       if (v !== '') form.append(k, v);
     }
-    form.append('file', file);
+    if (file) form.append('file', file);
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${API_URL}/t/${slug}/documents`);

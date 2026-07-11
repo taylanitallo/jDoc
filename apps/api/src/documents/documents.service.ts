@@ -152,39 +152,47 @@ export class DocumentsService {
   async create(
     user: TenantAccessClaims,
     fields: DocumentFields,
-    file: { buffer: Buffer; originalname: string; size: number },
+    file: { buffer: Buffer; originalname: string; size: number } | undefined,
     ip: string,
   ): Promise<DocumentView> {
     const ctx = requireTenantContext();
     this.assertPermission(user, fields.module, 'create');
 
-    // 1) Validacao do arquivo: magic bytes %PDF (nunca confiar no MIME do cliente).
-    if (file.size < 5 || !file.buffer.subarray(0, 4).equals(PDF_MAGIC)) {
-      throw new BadRequestException('Arquivo invalido: apenas PDF e aceito');
-    }
-    const env = loadEnv();
-    const maxBytes = env.MAX_UPLOAD_MB * 1024 * 1024;
-    if (file.size > maxBytes) {
-      throw new PayloadTooLargeException(`Arquivo excede o limite de ${env.MAX_UPLOAD_MB} MB`);
-    }
+    // PDF e opcional: sem arquivo, o documento nasce como etiqueta
+    // 'aguardando_arquivo' (mesmo estado de uma etiqueta importada) — o PDF
+    // pode ser anexado depois pelo upload normal ou pela Pasta Monitorada.
+    if (file) {
+      // 1) Validacao do arquivo: magic bytes %PDF (nunca confiar no MIME do cliente).
+      if (file.size < 5 || !file.buffer.subarray(0, 4).equals(PDF_MAGIC)) {
+        throw new BadRequestException('Arquivo invalido: apenas PDF e aceito');
+      }
+      const env = loadEnv();
+      const maxBytes = env.MAX_UPLOAD_MB * 1024 * 1024;
+      if (file.size > maxBytes) {
+        throw new PayloadTooLargeException(`Arquivo excede o limite de ${env.MAX_UPLOAD_MB} MB`);
+      }
 
-    // 2) Quota ANTES de aceitar: uso + novo arquivo vs quota do tenant.
-    const quotaBytes = ctx.quotaDiscoMb * 1024 * 1024;
-    const uso = await this.usageBytes();
-    if (uso + file.size > quotaBytes) {
-      throw new ForbiddenException(
-        'Quota de disco do orgao atingida. Contate a JEOS para ampliar o plano.',
-      );
+      // 2) Quota ANTES de aceitar: uso + novo arquivo vs quota do tenant.
+      const quotaBytes = ctx.quotaDiscoMb * 1024 * 1024;
+      const uso = await this.usageBytes();
+      if (uso + file.size > quotaBytes) {
+        throw new ForbiddenException(
+          'Quota de disco do orgao atingida. Contate a JEOS para ampliar o plano.',
+        );
+      }
     }
 
     // 3) Nome no storage = UUID gerado pelo servidor (anti path-traversal).
-    const fileKey = `${randomUUID()}.pdf`;
-    const fileHash = createHash('sha256').update(file.buffer).digest('hex');
-    const pageCount = await this.countPages(file.buffer);
-    await this.storage.upload(ctx.slug, fileKey, file.buffer);
+    const fileKey = file ? `${randomUUID()}.pdf` : null;
+    const fileHash = file ? createHash('sha256').update(file.buffer).digest('hex') : null;
+    const pageCount = file ? await this.countPages(file.buffer) : null;
+    if (file && fileKey) await this.storage.upload(ctx.slug, fileKey, file.buffer);
 
     const sql = this.db.tenant(ctx.schemaName);
     const f = fields as Record<string, unknown>;
+    const originalName = file
+      ? file.originalname.slice(0, 255)
+      : `Aguardando arquivo${f.docCaixa ? ` — ${f.docCaixa}` : ''}`.slice(0, 255);
     const rows = await sql<DocRow[]>`
       INSERT INTO documents (
         module, subtype, doc_caixa, empenho, credor, historico, descricao,
@@ -209,12 +217,12 @@ export class DocumentsService {
         ${(f.banco as string) ?? null},
         ${(f.agencia as string) ?? null},
         ${(f.conta as string) ?? null},
-        ${file.originalname.slice(0, 255)},
+        ${originalName},
         ${fileKey},
-        ${file.size},
+        ${file ? file.size : null},
         ${fileHash},
         ${pageCount},
-        'disponivel',
+        ${file ? 'disponivel' : 'aguardando_arquivo'},
         ${user.sub}
       )
       RETURNING id, module, subtype, doc_caixa, empenho, credor, historico, descricao,
@@ -222,7 +230,8 @@ export class DocumentsService {
                 orgao_id, NULL AS orgao_codigo, NULL AS orgao_nome,
                 document_type_id, NULL AS document_type_nome,
                 document_date, value, competencia, exercicio, banco, agencia, conta,
-                original_name, file_key, file_size, file_hash, paginas, status, criado_em, deleted_at
+                original_name, file_key, file_size, file_hash, paginas, status, criado_em, deleted_at,
+                conferencia_status, conferencia_resultado, conferencia_verificada_em
     `;
 
     await this.audit.logTenant({
@@ -231,12 +240,12 @@ export class DocumentsService {
       resourceType: 'document',
       resourceId: rows[0]?.id,
       ip,
-      metadata: { module: fields.module, fileKey, fileHash, size: file.size },
+      metadata: { module: fields.module, fileKey, fileHash, size: file?.size ?? null },
     });
 
     // Se o PDF contem assinatura, valida em background (integridade + cadeia + revogacao).
     const documentId = rows[0]?.id;
-    if (documentId && hasSignature(file.buffer)) {
+    if (documentId && file && fileKey && hasSignature(file.buffer)) {
       await this.signature.enqueueValidation({
         schemaName: ctx.schemaName,
         slug: ctx.slug,
