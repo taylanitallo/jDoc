@@ -45,4 +45,9 @@ export class ConferenciaService implements OnModuleDestroy {
     if (!this.queue) return;
     await this.queue.add('conferir', data);
   }
+
+  /** Se a feature esta configurada (ANTHROPIC_API_KEY presente) neste ambiente. */
+  isEnabled(): boolean {
+    return this.queue !== null;
+  }
 }

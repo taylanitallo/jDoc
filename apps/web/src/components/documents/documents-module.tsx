@@ -8,10 +8,12 @@ import {
   Eye,
   FileSignature,
   FileUp,
+  Loader2,
   Pencil,
   Plus,
   RotateCcw,
   Search,
+  Sparkles,
   SlidersHorizontal,
   Tags,
   Trash2,
@@ -22,6 +24,8 @@ import {
   documentFieldsSchema,
   DOC_SUBTYPES,
   TRASH_RETENTION_DAYS,
+  type AnalisarConferenciaResult,
+  type ConferenciaStatusItem,
   type DocModule,
   type DocumentPage,
   type DocumentView,
@@ -34,6 +38,7 @@ import { LabelsImportModal } from '@/components/documents/labels-import-modal';
 import { DesktopSignModal } from '@/components/documents/desktop-sign-modal';
 import { isDesktopApp } from '@/lib/desktop-bridge';
 import { Modal, btnGhost, btnPrimary, cardCls, formatBytes, inputCls, labelCls } from '@/components/ui';
+import { useToast } from '@/components/toast';
 
 const MODULE_TITLES: Record<DocModule, { title: string; singular: string }> = {
   receitas: { title: 'Receitas', singular: 'Receita' },
@@ -98,10 +103,14 @@ function formatCompetencia(competencia: string | null): string {
 
 /**
  * Selo da conferência por IA: cruza o PDF anexado com os dados da etiqueta.
- * 'pendente' e 'null'/'falha' não poluem a lista — só mostra quando há um
- * veredito (conforme/divergente).
+ * Verde = conforme. Laranja = divergência. Sem veredito ainda (nunca
+ * analisado, falhou, ou está rodando agora) e com arquivo anexado = ícone de
+ * "carregando", convidando a usar o botão "Analisar Doc (IA)". Sem arquivo
+ * anexado (etiqueta aguardando PDF) não mostra nada — não há o que analisar.
  */
 function ConferenciaBadge({ documento }: { documento: DocumentView }) {
+  // A conferencia so existe no modulo despesas — nos demais nao ha o que mostrar.
+  if (documento.module !== 'despesas') return null;
   if (documento.conferenciaStatus === 'divergente') {
     const resumo = documento.conferenciaResultado?.resumo;
     const divergencias = documento.conferenciaResultado?.divergencias ?? [];
@@ -126,6 +135,22 @@ function ConferenciaBadge({ documento }: { documento: DocumentView }) {
         <CircleCheck
           className="mx-auto h-4 w-4 text-green-600 dark:text-green-400"
           aria-label="Conferência por IA: conforme"
+        />
+      </span>
+    );
+  }
+  if (documento.status === 'disponivel') {
+    return (
+      <span
+        title={
+          documento.conferenciaStatus === 'pendente'
+            ? 'Analisando por IA…'
+            : 'Ainda não analisado — selecione e clique em "Analisar Doc (IA)"'
+        }
+      >
+        <Loader2
+          className="mx-auto h-4 w-4 animate-spin text-app-muted"
+          aria-label="Conferência por IA: aguardando análise"
         />
       </span>
     );
@@ -177,6 +202,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
   const { slug } = useParams<{ slug: string }>();
   const { exercicio } = useExercicio();
   const qc = useQueryClient();
+  const toast = useToast();
   const meta = MODULE_TITLES[module];
 
   const [q, setQ] = useState('');
@@ -203,6 +229,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [zipDownloading, setZipDownloading] = useState(false);
+  const [analisando, setAnalisando] = useState<{ done: number; total: number } | null>(null);
 
   const params = new URLSearchParams({ module, page: String(page), pageSize: '20' });
   if (!showTrash) {
@@ -334,6 +361,64 @@ export function DocumentsModule({ module }: { module: DocModule }) {
       setError(e instanceof Error ? e.message : 'Erro ao gerar ZIP');
     } finally {
       setZipDownloading(false);
+    }
+  };
+
+  /**
+   * Dispara a conferência por IA para os documentos selecionados (sob
+   * demanda — evita gastar tokens automaticamente). Enfileira, depois faz
+   * polling do status até todos terminarem, atualizando a barra de progresso,
+   * e no fim mostra um diagnóstico (quantos conformes/divergentes/falharam).
+   */
+  const analisarConferencia = async () => {
+    if (selected.size === 0) {
+      toast.info('Selecione ao menos um documento para analisar.');
+      return;
+    }
+    setError(null);
+    try {
+      const ids = [...selected];
+      const res = await api<AnalisarConferenciaResult>(`/t/${slug}/documents/conferencia/analisar`, {
+        method: 'POST',
+        body: { ids },
+      });
+      if (res.enqueued.length === 0) {
+        toast.info('Nenhum documento selecionado tem PDF anexado — nada para analisar.');
+        return;
+      }
+      setAnalisando({ done: 0, total: res.enqueued.length });
+
+      let statuses: ConferenciaStatusItem[] = [];
+      // Poll ate todos saírem de 'pendente' (ou timeout de seguranca ~5min).
+      for (let tentativa = 0; tentativa < 150; tentativa++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        statuses = await api<ConferenciaStatusItem[]>(`/t/${slug}/documents/conferencia/status`, {
+          method: 'POST',
+          body: { ids: res.enqueued },
+        });
+        const done = statuses.filter((s) => s.conferenciaStatus && s.conferenciaStatus !== 'pendente').length;
+        setAnalisando({ done, total: res.enqueued.length });
+        qc.invalidateQueries({ queryKey: ['docs', slug] });
+        if (done >= res.enqueued.length) break;
+      }
+
+      const conforme = statuses.filter((s) => s.conferenciaStatus === 'conforme').length;
+      const divergente = statuses.filter((s) => s.conferenciaStatus === 'divergente').length;
+      const falha = statuses.filter((s) => s.conferenciaStatus === 'falha').length;
+      const partes = [`${conforme} conforme(s)`];
+      if (divergente > 0) partes.push(`${divergente} divergente(s)`);
+      if (falha > 0) partes.push(`${falha} falharam`);
+      if (res.skipped > 0) partes.push(`${res.skipped} sem PDF (ignorado)`);
+      const resumo = `Análise concluída: ${partes.join(', ')}.`;
+      if (divergente > 0) toast.error(resumo);
+      else toast.success(resumo);
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Falha ao analisar por IA';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setAnalisando(null);
+      await qc.invalidateQueries({ queryKey: ['docs', slug] });
     }
   };
 
@@ -534,30 +619,52 @@ export function DocumentsModule({ module }: { module: DocModule }) {
       )}
 
       {!showTrash && selected.size > 0 && (
-        <div className={`${cardCls} flex items-center justify-between gap-3 p-3`}>
-          <p className="text-sm font-semibold text-app">{selected.size} selecionada(s)</p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className={btnGhost}
-              onClick={downloadZip}
-              disabled={zipDownloading}
-            >
-              <span className="flex items-center gap-2">
-                <FileUp className="h-4 w-4 rotate-180" aria-hidden />
-                {zipDownloading ? 'Gerando ZIP…' : 'Baixar ZIP'}
-              </span>
-            </button>
-            <button
-              type="button"
-              className="rounded-lg border border-red-300 bg-app-input-bg px-4 py-2 text-xs font-bold uppercase text-red-500 transition hover:bg-red-50 dark:hover:bg-red-900/20"
-              onClick={() => setConfirmBulkDelete(true)}
-            >
-              <span className="flex items-center gap-2">
-                <Trash2 className="h-4 w-4" aria-hidden /> Excluir selecionadas
-              </span>
-            </button>
+        <div className={`${cardCls} space-y-2 p-3`}>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-app">{selected.size} selecionada(s)</p>
+            <div className="flex gap-2">
+              {module === 'despesas' && (
+                <button
+                  type="button"
+                  className="flex items-center gap-2 rounded-lg bg-gradient-primary px-4 py-2 text-xs font-bold uppercase text-white transition hover:opacity-90 disabled:opacity-60"
+                  onClick={() => void analisarConferencia()}
+                  disabled={analisando !== null}
+                  title="Usa a IA pra conferir se o PDF anexado bate com os dados cadastrados (consome tokens)"
+                >
+                  <Sparkles className="h-4 w-4" aria-hidden />
+                  {analisando ? `Analisando… ${analisando.done}/${analisando.total}` : 'Analisar Doc (IA)'}
+                </button>
+              )}
+              <button
+                type="button"
+                className={btnGhost}
+                onClick={downloadZip}
+                disabled={zipDownloading}
+              >
+                <span className="flex items-center gap-2">
+                  <FileUp className="h-4 w-4 rotate-180" aria-hidden />
+                  {zipDownloading ? 'Gerando ZIP…' : 'Baixar ZIP'}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-red-300 bg-app-input-bg px-4 py-2 text-xs font-bold uppercase text-red-500 transition hover:bg-red-50 dark:hover:bg-red-900/20"
+                onClick={() => setConfirmBulkDelete(true)}
+              >
+                <span className="flex items-center gap-2">
+                  <Trash2 className="h-4 w-4" aria-hidden /> Excluir selecionadas
+                </span>
+              </button>
+            </div>
           </div>
+          {analisando && (
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-app-skeleton">
+              <div
+                className="h-full rounded-full bg-gradient-primary transition-all"
+                style={{ width: `${analisando.total > 0 ? (analisando.done / analisando.total) * 100 : 0}%` }}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -597,7 +704,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={3 + DETAIL_COLUMNS[module].length + (showTrash ? 0 : 1) + (hasValor ? 1 : 0)} className="px-2 py-2">
+                <td colSpan={4 + DETAIL_COLUMNS[module].length + (showTrash ? 0 : 1) + (hasValor ? 1 : 0)} className="px-2 py-2">
                   <div className="h-5 animate-pulse rounded bg-app-skeleton" />
                 </td>
               </tr>
@@ -702,7 +809,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
             })}
             {data?.items.length === 0 && (
               <tr>
-                <td colSpan={3 + DETAIL_COLUMNS[module].length + (showTrash ? 0 : 1) + (hasValor ? 1 : 0)} className="px-2 py-6 text-center text-app-muted">
+                <td colSpan={4 + DETAIL_COLUMNS[module].length + (showTrash ? 0 : 1) + (hasValor ? 1 : 0)} className="px-2 py-6 text-center text-app-muted">
                   {showTrash ? 'Lixeira vazia.' : 'Nenhum documento encontrado.'}
                 </td>
               </tr>
