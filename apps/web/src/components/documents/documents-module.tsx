@@ -5,10 +5,12 @@ import { createPortal } from 'react-dom';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  CalendarDays,
   CircleAlert,
   CircleCheck,
   Eye,
   FileSignature,
+  FileText,
   FileUp,
   Loader2,
   Pencil,
@@ -1062,7 +1064,8 @@ export function DocumentsModule({ module }: { module: DocModule }) {
         </p>
       )}
 
-      <div className={`${cardCls} overflow-x-auto card-accent-purple`}>
+      {/* Tablet/desktop: tabela completa com scroll horizontal. */}
+      <div className={`${cardCls} hidden overflow-x-auto card-accent-purple md:block`}>
         <table className="w-full table-fixed text-left text-xs" style={{ minWidth: MIN_TABLE_WIDTH[module] }}>
           <thead>
             <tr className="border-b border-app-border text-[10px] font-bold uppercase text-app-muted">
@@ -1204,6 +1207,123 @@ export function DocumentsModule({ module }: { module: DocModule }) {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Celular: lista de cards (sem scroll horizontal, nada de informacao cortada). */}
+      <div className="space-y-3 md:hidden">
+        {isLoading && <div className="h-24 animate-pulse rounded-xl bg-app-skeleton" />}
+        {data?.items.map((d) => {
+          const semArquivo = d.status === 'aguardando_arquivo';
+          const clickable = !showTrash;
+          const titulo = d.docCaixa ? `Doc. Caixa: ${d.docCaixa}` : d.originalName;
+          return (
+            <div
+              key={d.id}
+              onClick={clickable ? () => setAttaching(d) : undefined}
+              className={`${cardCls} flex gap-3 border-l-4 border-l-blue-500 p-3 ${clickable ? 'cursor-pointer active:bg-app-hover' : ''}`}
+            >
+              {!showTrash && (
+                <div className="shrink-0 pt-0.5" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Selecionar documento ${d.originalName}`}
+                    checked={selected.has(d.id)}
+                    onChange={(e) => {
+                      setSelected((cur) => {
+                        const next = new Set(cur);
+                        if (e.target.checked) next.add(d.id);
+                        else next.delete(d.id);
+                        return next;
+                      });
+                    }}
+                  />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="truncate text-sm font-bold text-app">{titulo}</p>
+                  <ConferenciaBadge documento={d} />
+                </div>
+                <dl className="mt-1.5 space-y-1 text-xs">
+                  {DETAIL_COLUMNS[module].map((col) => (
+                    <div key={col.header} className="flex gap-1.5">
+                      <dt className="shrink-0 font-semibold text-app-muted">{col.header}:</dt>
+                      <dd className="truncate text-app">{col.render(d)}</dd>
+                    </div>
+                  ))}
+                  {hasValor && (
+                    <div className="flex gap-1.5">
+                      <dt className="shrink-0 font-semibold text-app-muted">Valor:</dt>
+                      <dd className="text-app">
+                        {d.value !== null
+                          ? d.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                          : '—'}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+                <div className="mt-2 flex items-center justify-between border-t border-app-border pt-2">
+                  <span className="flex items-center gap-1 text-[11px] text-app-muted">
+                    <CalendarDays className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    {d.documentDate ? new Date(d.documentDate + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1 text-[11px] text-app-muted">
+                      <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      {d.pageCount ?? '—'}
+                    </span>
+                    <div className="flex gap-0.5" onClick={(e) => e.stopPropagation()}>
+                      {showTrash ? (
+                        <button
+                          type="button"
+                          title="Restaurar"
+                          onClick={() => restore.mutate(d.id)}
+                          className="rounded p-1 text-app-muted hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20"
+                        >
+                          <RotateCcw className="h-4 w-4" aria-hidden />
+                        </button>
+                      ) : (
+                        <>
+                          {!semArquivo && (
+                            <button
+                              type="button"
+                              title="Visualizar PDF (nova guia)"
+                              onClick={() => openPdf(d)}
+                              className="rounded p-1 text-app-muted hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20"
+                            >
+                              <Eye className="h-4 w-4" aria-hidden />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            title="Editar"
+                            onClick={() => setEditing(d)}
+                            className="rounded p-1 text-app-muted hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20"
+                          >
+                            <Pencil className="h-4 w-4" aria-hidden />
+                          </button>
+                          <button
+                            type="button"
+                            title="Excluir (lixeira)"
+                            onClick={() => del.mutate(d.id)}
+                            className="rounded p-1 text-app-muted hover:bg-red-50 hover:text-red-400 dark:hover:bg-red-900/20"
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {data?.items.length === 0 && (
+          <p className="rounded-xl bg-app-card px-3 py-6 text-center text-sm text-app-muted">
+            {showTrash ? 'Lixeira vazia.' : 'Nenhum documento encontrado.'}
+          </p>
+        )}
       </div>
 
       {data && data.total > 0 && (
