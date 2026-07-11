@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState, type DragEvent } from 'react';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  CircleAlert,
   CircleCheck,
   Eye,
   FileSignature,
@@ -139,6 +140,16 @@ function ConferenciaBadge({ documento }: { documento: DocumentView }) {
       </span>
     );
   }
+  if (documento.conferenciaStatus === 'falha') {
+    return (
+      <span title={documento.conferenciaErro ?? 'Falha ao analisar — clique em "Analisar Doc (IA)" para tentar de novo'}>
+        <CircleAlert
+          className="mx-auto h-4 w-4 text-red-500"
+          aria-label="Conferência por IA: falhou"
+        />
+      </span>
+    );
+  }
   if (documento.status === 'disponivel') {
     return (
       <span
@@ -230,6 +241,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [zipDownloading, setZipDownloading] = useState(false);
   const [analisando, setAnalisando] = useState<{ done: number; total: number } | null>(null);
+  const [resultadoFalhas, setResultadoFalhas] = useState<ConferenciaStatusItem[] | null>(null);
 
   const params = new URLSearchParams({ module, page: String(page), pageSize: '20' });
   if (!showTrash) {
@@ -371,11 +383,16 @@ export function DocumentsModule({ module }: { module: DocModule }) {
    * e no fim mostra um diagnóstico (quantos conformes/divergentes/falharam).
    */
   const analisarConferencia = async () => {
+    // Guarda contra clique duplo: o `disabled` do botao so reflete o estado
+    // apos o re-render (React bateja updates), entao um duplo-clique rapido
+    // pode disparar duas execucoes antes do disabled surtir efeito.
+    if (analisando !== null) return;
     if (selected.size === 0) {
       toast.info('Selecione ao menos um documento para analisar.');
       return;
     }
     setError(null);
+    setResultadoFalhas(null);
     try {
       const ids = [...selected];
       const res = await api<AnalisarConferenciaResult>(`/t/${slug}/documents/conferencia/analisar`, {
@@ -404,14 +421,17 @@ export function DocumentsModule({ module }: { module: DocModule }) {
 
       const conforme = statuses.filter((s) => s.conferenciaStatus === 'conforme').length;
       const divergente = statuses.filter((s) => s.conferenciaStatus === 'divergente').length;
-      const falha = statuses.filter((s) => s.conferenciaStatus === 'falha').length;
+      const falhas = statuses.filter((s) => s.conferenciaStatus === 'falha');
       const partes = [`${conforme} conforme(s)`];
       if (divergente > 0) partes.push(`${divergente} divergente(s)`);
-      if (falha > 0) partes.push(`${falha} falharam`);
+      if (falhas.length > 0) partes.push(`${falhas.length} falharam`);
       if (res.skipped > 0) partes.push(`${res.skipped} sem PDF (ignorado)`);
       const resumo = `Análise concluída: ${partes.join(', ')}.`;
       if (divergente > 0) toast.error(resumo);
       else toast.success(resumo);
+      // Falhas nao ficam so no toast (some rapido) — abre um resumo com a
+      // lista de quais documentos falharam e por que.
+      if (falhas.length > 0) setResultadoFalhas(falhas);
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Falha ao analisar por IA';
       setError(msg);
@@ -1042,6 +1062,30 @@ export function DocumentsModule({ module }: { module: DocModule }) {
           onClose={() => setEditing(null)}
           onDone={invalidate}
         />
+      )}
+      {resultadoFalhas && resultadoFalhas.length > 0 && (
+        <Modal
+          title="Documentos que falharam na análise"
+          subtitle={`${resultadoFalhas.length} documento(s) — clique em "Analisar Doc (IA)" de novo para tentar outra vez`}
+          open
+          onClose={() => setResultadoFalhas(null)}
+        >
+          <ul className="max-h-80 space-y-2 overflow-y-auto">
+            {resultadoFalhas.map((f) => (
+              <li key={f.id} className="rounded-lg border border-app-border p-3 text-sm">
+                <p className="font-semibold text-app">
+                  Doc. caixa {f.docCaixa ?? '—'} {f.credor ? `— ${f.credor}` : ''}
+                </p>
+                <p className="mt-1 text-xs text-app-muted">{f.conferenciaErro ?? 'Motivo não informado.'}</p>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 flex justify-end">
+            <button type="button" className={btnGhost} onClick={() => setResultadoFalhas(null)}>
+              Fechar
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

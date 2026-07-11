@@ -175,7 +175,8 @@ export async function provisionTenantSchema(sql: Sql, slug: string): Promise<str
       `ALTER TABLE "${schemaName}".documents
          ADD COLUMN IF NOT EXISTS conferencia_status varchar(20),
          ADD COLUMN IF NOT EXISTS conferencia_resultado jsonb,
-         ADD COLUMN IF NOT EXISTS conferencia_verificada_em timestamptz`,
+         ADD COLUMN IF NOT EXISTS conferencia_verificada_em timestamptz,
+         ADD COLUMN IF NOT EXISTS conferencia_erro varchar(500)`,
     );
     // Etiquetas importadas viram despesas pendentes SEM arquivo (status
     // 'aguardando_arquivo'); as colunas de arquivo passam a ser opcionais.

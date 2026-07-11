@@ -178,6 +178,7 @@ export interface DocumentView {
   deletedAt: string | null;
   conferenciaStatus: ConferenciaStatus | null;
   conferenciaResultado: ConferenciaResultado | null;
+  conferenciaErro: string | null;
   conferenciaVerificadaEm: string | null;
 }
 
@@ -214,7 +215,10 @@ export interface AnalisarConferenciaResult {
 
 export interface ConferenciaStatusItem {
   id: string;
+  docCaixa: string | null;
+  credor: string | null;
   conferenciaStatus: ConferenciaStatus | null;
+  conferenciaErro: string | null;
 }
 
 export interface DocumentPage {
