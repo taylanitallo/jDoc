@@ -348,6 +348,80 @@ export class DocumentsService {
     };
   }
 
+  /**
+   * Dispara a conferencia por IA para os documentos selecionados (botao
+   * "Analisar Doc (IA)" — sob demanda, para o usuario controlar o gasto de
+   * tokens em vez de rodar automatico em todo anexo). So elegiveis: modulo
+   * despesas, com arquivo anexado (status disponivel). Reseta o status pra
+   * 'pendente' na hora (feedback visual imediato: o selo vira "carregando").
+   */
+  async analisarConferencia(
+    user: TenantAccessClaims,
+    ids: string[],
+  ): Promise<{ enqueued: string[]; skipped: number }> {
+    const ctx = requireTenantContext();
+    this.assertPermission(user, 'despesas', 'update');
+    if (!this.conferencia.isEnabled()) {
+      throw new BadRequestException('Conferencia por IA nao esta configurada neste ambiente.');
+    }
+
+    const sql = this.db.tenant(ctx.schemaName);
+    const rows = await sql<
+      Array<{
+        id: string;
+        status: string;
+        file_key: string | null;
+        doc_caixa: string | null;
+        empenho: string | null;
+        credor: string | null;
+        value: string | null;
+      }>
+    >`
+      SELECT id, status, file_key, doc_caixa, empenho, credor, value
+      FROM documents
+      WHERE id = ANY(${ids}) AND deleted_at IS NULL AND module = 'despesas'
+    `;
+    const elegiveis = rows.filter((r) => r.status === 'disponivel' && r.file_key);
+    if (elegiveis.length === 0) return { enqueued: [], skipped: rows.length };
+
+    const enqueuedIds = elegiveis.map((r) => r.id);
+    await sql`
+      UPDATE documents SET
+        conferencia_status = 'pendente',
+        conferencia_resultado = NULL,
+        conferencia_verificada_em = NULL
+      WHERE id = ANY(${enqueuedIds})
+    `;
+    for (const r of elegiveis) {
+      await this.conferencia.enqueueConferencia({
+        schemaName: ctx.schemaName,
+        slug: ctx.slug,
+        documentId: r.id,
+        fileKey: r.file_key as string,
+        docCaixa: r.doc_caixa,
+        empenho: r.empenho,
+        credor: r.credor,
+        value: r.value === null ? null : Number(r.value),
+      });
+    }
+    return { enqueued: enqueuedIds, skipped: rows.length - elegiveis.length };
+  }
+
+  /** Status atual da conferencia de um lote (polling da barra de progresso). */
+  async statusConferencia(
+    user: TenantAccessClaims,
+    ids: string[],
+  ): Promise<Array<{ id: string; conferenciaStatus: ConferenciaStatus | null }>> {
+    const ctx = requireTenantContext();
+    this.assertPermission(user, 'despesas', 'read');
+    const sql = this.db.tenant(ctx.schemaName);
+    const rows = await sql<Array<{ id: string; conferencia_status: ConferenciaStatus | null }>>`
+      SELECT id, conferencia_status FROM documents
+      WHERE id = ANY(${ids}) AND deleted_at IS NULL AND module = 'despesas'
+    `;
+    return rows.map((r) => ({ id: r.id, conferenciaStatus: r.conferencia_status }));
+  }
+
   /** Anexa o PDF a uma etiqueta (documento importado sem arquivo, status aguardando_arquivo). */
   async attachFile(
     user: TenantAccessClaims,
@@ -417,20 +491,8 @@ export class DocumentsService {
       });
     }
 
-    // Conferencia por IA: so faz sentido quando ja existe um valor "esperado"
-    // pra comparar (etiqueta de despesa), que e exatamente o caso do anexo.
-    if (row.module === 'despesas') {
-      await this.conferencia.enqueueConferencia({
-        schemaName: ctx.schemaName,
-        slug: ctx.slug,
-        documentId: id,
-        fileKey,
-        docCaixa: row.doc_caixa,
-        empenho: row.empenho,
-        credor: row.credor,
-        value: row.value === null ? null : Number(row.value),
-      });
-    }
+    // Conferencia por IA e sob demanda (botao "Analisar Doc (IA)"), nao roda
+    // automatico no anexo — controla o custo de tokens. Ver analisarConferencia().
 
     return this.get(user, id);
   }

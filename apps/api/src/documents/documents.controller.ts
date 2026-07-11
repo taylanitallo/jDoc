@@ -27,6 +27,8 @@ import {
   searchDocumentsSchema,
   trashQuerySchema,
   updateDocumentSchema,
+  type AnalisarConferenciaResult,
+  type ConferenciaStatusItem,
   type DocumentPage,
   type DocumentView,
   type EtiquetaCandidate,
@@ -142,6 +144,25 @@ export class DocumentsController {
     @Query(new ZodValidationPipe(etiquetasPendentesQuerySchema)) q: EtiquetasPendentesQuery,
   ): Promise<EtiquetasPendentesResult> {
     return this.docs.listEtiquetasPendentes(user, q.module);
+  }
+
+  @Permissions()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('conferencia/analisar')
+  analisarConferencia(
+    @CurrentUser() user: TenantAccessClaims,
+    @Body(new ZodValidationPipe(bulkIdsSchema)) body: z.infer<typeof bulkIdsSchema>,
+  ): Promise<AnalisarConferenciaResult> {
+    return this.docs.analisarConferencia(user, body.ids);
+  }
+
+  @Permissions()
+  @Post('conferencia/status')
+  statusConferencia(
+    @CurrentUser() user: TenantAccessClaims,
+    @Body(new ZodValidationPipe(bulkIdsSchema)) body: z.infer<typeof bulkIdsSchema>,
+  ): Promise<ConferenciaStatusItem[]> {
+    return this.docs.statusConferencia(user, body.ids);
   }
 
   @Permissions()

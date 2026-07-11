@@ -203,6 +203,20 @@ export interface ConferenciaResultado {
   resumo: string;
 }
 
+/** Analise por IA sob demanda (botao "Analisar Doc (IA)") — controla custo, nao roda automatico. */
+export const analisarConferenciaSchema = z.object({ ids: z.array(z.string().uuid()).min(1).max(200) }).strict();
+export type AnalisarConferenciaInput = z.infer<typeof analisarConferenciaSchema>;
+
+export interface AnalisarConferenciaResult {
+  enqueued: string[];
+  skipped: number;
+}
+
+export interface ConferenciaStatusItem {
+  id: string;
+  conferenciaStatus: ConferenciaStatus | null;
+}
+
 export interface DocumentPage {
   items: DocumentView[];
   total: number;
