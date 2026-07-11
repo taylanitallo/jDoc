@@ -110,6 +110,18 @@ function validate(buf: Buffer): string | null {
   return null;
 }
 
+/** Remove da lista os pendentes com aquele nome (arquivo renomeado/apagado). */
+function removePendingByName(fileName: string): boolean {
+  let changed = false;
+  for (const [id, item] of pending) {
+    if (item.name === fileName) {
+      pending.delete(id);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 /** Arquivo parado de ser escrito: valida e registra como pendente, ou descarta em _erros. */
 function settle(folder: string, fileName: string): void {
   timers.delete(fileName);
@@ -128,6 +140,9 @@ function settle(folder: string, fileName: string): void {
     return;
   }
 
+  // Idempotente por nome: se este arquivo ja estava pendente (ex.: foi
+  // reescrito/copiado por cima), substitui a entrada antiga em vez de duplicar.
+  removePendingByName(fileName);
   const fileId = randomUUID();
   pending.set(fileId, {
     fileId,
@@ -144,17 +159,37 @@ function isManagedSubdir(name: string): boolean {
   return (MANAGED_SUBDIRS as string[]).includes(name);
 }
 
+/** Remove pendentes cujo arquivo nao existe mais no disco (rename/delete). */
+function reconcilePending(): void {
+  let changed = false;
+  for (const [id, item] of pending) {
+    if (!existsSync(item.path)) {
+      pending.delete(id);
+      changed = true;
+    }
+  }
+  if (changed) emit();
+}
+
 function onFsEvent(folder: string, fileName: string | null): void {
+  // Catch-all: a cada evento, reconcilia a lista com o disco — robusto mesmo se
+  // o fs.watch do Windows nao entregar o evento do nome antigo num rename.
+  reconcilePending();
+
   if (!fileName || isManagedSubdir(fileName)) return;
   if (extname(fileName).toLowerCase() !== '.pdf') return;
 
   const full = join(folder, fileName);
   const existingTimer = timers.get(fileName);
   if (!existsSync(full)) {
+    // Arquivo sumiu (renomeado/apagado): cancela o debounce E remove a entrada
+    // pendente daquele nome — senao o nome antigo fica "fantasma" na lista mesmo
+    // depois do usuario ter renomeado o arquivo pro doc de caixa correto.
     if (existingTimer) {
       clearTimeout(existingTimer);
       timers.delete(fileName);
     }
+    if (removePendingByName(fileName)) emit();
     return;
   }
 
