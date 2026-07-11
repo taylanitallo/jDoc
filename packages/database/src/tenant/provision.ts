@@ -186,6 +186,33 @@ export async function provisionTenantSchema(sql: Sql, slug: string): Promise<str
          ALTER COLUMN file_size DROP NOT NULL,
          ALTER COLUMN file_hash DROP NOT NULL`,
     );
+    // Arquivos EXTRAS de um documento (alem do "principal", que continua nas
+    // colunas file_key/etc. de documents). Cada linha aqui e um PDF a mais,
+    // com sua propria assinatura/conferencia por IA independentes.
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".document_files (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        document_id uuid NOT NULL REFERENCES "${schemaName}".documents(id) ON DELETE CASCADE,
+        file_key varchar(100) NOT NULL,
+        original_name varchar(255) NOT NULL,
+        file_size bigint NOT NULL,
+        file_hash char(64) NOT NULL,
+        paginas integer,
+        assinatura_status varchar(20) NOT NULL DEFAULT 'nao_assinado',
+        assinado_por varchar(300),
+        assinatura_verificada_em timestamptz,
+        conferencia_status varchar(20),
+        conferencia_resultado jsonb,
+        conferencia_erro varchar(500),
+        conferencia_verificada_em timestamptz,
+        criado_por uuid,
+        criado_em timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_document_files_document ON "${schemaName}".document_files (document_id)`,
+    );
+
     await tx.unsafe(
       `CREATE INDEX IF NOT EXISTS idx_documents_module ON "${schemaName}".documents (module)`,
     );

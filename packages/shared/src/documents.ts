@@ -184,6 +184,22 @@ export interface DocumentView {
   conferenciaResultado: ConferenciaResultado | null;
   conferenciaErro: string | null;
   conferenciaVerificadaEm: string | null;
+  /** PDFs adicionais alem do principal (colunas acima) — anexados via "+ Adicionar outro PDF". */
+  arquivosExtras: DocumentFileView[];
+}
+
+/** Um PDF extra anexado a um documento (alem do principal). */
+export interface DocumentFileView {
+  id: string;
+  originalName: string;
+  fileSize: number;
+  pageCount: number | null;
+  assinaturaStatus: string;
+  assinadoPor: string | null;
+  conferenciaStatus: ConferenciaStatus | null;
+  conferenciaResultado: ConferenciaResultado | null;
+  conferenciaErro: string | null;
+  criadoEm: string;
 }
 
 /**

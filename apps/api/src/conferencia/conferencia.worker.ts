@@ -172,7 +172,8 @@ export class ConferenciaWorker implements OnModuleInit, OnModuleDestroy {
   }
 
   private async process(job: Job<ConferenciaJobData>): Promise<void> {
-    const { schemaName, slug, documentId, fileKey, docCaixa, empenho, credor, value } = job.data;
+    const { schemaName, slug, documentId, targetTable, targetId, fileKey, docCaixa, empenho, credor, value } =
+      job.data;
     if (!SCHEMA_NAME_REGEX.test(schemaName)) {
       throw new Error(`Schema invalido no job: ${schemaName}`);
     }
@@ -181,26 +182,29 @@ export class ConferenciaWorker implements OnModuleInit, OnModuleDestroy {
     try {
       const pdf = await this.storage.download(slug, fileKey);
       const resultado = await this.conferir(pdf, { docCaixa, empenho, credor, value });
+      // targetTable so vem de 'documents' | 'document_files' (uniao de tipos
+      // fixada no job data, nunca de input de usuario) — sql() e o helper de
+      // identificador seguro do postgres.js, nao interpolacao crua.
       await sql`
-        UPDATE documents SET
+        UPDATE ${sql(targetTable)} SET
           conferencia_status = ${resultado.status},
           conferencia_resultado = ${sql.json(resultado as unknown as Parameters<typeof sql.json>[0])},
           conferencia_erro = NULL,
           conferencia_verificada_em = now()
-        WHERE id = ${documentId}
+        WHERE id = ${targetId}
       `;
-      this.logger.log(`Conferencia de ${documentId} (${this.provider}): ${resultado.status}`);
+      this.logger.log(`Conferencia de ${documentId} (${targetTable}:${targetId}, ${this.provider}): ${resultado.status}`);
     } catch (err) {
       const status: ConferenciaStatus = 'falha';
       const erro = erroLegivel(err);
       await sql`
-        UPDATE documents SET
+        UPDATE ${sql(targetTable)} SET
           conferencia_status = ${status},
           conferencia_erro = ${erro},
           conferencia_verificada_em = now()
-        WHERE id = ${documentId}
+        WHERE id = ${targetId}
       `;
-      this.logger.warn(`Conferencia de ${documentId} (${this.provider}) falhou: ${erro}`);
+      this.logger.warn(`Conferencia de ${documentId} (${targetTable}:${targetId}, ${this.provider}) falhou: ${erro}`);
     }
   }
 

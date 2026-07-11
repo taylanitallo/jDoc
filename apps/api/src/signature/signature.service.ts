@@ -11,7 +11,11 @@ export const SIGNATURE_QUEUE = 'signature-validation';
 export interface SignatureJobData {
   schemaName: string;
   slug: string;
+  /** Documento "dono" (pra permissao/logs) — nem sempre a linha atualizada, ver targetTable/targetId. */
   documentId: string;
+  /** Onde gravar o resultado: o documento principal, ou um arquivo extra dele. */
+  targetTable: 'documents' | 'document_files';
+  targetId: string;
   fileKey: string;
 }
 
