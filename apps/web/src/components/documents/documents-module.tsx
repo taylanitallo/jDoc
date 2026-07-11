@@ -234,18 +234,30 @@ function FileConferenciaBadge({
   resultado: ConferenciaResultado | null;
   erro: string | null;
 }) {
-  if (status === 'divergente') {
-    const resumo = resultado?.resumo;
+  if (status === 'divergente' || status === 'falha') {
+    const Icon = status === 'divergente' ? TriangleAlert : CircleAlert;
+    const iconColor = status === 'divergente' ? 'text-orange-500' : 'text-red-500';
     const divergencias = resultado?.divergencias ?? [];
-    const title = [
-      resumo,
-      ...divergencias.map((d) => `${d.campo}: esperado ${d.esperado ?? '—'}, encontrado ${d.encontrado ?? '—'}`),
-    ]
-      .filter(Boolean)
-      .join('\n');
+    const tooltip =
+      status === 'divergente' ? (
+        <div className="space-y-1">
+          {resultado?.resumo && <p className="text-app-muted">{resultado.resumo}</p>}
+          {divergencias.map((d, i) => (
+            <p key={i}>
+              <span className="font-semibold text-blue-500 dark:text-blue-400">{d.campo}</span>: esperado &quot;
+              {d.esperado ?? '—'}&quot;, encontrado &quot;{d.encontrado ?? '—'}&quot;
+            </p>
+          ))}
+        </div>
+      ) : (
+        <p>{erro ?? 'Falha ao analisar'}</p>
+      );
     return (
-      <span title={title || 'Divergência encontrada pela conferência automática'}>
-        <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-orange-500" aria-hidden />
+      <span className="group relative inline-flex shrink-0">
+        <Icon className={`h-3.5 w-3.5 shrink-0 ${iconColor}`} aria-hidden />
+        <span className="pointer-events-none absolute left-0 top-full z-50 mt-2 hidden w-72 rounded-lg border border-app-border bg-app-card p-3 text-left text-xs text-app shadow-lg group-hover:block">
+          {tooltip}
+        </span>
       </span>
     );
   }
@@ -253,13 +265,6 @@ function FileConferenciaBadge({
     return (
       <span title="Conferência automática: dados conferem com o PDF">
         <CircleCheck className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" aria-hidden />
-      </span>
-    );
-  }
-  if (status === 'falha') {
-    return (
-      <span title={erro ?? 'Falha ao analisar'}>
-        <CircleAlert className="h-3.5 w-3.5 shrink-0 text-red-500" aria-hidden />
       </span>
     );
   }
