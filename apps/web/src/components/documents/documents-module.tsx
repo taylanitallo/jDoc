@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState, type DragEvent } from 'react';
+import { useCallback, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -241,7 +241,15 @@ export function DocumentsModule({ module }: { module: DocModule }) {
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [zipDownloading, setZipDownloading] = useState(false);
   const [analisando, setAnalisando] = useState<{ done: number; total: number } | null>(null);
-  const [resultadoFalhas, setResultadoFalhas] = useState<ConferenciaStatusItem[] | null>(null);
+  const [resultadoProblemas, setResultadoProblemas] = useState<{
+    ids: string[];
+    divergente: number;
+    falha: number;
+  } | null>(null);
+  const [gerandoRelatorio, setGerandoRelatorio] = useState(false);
+  // Lock sincrono (nao sujeito ao atraso de re-render do useState) contra
+  // duplo-clique — evita a analise disparar duas vezes e toasts duplicados.
+  const analisandoRef = useRef(false);
 
   const params = new URLSearchParams({ module, page: String(page), pageSize: '20' });
   if (!showTrash) {
@@ -383,16 +391,17 @@ export function DocumentsModule({ module }: { module: DocModule }) {
    * e no fim mostra um diagnóstico (quantos conformes/divergentes/falharam).
    */
   const analisarConferencia = async () => {
-    // Guarda contra clique duplo: o `disabled` do botao so reflete o estado
-    // apos o re-render (React bateja updates), entao um duplo-clique rapido
-    // pode disparar duas execucoes antes do disabled surtir efeito.
-    if (analisando !== null) return;
+    // Lock sincrono — o `disabled` do botao so reflete o estado apos o
+    // re-render (React bateja updates), entao um duplo-clique rapido pode
+    // disparar duas execucoes antes do disabled surtir efeito.
+    if (analisandoRef.current) return;
     if (selected.size === 0) {
       toast.info('Selecione ao menos um documento para analisar.');
       return;
     }
+    analisandoRef.current = true;
     setError(null);
-    setResultadoFalhas(null);
+    setResultadoProblemas(null);
     try {
       const ids = [...selected];
       const res = await api<AnalisarConferenciaResult>(`/t/${slug}/documents/conferencia/analisar`, {
@@ -421,24 +430,59 @@ export function DocumentsModule({ module }: { module: DocModule }) {
 
       const conforme = statuses.filter((s) => s.conferenciaStatus === 'conforme').length;
       const divergente = statuses.filter((s) => s.conferenciaStatus === 'divergente').length;
-      const falhas = statuses.filter((s) => s.conferenciaStatus === 'falha');
+      const falha = statuses.filter((s) => s.conferenciaStatus === 'falha').length;
       const partes = [`${conforme} conforme(s)`];
       if (divergente > 0) partes.push(`${divergente} divergente(s)`);
-      if (falhas.length > 0) partes.push(`${falhas.length} falharam`);
+      if (falha > 0) partes.push(`${falha} falharam`);
       if (res.skipped > 0) partes.push(`${res.skipped} sem PDF (ignorado)`);
       const resumo = `Análise concluída: ${partes.join(', ')}.`;
-      if (divergente > 0) toast.error(resumo);
-      else toast.success(resumo);
-      // Falhas nao ficam so no toast (some rapido) — abre um resumo com a
-      // lista de quais documentos falharam e por que.
-      if (falhas.length > 0) setResultadoFalhas(falhas);
+      // Quando ha problema (divergencia ou falha), o painel central com o
+      // botao "Abrir Críticas" e mais visivel que um toast — que some rapido.
+      if (divergente > 0 || falha > 0) {
+        setResultadoProblemas({ ids: res.enqueued, divergente, falha });
+      } else {
+        toast.success(resumo);
+      }
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Falha ao analisar por IA';
       setError(msg);
       toast.error(msg);
     } finally {
       setAnalisando(null);
+      analisandoRef.current = false;
       await qc.invalidateQueries({ queryKey: ['docs', slug] });
+    }
+  };
+
+  /** Abre em nova guia o PDF com a lista de documentos divergentes/falhos do lote. */
+  const abrirCriticas = async () => {
+    if (!resultadoProblemas) return;
+    // Abre a janela AGORA (sincrono) — se esperar o fetch, navegadores
+    // bloqueiam como popup.
+    const win = window.open('', '_blank');
+    setGerandoRelatorio(true);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3333';
+      const token = getAccessToken();
+      const res = await fetch(`${apiUrl}/t/${slug}/documents/conferencia/relatorio`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ ids: resultadoProblemas.ids }),
+      });
+      if (!res.ok) throw new Error('Falha ao gerar o relatório de críticas');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      if (win) win.location.href = url;
+      else window.open(url, '_blank');
+    } catch (e) {
+      win?.close();
+      toast.error(e instanceof Error ? e.message : 'Falha ao gerar o relatório de críticas');
+    } finally {
+      setGerandoRelatorio(false);
     }
   };
 
@@ -1063,26 +1107,31 @@ export function DocumentsModule({ module }: { module: DocModule }) {
           onDone={invalidate}
         />
       )}
-      {resultadoFalhas && resultadoFalhas.length > 0 && (
+      {resultadoProblemas && (
         <Modal
-          title="Documentos que falharam na análise"
-          subtitle={`${resultadoFalhas.length} documento(s) — clique em "Analisar Doc (IA)" de novo para tentar outra vez`}
+          title="Análise concluída com problemas"
+          subtitle="A conferência por IA encontrou itens que precisam da sua atenção"
           open
-          onClose={() => setResultadoFalhas(null)}
+          onClose={() => setResultadoProblemas(null)}
         >
-          <ul className="max-h-80 space-y-2 overflow-y-auto">
-            {resultadoFalhas.map((f) => (
-              <li key={f.id} className="rounded-lg border border-app-border p-3 text-sm">
-                <p className="font-semibold text-app">
-                  Doc. caixa {f.docCaixa ?? '—'} {f.credor ? `— ${f.credor}` : ''}
-                </p>
-                <p className="mt-1 text-xs text-app-muted">{f.conferenciaErro ?? 'Motivo não informado.'}</p>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-4 flex justify-end">
-            <button type="button" className={btnGhost} onClick={() => setResultadoFalhas(null)}>
-              Fechar
+          <div className="space-y-4 text-center">
+            <TriangleAlert className="mx-auto h-12 w-12 text-orange-500" aria-hidden />
+            <p className="text-2xl font-bold text-app">
+              {resultadoProblemas.divergente + resultadoProblemas.falha} documento(s) com problema
+            </p>
+            <p className="text-sm text-app-muted">
+              {resultadoProblemas.divergente > 0 && <>{resultadoProblemas.divergente} divergente(s)</>}
+              {resultadoProblemas.divergente > 0 && resultadoProblemas.falha > 0 && ' · '}
+              {resultadoProblemas.falha > 0 && <>{resultadoProblemas.falha} falharam na análise</>}
+            </p>
+            <button
+              type="button"
+              className="mx-auto flex items-center gap-2 rounded-lg bg-gradient-primary px-5 py-2.5 text-sm font-bold uppercase text-white transition hover:opacity-90 disabled:opacity-60"
+              onClick={() => void abrirCriticas()}
+              disabled={gerandoRelatorio}
+            >
+              <FileUp className="h-4 w-4 rotate-180" aria-hidden />
+              {gerandoRelatorio ? 'Gerando PDF…' : 'Abrir Críticas (PDF)'}
             </button>
           </div>
         </Modal>
