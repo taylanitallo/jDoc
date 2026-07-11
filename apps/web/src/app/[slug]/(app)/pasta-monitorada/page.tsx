@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { FolderSync, FileUp, Trash2, Link2, AlertTriangle } from 'lucide-react';
+import { FolderSync, FileUp, Trash2, Link2, AlertTriangle, ArrowUpCircle } from 'lucide-react';
 import type { EtiquetaCandidate } from '@jdoc/shared';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/toast';
@@ -41,6 +41,19 @@ function formatBRL(v: number | null): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+/** Primeira versao do desktop com o vinculo por doc de caixa (watch:attach). */
+const MIN_DESKTOP_VERSION = '1.0.2';
+function versionAtLeast(cur: string, min: string): boolean {
+  const pa = cur.split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = min.split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    const x = pa[i] ?? 0;
+    const y = pb[i] ?? 0;
+    if (x !== y) return x > y;
+  }
+  return true;
+}
+
 export default function PastaMonitoradaPage() {
   const { slug } = useParams<{ slug: string }>();
   const toast = useToast();
@@ -48,6 +61,7 @@ export default function PastaMonitoradaPage() {
 
   const [checked, setChecked] = useState(false);
   const [desktop, setDesktop] = useState(false);
+  const [outdated, setOutdated] = useState(false);
   const [folder, setFolder] = useState<string | null>(null);
   const [folderBusy, setFolderBusy] = useState(false);
   const [files, setFiles] = useState<PendingFile[]>([]);
@@ -60,6 +74,12 @@ export default function PastaMonitoradaPage() {
     if (!isDesktop) return;
 
     void (async () => {
+      // Versao antiga do desktop nao tem o vinculo por doc de caixa (watch:attach).
+      const v = await desktopInvoke<{ version: string }>('app:version');
+      if (!versionAtLeast(v?.version ?? '0.0.0', MIN_DESKTOP_VERSION)) {
+        setOutdated(true);
+        return;
+      }
       const cfg = await desktopInvoke<{ folder: string | null }>('watch:get-config');
       setFolder(cfg?.folder ?? null);
       const res = await desktopInvoke<{ items: PendingFile[] }>('watch:list-pending');
@@ -100,6 +120,18 @@ export default function PastaMonitoradaPage() {
           icon={FolderSync}
           title="Disponível apenas no jDoc Desktop"
           description="Instale o aplicativo desktop para monitorar uma pasta local e vincular PDFs às etiquetas automaticamente."
+        />
+      </div>
+    );
+  }
+
+  if (outdated) {
+    return (
+      <div className="p-6">
+        <EmptyState
+          icon={ArrowUpCircle}
+          title="Atualize o jDoc Desktop"
+          description="O vínculo automático por documento de caixa está disponível a partir da versão mais recente. Feche e abra o jDoc — ele atualiza sozinho antes do login."
         />
       </div>
     );
