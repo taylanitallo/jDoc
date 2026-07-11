@@ -384,6 +384,22 @@ const DETAIL_COLUMNS: Record<
   ],
 };
 
+/**
+ * Largura minima da tabela por modulo — com table-fixed + w-full, o navegador
+ * espreme TODAS as colunas pra caber na tela quando ela e mais estreita que a
+ * soma das larguras das colunas, fazendo o texto dos cabecalhos vazar por cima
+ * um do outro. Um min-width forca a tabela a ficar mais larga que a tela
+ * quando necessario, deixando o overflow-x-auto do container rolar em vez de
+ * espremer.
+ */
+const MIN_TABLE_WIDTH: Record<DocModule, number> = {
+  despesas: 900,
+  receitas: 640,
+  balancete: 560,
+  extrato: 700,
+  outros: 620,
+};
+
 export function DocumentsModule({ module }: { module: DocModule }) {
   const { slug } = useParams<{ slug: string }>();
   const { exercicio } = useExercicio();
@@ -1047,7 +1063,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
       )}
 
       <div className={`${cardCls} overflow-x-auto card-accent-purple`}>
-        <table className="w-full table-fixed text-left text-xs">
+        <table className="w-full table-fixed text-left text-xs" style={{ minWidth: MIN_TABLE_WIDTH[module] }}>
           <thead>
             <tr className="border-b border-app-border text-[10px] font-bold uppercase text-app-muted">
               {!showTrash && (
