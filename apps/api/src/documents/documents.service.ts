@@ -38,6 +38,25 @@ import { ConferenciaService } from '../conferencia/conferencia.service';
 
 const PDF_MAGIC = Buffer.from('%PDF');
 
+/**
+ * Reconhece data digitada na busca livre ("29/05", "29/05/2026", "5/6/26")
+ * pra tambem filtrar por document_date, sem precisar abrir "Mais filtros".
+ * Ano com 2 digitos assume 20XX (nao ha documentos do seculo passado aqui).
+ */
+function parseDateQuery(q: string | undefined): { day: number; month: number; year: number | null } | null {
+  if (!q) return null;
+  const m = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/.exec(q.trim());
+  if (!m) return null;
+  const day = Number(m[1]);
+  const month = Number(m[2]);
+  if (day < 1 || day > 31 || month < 1 || month > 12) return null;
+  let year: number | null = null;
+  if (m[3]) {
+    year = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+  }
+  return { day, month, year };
+}
+
 interface DocRow {
   id: string;
   module: DocModule;
@@ -773,11 +792,16 @@ export class DocumentsService {
    */
   private buildSearchWhere(sql: Sql, q: SearchDocumentsQuery) {
     const text = q.q ? `%${q.q}%` : null;
+    const dateQuery = parseDateQuery(q.q);
     return sql`
       d.module = ${q.module} AND d.deleted_at IS NULL
       AND (${text}::text IS NULL OR d.credor ILIKE ${text} OR d.historico ILIKE ${text}
            OR d.descricao ILIKE ${text} OR d.empenho ILIKE ${text} OR d.doc_caixa ILIKE ${text}
-           OR d.original_name ILIKE ${text})
+           OR d.original_name ILIKE ${text}
+           OR (${dateQuery?.day ?? null}::int IS NOT NULL
+               AND EXTRACT(DAY FROM d.document_date) = ${dateQuery?.day ?? null}
+               AND EXTRACT(MONTH FROM d.document_date) = ${dateQuery?.month ?? null}
+               AND (${dateQuery?.year ?? null}::int IS NULL OR EXTRACT(YEAR FROM d.document_date) = ${dateQuery?.year ?? null})))
       AND (${q.subtype ?? null}::varchar IS NULL OR d.subtype = ${q.subtype ?? null})
       AND (${q.exercicio ?? null}::int IS NULL OR d.exercicio = ${q.exercicio ?? null})
       AND (${q.competencia ?? null}::varchar IS NULL OR d.competencia = ${q.competencia ?? null})
