@@ -129,6 +129,10 @@ export const searchDocumentsSchema = z
     ate: z.coerce.date().optional(),
     valorMin: z.coerce.number().nonnegative().optional(),
     valorMax: z.coerce.number().nonnegative().optional(),
+    /** Filtro "Com PDF" (disponivel) / "Sem PDF" (aguardando_arquivo). Omitido = todos. */
+    comArquivo: z.enum(['sim', 'nao']).optional(),
+    /** Filtro "Com Crítica" (divergente/falha na conferência) / "Sem Crítica". Omitido = todos. */
+    critica: z.enum(['sim', 'nao']).optional(),
     sort: z.enum(['data_desc', 'data_asc', 'valor_desc', 'valor_asc', 'criado_desc']).default('data_desc'),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(20),

@@ -12,6 +12,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  Printer,
   RotateCcw,
   Search,
   Sparkles,
@@ -224,6 +225,8 @@ export function DocumentsModule({ module }: { module: DocModule }) {
   const [dataFim, setDataFim] = useState('');
   const [valorMin, setValorMin] = useState('');
   const [valorMax, setValorMax] = useState('');
+  const [comArquivo, setComArquivo] = useState('');
+  const [critica, setCritica] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [showTrash, setShowTrash] = useState(false);
@@ -247,6 +250,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
     falha: number;
   } | null>(null);
   const [gerandoRelatorio, setGerandoRelatorio] = useState(false);
+  const [imprimindo, setImprimindo] = useState(false);
   // Lock sincrono (nao sujeito ao atraso de re-render do useState) contra
   // duplo-clique — evita a analise disparar duas vezes e toasts duplicados.
   const analisandoRef = useRef(false);
@@ -270,10 +274,29 @@ export function DocumentsModule({ module }: { module: DocModule }) {
     }
     if (valorMin) params.set('valorMin', valorMin);
     if (valorMax) params.set('valorMax', valorMax);
+    if (comArquivo) params.set('comArquivo', comArquivo);
+    if (module === 'despesas' && critica) params.set('critica', critica);
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['docs', slug, module, showTrash, q, subtype, orgaoId, mes, dataInicio, dataFim, valorMin, valorMax, page, exercicio],
+    queryKey: [
+      'docs',
+      slug,
+      module,
+      showTrash,
+      q,
+      subtype,
+      orgaoId,
+      mes,
+      dataInicio,
+      dataFim,
+      valorMin,
+      valorMax,
+      comArquivo,
+      critica,
+      page,
+      exercicio,
+    ],
     queryFn: () =>
       api<DocumentPage>(
         showTrash
@@ -486,6 +509,39 @@ export function DocumentsModule({ module }: { module: DocModule }) {
     }
   };
 
+  /**
+   * Imprime (PDF em nova guia) todas as etiquetas que batem com os filtros
+   * atuais da tela — mesmo objeto `params` da busca, entao respeita
+   * exatamente o que esta filtrado (ou tudo, se nenhum filtro ativo).
+   */
+  const imprimirEtiquetas = async () => {
+    const win = window.open('', '_blank');
+    setImprimindo(true);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3333';
+      const token = getAccessToken();
+      const res = await fetch(`${apiUrl}/t/${slug}/documents/relatorio-etiquetas`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(Object.fromEntries(params)),
+      });
+      if (!res.ok) throw new Error('Falha ao gerar o relatório de etiquetas');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      if (win) win.location.href = url;
+      else window.open(url, '_blank');
+    } catch (e) {
+      win?.close();
+      toast.error(e instanceof Error ? e.message : 'Falha ao gerar o relatório de etiquetas');
+    } finally {
+      setImprimindo(false);
+    }
+  };
+
   const openPdf = async (doc: DocumentView) => {
     const win = window.open('', '_blank');
     try {
@@ -538,6 +594,18 @@ export function DocumentsModule({ module }: { module: DocModule }) {
               <button type="button" className={btnGhost} onClick={() => setLabelsOpen(true)}>
                 <span className="flex items-center gap-2">
                   <Tags className="h-4 w-4" aria-hidden /> Importar Etiquetas
+                </span>
+              </button>
+              <button
+                type="button"
+                className={btnGhost}
+                onClick={() => void imprimirEtiquetas()}
+                disabled={imprimindo}
+                title="Gera um PDF com as etiquetas que aparecem na tela — respeita os filtros ativos"
+              >
+                <span className="flex items-center gap-2">
+                  <Printer className="h-4 w-4" aria-hidden />
+                  {imprimindo ? 'Gerando…' : 'Imprimir Etiquetas'}
                 </span>
               </button>
               {module === 'despesas' && (
@@ -697,6 +765,34 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                     }}
                   />
                 </>
+              )}
+              <select
+                aria-label="Com/sem PDF"
+                className={inputCls + ' w-40'}
+                value={comArquivo}
+                onChange={(e) => {
+                  setComArquivo(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="">Com/sem PDF</option>
+                <option value="sim">Com PDF</option>
+                <option value="nao">Sem PDF</option>
+              </select>
+              {module === 'despesas' && (
+                <select
+                  aria-label="Com/sem crítica"
+                  className={inputCls + ' w-44'}
+                  value={critica}
+                  onChange={(e) => {
+                    setCritica(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="">Com/sem crítica</option>
+                  <option value="sim">Com crítica</option>
+                  <option value="nao">Sem crítica</option>
+                </select>
               )}
             </div>
           )}

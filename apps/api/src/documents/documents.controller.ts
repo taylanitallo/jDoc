@@ -78,6 +78,20 @@ export class DocumentsController {
   }
 
   @Permissions()
+  @Post('relatorio-etiquetas')
+  @HttpCode(200)
+  async relatorioEtiquetas(
+    @CurrentUser() user: TenantAccessClaims,
+    @Body(new ZodValidationPipe(searchDocumentsSchema)) q: SearchDocumentsQuery,
+    @Res() res: Response,
+  ): Promise<void> {
+    const pdf = await this.docs.gerarRelatorioEtiquetas(user, q);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="etiquetas.pdf"');
+    res.send(pdf);
+  }
+
+  @Permissions()
   @Get('usage')
   async usage(): Promise<{ usoBytes: number; quotaBytes: number; usoPercent: number }> {
     const ctx = requireTenantContext();

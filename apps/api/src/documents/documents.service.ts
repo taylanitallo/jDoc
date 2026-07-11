@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import archiver from 'archiver';
 import { PDFDocument as PdfLibDocument } from 'pdf-lib';
 import PDFKitDocument from 'pdfkit';
+import type { Sql } from 'postgres';
 import {
   BadRequestException,
   ForbiddenException,
@@ -521,6 +522,109 @@ export class DocumentsService {
     });
   }
 
+  /**
+   * Relatorio em PDF ("Imprimir Etiquetas") com TODOS os documentos que
+   * batem com os filtros da tela (mesmo WHERE do search(), sem paginacao) —
+   * respeita exatamente o que o usuario esta vendo (ou tudo, sem filtro).
+   */
+  async gerarRelatorioEtiquetas(user: TenantAccessClaims, q: SearchDocumentsQuery): Promise<Buffer> {
+    const ctx = requireTenantContext();
+    this.assertPermission(user, q.module, 'read');
+    const sql = this.db.tenant(ctx.schemaName);
+    const where = this.buildSearchWhere(sql, q);
+    const orderBy = {
+      data_desc: 'd.document_date DESC NULLS LAST, d.doc_caixa ASC NULLS LAST',
+      data_asc: 'd.document_date ASC NULLS LAST, d.doc_caixa ASC NULLS LAST',
+      valor_desc: 'd.value DESC NULLS LAST, d.doc_caixa ASC NULLS LAST',
+      valor_asc: 'd.value ASC NULLS LAST, d.doc_caixa ASC NULLS LAST',
+      criado_desc: 'd.criado_em DESC',
+    }[q.sort];
+
+    const rows = await sql<
+      Array<{
+        document_date: Date | null;
+        doc_caixa: string | null;
+        empenho: string | null;
+        credor: string | null;
+        value: string | null;
+        status: string;
+        conferencia_status: ConferenciaStatus | null;
+      }>
+    >`
+      SELECT d.document_date, d.doc_caixa, d.empenho, d.credor, d.value, d.status, d.conferencia_status
+      FROM documents d
+      WHERE ${where}
+      ORDER BY ${sql.unsafe(orderBy)}
+    `;
+
+    return new Promise((resolve, reject) => {
+      const doc = new PDFKitDocument({ margin: 40, size: 'A4', layout: 'landscape' });
+      const chunks: Buffer[] = [];
+      doc.on('data', (c: Buffer) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const colData = 40;
+      const colDocCaixa = 105;
+      const colEmpenho = 200;
+      const colCredor = 300;
+      const colValor = 580;
+      const colStatus = 680;
+      const pageBottom = doc.page.height - doc.page.margins.bottom;
+
+      const header = (): void => {
+        doc.fontSize(14).font('Helvetica-Bold').text('RELATÓRIO DE ETIQUETAS — DESPESAS', { align: 'center' });
+        doc
+          .fontSize(8)
+          .font('Helvetica')
+          .text(`Gerado em ${new Date().toLocaleString('pt-BR')} — ${rows.length} documento(s)`, {
+            align: 'center',
+          });
+        doc.moveDown(1);
+        doc.font('Helvetica-Bold').fontSize(8);
+        const y = doc.y;
+        doc.text('Data', colData, y, { width: 60 });
+        doc.text('Doc. Caixa', colDocCaixa, y, { width: 85 });
+        doc.text('Empenho', colEmpenho, y, { width: 95 });
+        doc.text('Credor', colCredor, y, { width: 270 });
+        doc.text('Valor', colValor, y, { width: 90, align: 'right' });
+        doc.text('Status', colStatus, y, { width: 100 });
+        doc.moveDown(0.4);
+        doc.moveTo(colData, doc.y).lineTo(800, doc.y).strokeColor('#999999').stroke();
+        doc.moveDown(0.3);
+        doc.font('Helvetica').fontSize(8);
+      };
+
+      header();
+      for (const r of rows) {
+        if (doc.y > pageBottom - 20) {
+          doc.addPage();
+          header();
+        }
+        const y = doc.y;
+        const dataFmt = r.document_date ? new Date(r.document_date).toLocaleDateString('pt-BR') : '—';
+        const valorFmt =
+          r.value === null ? '—' : Number(r.value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const statusLabel = r.status === 'disponivel' ? 'Com PDF' : 'Sem PDF';
+        const criticaLabel =
+          r.conferencia_status === 'divergente'
+            ? ' · Divergente'
+            : r.conferencia_status === 'falha'
+              ? ' · Falha'
+              : '';
+        doc.text(dataFmt, colData, y, { width: 60 });
+        doc.text(r.doc_caixa ?? '—', colDocCaixa, y, { width: 85 });
+        doc.text(r.empenho ?? '—', colEmpenho, y, { width: 95 });
+        doc.text(r.credor ?? '—', colCredor, y, { width: 270 });
+        doc.text(valorFmt, colValor, y, { width: 90, align: 'right' });
+        doc.text(`${statusLabel}${criticaLabel}`, colStatus, y, { width: 100 });
+        doc.moveDown(0.5);
+      }
+
+      doc.end();
+    });
+  }
+
   /** Anexa o PDF a uma etiqueta (documento importado sem arquivo, status aguardando_arquivo). */
   async attachFile(
     user: TenantAccessClaims,
@@ -630,24 +734,14 @@ export class DocumentsService {
     return this.get(user, id);
   }
 
-  async search(user: TenantAccessClaims, q: SearchDocumentsQuery): Promise<DocumentPage> {
-    const ctx = requireTenantContext();
-    this.assertPermission(user, q.module, 'read');
-    const sql = this.db.tenant(ctx.schemaName);
-    const offset = (q.page - 1) * q.pageSize;
+  /**
+   * WHERE compartilhado por search() e gerarRelatorioEtiquetas() — garante
+   * que o relatorio impresso respeite exatamente os mesmos filtros da tela
+   * (nunca duplicar essa logica).
+   */
+  private buildSearchWhere(sql: Sql, q: SearchDocumentsQuery) {
     const text = q.q ? `%${q.q}%` : null;
-
-    // Ordem estavel: data (ou valor) como chave primaria + doc_caixa como desempate,
-    // para que anexar um PDF (que nao altera data/doc_caixa) nunca mude a posicao da linha.
-    const orderBy = {
-      data_desc: 'd.document_date DESC NULLS LAST, d.doc_caixa ASC NULLS LAST',
-      data_asc: 'd.document_date ASC NULLS LAST, d.doc_caixa ASC NULLS LAST',
-      valor_desc: 'd.value DESC NULLS LAST, d.doc_caixa ASC NULLS LAST',
-      valor_asc: 'd.value ASC NULLS LAST, d.doc_caixa ASC NULLS LAST',
-      criado_desc: 'd.criado_em DESC',
-    }[q.sort];
-
-    const where = sql`
+    return sql`
       d.module = ${q.module} AND d.deleted_at IS NULL
       AND (${text}::text IS NULL OR d.credor ILIKE ${text} OR d.historico ILIKE ${text}
            OR d.descricao ILIKE ${text} OR d.empenho ILIKE ${text} OR d.doc_caixa ILIKE ${text}
@@ -663,7 +757,33 @@ export class DocumentsService {
       AND (${q.ate ?? null}::date IS NULL OR d.document_date <= ${q.ate ?? null})
       AND (${q.valorMin ?? null}::numeric IS NULL OR d.value >= ${q.valorMin ?? null})
       AND (${q.valorMax ?? null}::numeric IS NULL OR d.value <= ${q.valorMax ?? null})
+      AND (${q.comArquivo ?? null}::varchar IS NULL
+           OR (${q.comArquivo ?? null} = 'sim' AND d.status = 'disponivel')
+           OR (${q.comArquivo ?? null} = 'nao' AND d.status = 'aguardando_arquivo'))
+      AND (${q.critica ?? null}::varchar IS NULL
+           OR (${q.critica ?? null} = 'sim' AND d.conferencia_status IN ('divergente', 'falha'))
+           OR (${q.critica ?? null} = 'nao'
+               AND (d.conferencia_status IS NULL OR d.conferencia_status NOT IN ('divergente', 'falha'))))
     `;
+  }
+
+  async search(user: TenantAccessClaims, q: SearchDocumentsQuery): Promise<DocumentPage> {
+    const ctx = requireTenantContext();
+    this.assertPermission(user, q.module, 'read');
+    const sql = this.db.tenant(ctx.schemaName);
+    const offset = (q.page - 1) * q.pageSize;
+
+    // Ordem estavel: data (ou valor) como chave primaria + doc_caixa como desempate,
+    // para que anexar um PDF (que nao altera data/doc_caixa) nunca mude a posicao da linha.
+    const orderBy = {
+      data_desc: 'd.document_date DESC NULLS LAST, d.doc_caixa ASC NULLS LAST',
+      data_asc: 'd.document_date ASC NULLS LAST, d.doc_caixa ASC NULLS LAST',
+      valor_desc: 'd.value DESC NULLS LAST, d.doc_caixa ASC NULLS LAST',
+      valor_asc: 'd.value ASC NULLS LAST, d.doc_caixa ASC NULLS LAST',
+      criado_desc: 'd.criado_em DESC',
+    }[q.sort];
+
+    const where = this.buildSearchWhere(sql, q);
 
     const items = await sql<DocRow[]>`
       SELECT d.id, d.module, d.subtype, d.doc_caixa, d.empenho, d.credor, d.historico, d.descricao,
