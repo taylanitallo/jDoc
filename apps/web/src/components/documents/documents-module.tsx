@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -127,33 +127,57 @@ const TOOLTIP_WIDTH = 340;
  * nunca deixa a caixa sair da largura da tela.
  */
 function HoverTooltip({ children, content }: { children: ReactNode; content: ReactNode }) {
-  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
-  const ref = useRef<HTMLSpanElement>(null);
+  const [visible, setVisible] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
 
-  const show = () => {
-    const rect = ref.current?.getBoundingClientRect();
-    if (!rect) return;
-    let left = rect.right - TOOLTIP_WIDTH;
-    if (left < 8) left = 8;
-    if (left + TOOLTIP_WIDTH > window.innerWidth - 8) left = window.innerWidth - TOOLTIP_WIDTH - 8;
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const openUp = spaceBelow < 220 && rect.top > spaceBelow;
-    setPos(
-      openUp
-        ? { bottom: window.innerHeight - rect.top + 8, left }
-        : { top: rect.bottom + 8, left },
-    );
-  };
+  // Mede a altura REAL do balao (que varia com o conteudo) antes de decidir
+  // se abre pra baixo ou pra cima — uma estimativa fixa sempre erra pra
+  // conteudo mais longo. Roda antes do paint (useLayoutEffect), entao o
+  // usuario nunca ve o balao "pulando" de posicao.
+  useLayoutEffect(() => {
+    if (!visible) {
+      setCoords(null);
+      return;
+    }
+    const anchor = anchorRef.current;
+    const box = boxRef.current;
+    if (!anchor || !box) return;
+    const anchorRect = anchor.getBoundingClientRect();
+    const boxHeight = box.offsetHeight;
+
+    let left = anchorRect.right - TOOLTIP_WIDTH;
+    left = Math.min(Math.max(left, 8), window.innerWidth - TOOLTIP_WIDTH - 8);
+
+    let top = anchorRect.bottom + 8;
+    if (top + boxHeight > window.innerHeight - 8) {
+      const topAbove = anchorRect.top - 8 - boxHeight;
+      top = topAbove > 8 ? topAbove : Math.max(8, window.innerHeight - boxHeight - 8);
+    }
+    setCoords({ top, left });
+  }, [visible, content]);
 
   return (
-    <span ref={ref} onMouseEnter={show} onMouseLeave={() => setPos(null)} className="inline-flex shrink-0">
+    <span
+      ref={anchorRef}
+      onMouseEnter={() => setVisible(true)}
+      onMouseLeave={() => setVisible(false)}
+      className="inline-flex shrink-0"
+    >
       {children}
-      {pos &&
+      {visible &&
         typeof document !== 'undefined' &&
         createPortal(
           <div
-            className="pointer-events-none fixed z-[100] max-h-[60vh] overflow-y-auto rounded-lg border border-app-border bg-app-card p-3 text-left text-xs text-app shadow-2xl"
-            style={{ top: pos.top, bottom: pos.bottom, left: pos.left, width: TOOLTIP_WIDTH }}
+            ref={boxRef}
+            className="pointer-events-none fixed z-[100] max-h-[80vh] overflow-y-auto rounded-lg border border-app-border bg-app-card p-3 text-left text-xs text-app shadow-2xl"
+            style={{
+              top: coords?.top ?? -9999,
+              left: coords?.left ?? -9999,
+              width: TOOLTIP_WIDTH,
+              visibility: coords ? 'visible' : 'hidden',
+            }}
           >
             {content}
           </div>,
