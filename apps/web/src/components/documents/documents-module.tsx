@@ -476,6 +476,18 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                   <Tags className="h-4 w-4" aria-hidden /> Importar Etiquetas
                 </span>
               </button>
+              {module === 'despesas' && (
+                <button
+                  type="button"
+                  className="flex items-center gap-2 rounded-lg bg-gradient-primary px-4 py-2 text-xs font-bold uppercase text-white transition hover:opacity-90 disabled:opacity-60"
+                  onClick={() => void analisarConferencia()}
+                  disabled={analisando !== null}
+                  title="Usa a IA pra conferir se o PDF anexado bate com os dados cadastrados (consome tokens) — selecione os documentos na tabela antes de clicar"
+                >
+                  <Sparkles className="h-4 w-4" aria-hidden />
+                  {analisando ? `Analisando… ${analisando.done}/${analisando.total}` : 'Analisar Doc (IA)'}
+                </button>
+              )}
               <button type="button" className={btnPrimary} onClick={() => setIncludeOpen(true)}>
                 <span className="flex items-center gap-2">
                   <Plus className="h-4 w-4" aria-hidden /> Incluir
@@ -485,6 +497,15 @@ export function DocumentsModule({ module }: { module: DocModule }) {
           )}
         </div>
       </div>
+
+      {analisando && (
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-app-skeleton">
+          <div
+            className="h-full rounded-full bg-gradient-primary transition-all"
+            style={{ width: `${analisando.total > 0 ? (analisando.done / analisando.total) * 100 : 0}%` }}
+          />
+        </div>
+      )}
 
       {!showTrash && (
         <div className={`${cardCls} p-4 card-accent-blue`}>
@@ -619,52 +640,30 @@ export function DocumentsModule({ module }: { module: DocModule }) {
       )}
 
       {!showTrash && selected.size > 0 && (
-        <div className={`${cardCls} space-y-2 p-3`}>
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-semibold text-app">{selected.size} selecionada(s)</p>
-            <div className="flex gap-2">
-              {module === 'despesas' && (
-                <button
-                  type="button"
-                  className="flex items-center gap-2 rounded-lg bg-gradient-primary px-4 py-2 text-xs font-bold uppercase text-white transition hover:opacity-90 disabled:opacity-60"
-                  onClick={() => void analisarConferencia()}
-                  disabled={analisando !== null}
-                  title="Usa a IA pra conferir se o PDF anexado bate com os dados cadastrados (consome tokens)"
-                >
-                  <Sparkles className="h-4 w-4" aria-hidden />
-                  {analisando ? `Analisando… ${analisando.done}/${analisando.total}` : 'Analisar Doc (IA)'}
-                </button>
-              )}
-              <button
-                type="button"
-                className={btnGhost}
-                onClick={downloadZip}
-                disabled={zipDownloading}
-              >
-                <span className="flex items-center gap-2">
-                  <FileUp className="h-4 w-4 rotate-180" aria-hidden />
-                  {zipDownloading ? 'Gerando ZIP…' : 'Baixar ZIP'}
-                </span>
-              </button>
-              <button
-                type="button"
-                className="rounded-lg border border-red-300 bg-app-input-bg px-4 py-2 text-xs font-bold uppercase text-red-500 transition hover:bg-red-50 dark:hover:bg-red-900/20"
-                onClick={() => setConfirmBulkDelete(true)}
-              >
-                <span className="flex items-center gap-2">
-                  <Trash2 className="h-4 w-4" aria-hidden /> Excluir selecionadas
-                </span>
-              </button>
-            </div>
+        <div className={`${cardCls} flex items-center justify-between gap-3 p-3`}>
+          <p className="text-sm font-semibold text-app">{selected.size} selecionada(s)</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className={btnGhost}
+              onClick={downloadZip}
+              disabled={zipDownloading}
+            >
+              <span className="flex items-center gap-2">
+                <FileUp className="h-4 w-4 rotate-180" aria-hidden />
+                {zipDownloading ? 'Gerando ZIP…' : 'Baixar ZIP'}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-red-300 bg-app-input-bg px-4 py-2 text-xs font-bold uppercase text-red-500 transition hover:bg-red-50 dark:hover:bg-red-900/20"
+              onClick={() => setConfirmBulkDelete(true)}
+            >
+              <span className="flex items-center gap-2">
+                <Trash2 className="h-4 w-4" aria-hidden /> Excluir selecionadas
+              </span>
+            </button>
           </div>
-          {analisando && (
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-app-skeleton">
-              <div
-                className="h-full rounded-full bg-gradient-primary transition-all"
-                style={{ width: `${analisando.total > 0 ? (analisando.done / analisando.total) * 100 : 0}%` }}
-              />
-            </div>
-          )}
         </div>
       )}
 
