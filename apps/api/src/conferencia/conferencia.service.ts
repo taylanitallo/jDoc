@@ -49,6 +49,29 @@ export class ConferenciaService implements OnModuleDestroy {
     await this.queue.add('conferir', data);
   }
 
+  /**
+   * Cancela os jobs que AINDA NAO comecaram a rodar (estado 'waiting' ou
+   * 'delayed') — economiza o custo dos que nem foram enviados pra IA ainda.
+   * Jobs ja em andamento (no maximo 2, concurrency do worker) terminam
+   * normalmente; nao da pra abortar uma chamada de API ja em voo com
+   * seguranca. Filtra por job.data.documentId (nao por jobId — mantemos IDs
+   * auto-gerados pra evitar colisao quando o mesmo documento e reanalisado).
+   * Devolve quantos foram cancelados de fato.
+   */
+  async cancelarPendentes(ids: string[]): Promise<number> {
+    if (!this.queue) return 0;
+    const idSet = new Set(ids);
+    const jobs = await this.queue.getJobs(['waiting', 'delayed']);
+    let cancelados = 0;
+    for (const job of jobs) {
+      if (idSet.has(job.data.documentId)) {
+        await job.remove();
+        cancelados++;
+      }
+    }
+    return cancelados;
+  }
+
   /** Se a feature esta configurada (API key do provedor selecionado presente) neste ambiente. */
   isEnabled(): boolean {
     return this.queue !== null;

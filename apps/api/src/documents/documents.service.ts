@@ -411,6 +411,24 @@ export class DocumentsService {
     return { enqueued: enqueuedIds, skipped: rows.length - elegiveis.length };
   }
 
+  /**
+   * Cancela um lote de conferencia em andamento (botao "Cancelar" no painel
+   * central de progresso). Remove da fila os jobs que ainda nao comecaram
+   * (economiza o custo) e volta o status desses pra null — os que ja estavam
+   * em andamento terminam normalmente e gravam o resultado real ao concluir.
+   */
+  async cancelarConferencia(user: TenantAccessClaims, ids: string[]): Promise<{ cancelados: number }> {
+    const ctx = requireTenantContext();
+    this.assertPermission(user, 'despesas', 'update');
+    const cancelados = await this.conferencia.cancelarPendentes(ids);
+    const sql = this.db.tenant(ctx.schemaName);
+    await sql`
+      UPDATE documents SET conferencia_status = NULL, conferencia_verificada_em = NULL
+      WHERE id = ANY(${ids}) AND deleted_at IS NULL AND module = 'despesas' AND conferencia_status = 'pendente'
+    `;
+    return { cancelados };
+  }
+
   /** Status atual da conferencia de um lote (polling da barra de progresso + lista de falhas). */
   async statusConferencia(user: TenantAccessClaims, ids: string[]): Promise<ConferenciaStatusItem[]> {
     const ctx = requireTenantContext();
@@ -671,7 +689,14 @@ export class DocumentsService {
         file_hash = ${fileHash},
         paginas = ${pageCount},
         status = 'disponivel',
-        atualizado_em = now()
+        atualizado_em = now(),
+        -- o veredito antigo era sobre o PDF anterior; substituir o arquivo
+        -- sem limpar isso deixaria um selo verde/laranja mentiroso ate o
+        -- usuario clicar em "Analisar Doc (IA)" de novo.
+        conferencia_status = NULL,
+        conferencia_resultado = NULL,
+        conferencia_erro = NULL,
+        conferencia_verificada_em = NULL
       WHERE id = ${id} AND deleted_at IS NULL
     `;
     if (oldFileKey) await this.storage.delete(ctx.slug, oldFileKey);
@@ -717,7 +742,14 @@ export class DocumentsService {
         file_hash = NULL,
         paginas = NULL,
         status = 'aguardando_arquivo',
-        atualizado_em = now()
+        atualizado_em = now(),
+        -- sem isso, o selo (verde/laranja) continuaria mostrando o veredito
+        -- do arquivo que nao existe mais — abrindo brecha pro usuario tirar
+        -- um PDF divergente e deixar o documento "aparentando" conforme.
+        conferencia_status = NULL,
+        conferencia_resultado = NULL,
+        conferencia_erro = NULL,
+        conferencia_verificada_em = NULL
       WHERE id = ${id} AND deleted_at IS NULL
     `;
     await this.storage.delete(ctx.slug, row.file_key);

@@ -103,6 +103,15 @@ function formatCompetencia(competencia: string | null): string {
   return nome ? `${nome.toUpperCase()}/${ano}` : competencia;
 }
 
+/** "125" -> "2min 5s" / "45" -> "45s" — usado no tempo estimado da analise. */
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}min ${seconds}s`;
+}
+
 /**
  * Selo da conferência por IA: cruza o PDF anexado com os dados da etiqueta.
  * Verde = conforme. Laranja = divergência. Sem veredito ainda (nunca
@@ -243,7 +252,12 @@ export function DocumentsModule({ module }: { module: DocModule }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [zipDownloading, setZipDownloading] = useState(false);
-  const [analisando, setAnalisando] = useState<{ done: number; total: number } | null>(null);
+  const [analisando, setAnalisando] = useState<{
+    ids: string[];
+    done: number;
+    total: number;
+    startedAt: number;
+  } | null>(null);
   const [resultadoProblemas, setResultadoProblemas] = useState<{
     ids: string[];
     divergente: number;
@@ -254,6 +268,9 @@ export function DocumentsModule({ module }: { module: DocModule }) {
   // Lock sincrono (nao sujeito ao atraso de re-render do useState) contra
   // duplo-clique — evita a analise disparar duas vezes e toasts duplicados.
   const analisandoRef = useRef(false);
+  // Idem, checado dentro do loop de polling pra parar assim que o usuario
+  // clicar em "Cancelar" (useState sozinho teria o mesmo atraso de re-render).
+  const cancelarRef = useRef(false);
 
   const params = new URLSearchParams({ module, page: String(page), pageSize: '20' });
   if (!showTrash) {
@@ -423,6 +440,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
       return;
     }
     analisandoRef.current = true;
+    cancelarRef.current = false;
     setError(null);
     setResultadoProblemas(null);
     try {
@@ -435,20 +453,30 @@ export function DocumentsModule({ module }: { module: DocModule }) {
         toast.info('Nenhum documento selecionado tem PDF anexado — nada para analisar.');
         return;
       }
-      setAnalisando({ done: 0, total: res.enqueued.length });
+      setAnalisando({ ids: res.enqueued, done: 0, total: res.enqueued.length, startedAt: Date.now() });
 
       let statuses: ConferenciaStatusItem[] = [];
-      // Poll ate todos saírem de 'pendente' (ou timeout de seguranca ~5min).
-      for (let tentativa = 0; tentativa < 150; tentativa++) {
+      // Poll ate todos saírem de 'pendente' (ou timeout de seguranca ~5min),
+      // checando o cancelarRef entre cada espera pra parar assim que o
+      // usuario clicar em "Cancelar".
+      for (let tentativa = 0; tentativa < 150 && !cancelarRef.current; tentativa++) {
         await new Promise((r) => setTimeout(r, 2000));
+        if (cancelarRef.current) break;
         statuses = await api<ConferenciaStatusItem[]>(`/t/${slug}/documents/conferencia/status`, {
           method: 'POST',
           body: { ids: res.enqueued },
         });
         const done = statuses.filter((s) => s.conferenciaStatus && s.conferenciaStatus !== 'pendente').length;
-        setAnalisando({ done, total: res.enqueued.length });
+        // Preserva o startedAt original (funcional update) — resetar a cada
+        // poll quebraria a conta do tempo estimado (elapsed sempre ~0).
+        setAnalisando((prev) => (prev ? { ...prev, done } : prev));
         qc.invalidateQueries({ queryKey: ['docs', slug] });
         if (done >= res.enqueued.length) break;
+      }
+
+      if (cancelarRef.current) {
+        toast.info('Análise cancelada.');
+        return;
       }
 
       const conforme = statuses.filter((s) => s.conferenciaStatus === 'conforme').length;
@@ -473,7 +501,22 @@ export function DocumentsModule({ module }: { module: DocModule }) {
     } finally {
       setAnalisando(null);
       analisandoRef.current = false;
+      cancelarRef.current = false;
       await qc.invalidateQueries({ queryKey: ['docs', slug] });
+    }
+  };
+
+  /** Cancela a analise em andamento — para de esperar e tira da fila os que ainda nem comecaram. */
+  const cancelarAnalise = async () => {
+    if (!analisando || cancelarRef.current) return;
+    cancelarRef.current = true;
+    try {
+      await api(`/t/${slug}/documents/conferencia/cancelar`, {
+        method: 'POST',
+        body: { ids: analisando.ids },
+      });
+    } catch {
+      // best-effort — o loop de polling ja para de qualquer forma pelo ref.
     }
   };
 
@@ -617,7 +660,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                   title="Usa a IA pra conferir se o PDF anexado bate com os dados cadastrados (consome tokens) — selecione os documentos na tabela antes de clicar"
                 >
                   <Sparkles className="h-4 w-4" aria-hidden />
-                  {analisando ? `Analisando… ${analisando.done}/${analisando.total}` : 'Analisar Doc (IA)'}
+                  {analisando ? 'Analisando…' : 'Analisar Doc (IA)'}
                 </button>
               )}
               <button type="button" className={btnPrimary} onClick={() => setIncludeOpen(true)}>
@@ -629,15 +672,6 @@ export function DocumentsModule({ module }: { module: DocModule }) {
           )}
         </div>
       </div>
-
-      {analisando && (
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-app-skeleton">
-          <div
-            className="h-full rounded-full bg-gradient-primary transition-all"
-            style={{ width: `${analisando.total > 0 ? (analisando.done / analisando.total) * 100 : 0}%` }}
-          />
-        </div>
-      )}
 
       {!showTrash && (
         <div className={`${cardCls} p-4 card-accent-blue`}>
@@ -1202,6 +1236,34 @@ export function DocumentsModule({ module }: { module: DocModule }) {
           onClose={() => setEditing(null)}
           onDone={invalidate}
         />
+      )}
+      {analisando && (
+        <Modal
+          title="Analisando documentos por IA"
+          subtitle={`${analisando.done}/${analisando.total} concluído(s)`}
+          open
+          onClose={() => void cancelarAnalise()}
+        >
+          <div className="space-y-4 text-center">
+            <Loader2 className="mx-auto h-12 w-12 animate-spin text-accent" aria-hidden />
+            <div className="h-2.5 w-full overflow-hidden rounded-full bg-app-skeleton">
+              <div
+                className="h-full rounded-full bg-gradient-primary transition-all"
+                style={{ width: `${analisando.total > 0 ? (analisando.done / analisando.total) * 100 : 0}%` }}
+              />
+            </div>
+            <p className="text-sm text-app-muted">
+              {analisando.done === 0
+                ? 'Calculando tempo estimado…'
+                : `~${formatDuration(
+                    ((Date.now() - analisando.startedAt) / analisando.done) * (analisando.total - analisando.done),
+                  )} restante(s)`}
+            </p>
+            <button type="button" className={btnGhost} onClick={() => void cancelarAnalise()}>
+              Cancelar
+            </button>
+          </div>
+        </Modal>
       )}
       {resultadoProblemas && (
         <Modal
