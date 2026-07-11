@@ -118,7 +118,7 @@ export const inputCls =
   'w-full rounded-lg border border-app-input-border bg-app-input-bg px-3 py-2 text-sm text-app outline-none focus:border-neon-purple';
 export const labelCls = 'mb-1 block text-xs font-bold uppercase text-app-muted';
 export const btnPrimary =
-  'rounded-lg bg-gradient-primary px-4 py-2 text-xs font-bold uppercase text-white transition hover:opacity-90 disabled:opacity-50';
+  'shrink-0 whitespace-nowrap rounded-lg bg-gradient-primary px-4 py-2 text-xs font-bold uppercase text-white transition hover:opacity-90 disabled:opacity-50';
 export const btnGhost =
-  'rounded-lg border border-app-input-border bg-app-input-bg px-4 py-2 text-xs font-bold uppercase text-app-muted transition hover:bg-app-hover hover:text-app';
+  'shrink-0 whitespace-nowrap rounded-lg border border-app-input-border bg-app-input-bg px-4 py-2 text-xs font-bold uppercase text-app-muted transition hover:bg-app-hover hover:text-app';
 export const cardCls = 'rounded-xl border border-app-border bg-app-card shadow-sm';

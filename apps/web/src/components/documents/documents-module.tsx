@@ -785,7 +785,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
         <h1 className="text-lg font-bold text-app">
           {meta.title} {showTrash && `— Lixeira (retenção ${TRASH_RETENTION_DAYS} dias)`}
         </h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             className={btnGhost}
@@ -833,7 +833,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
               {module === 'despesas' && (
                 <button
                   type="button"
-                  className="flex items-center gap-2 rounded-lg bg-gradient-primary px-4 py-2 text-xs font-bold uppercase text-white transition hover:opacity-90 disabled:opacity-60"
+                  className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-gradient-primary px-4 py-2 text-xs font-bold uppercase text-white transition hover:opacity-90 disabled:opacity-60"
                   onClick={() => void analisarConferencia()}
                   disabled={analisando !== null}
                   title="Usa a IA pra conferir se o PDF anexado bate com os dados cadastrados (consome tokens) — selecione os documentos na tabela antes de clicar"
@@ -1013,9 +1013,9 @@ export function DocumentsModule({ module }: { module: DocModule }) {
       )}
 
       {!showTrash && selected.size > 0 && (
-        <div className={`${cardCls} flex items-center justify-between gap-3 p-3`}>
+        <div className={`${cardCls} flex flex-wrap items-center justify-between gap-3 p-3`}>
           <p className="text-sm font-semibold text-app">{selected.size} selecionada(s)</p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               className={btnGhost}
@@ -1029,7 +1029,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
             </button>
             <button
               type="button"
-              className="rounded-lg border border-red-300 bg-app-input-bg px-4 py-2 text-xs font-bold uppercase text-red-500 transition hover:bg-red-50 dark:hover:bg-red-900/20"
+              className="shrink-0 whitespace-nowrap rounded-lg border border-red-300 bg-app-input-bg px-4 py-2 text-xs font-bold uppercase text-red-500 transition hover:bg-red-50 dark:hover:bg-red-900/20"
               onClick={() => setConfirmBulkDelete(true)}
             >
               <span className="flex items-center gap-2">
