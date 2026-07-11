@@ -1839,41 +1839,43 @@ function AttachPdfModal({
     <Modal title={temArquivo ? 'Substituir PDF' : 'Anexar PDF'} subtitle={doc.originalName} open onClose={onClose}>
       <div className="space-y-4">
         {temArquivo && (
-          <div className="rounded-lg border border-app-border bg-app-input-bg px-3 py-2">
-            <div className="mb-2 flex items-center gap-2">
-              {doc.module === 'despesas' && (
-                <FileConferenciaBadge
-                  status={doc.conferenciaStatus}
-                  resultado={doc.conferenciaResultado}
-                  erro={doc.conferenciaErro}
-                />
-              )}
-              <p className="truncate text-xs font-semibold text-app">{doc.originalName}</p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => void viewFile()}
-                className="flex items-center gap-1.5 rounded-lg border border-app-input-border bg-app-card px-3 py-1.5 text-xs font-bold uppercase text-app-muted transition hover:bg-app-hover hover:text-app"
-              >
-                <Eye className="h-3.5 w-3.5" aria-hidden /> Visualizar
-              </button>
-              <button
-                type="button"
-                onClick={removeCurrent}
-                disabled={removing}
-                className="flex items-center gap-1.5 rounded-lg border border-app-input-border bg-app-card px-3 py-1.5 text-xs font-bold uppercase text-app-muted transition hover:bg-red-50 hover:text-red-500 disabled:opacity-60 dark:hover:bg-red-900/20"
-              >
-                <Trash2 className="h-3.5 w-3.5" aria-hidden /> {removing ? 'Excluindo…' : 'Excluir PDF'}
-              </button>
-            </div>
-            <p className="mt-2 text-xs text-app-muted">Selecionar um novo arquivo abaixo vai substituir este PDF.</p>
-          </div>
-        )}
-
-        {temArquivo && extras.length > 0 && (
           <div className="space-y-1.5">
-            <p className="text-xs font-semibold uppercase text-app-muted">Outros PDFs anexados</p>
+            <p className="text-xs font-semibold uppercase text-app-muted">Arquivos anexados</p>
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-app-border bg-app-input-bg px-3 py-2">
+              <span className="flex min-w-0 items-center gap-2">
+                {doc.module === 'despesas' && (
+                  <FileConferenciaBadge
+                    status={doc.conferenciaStatus}
+                    resultado={doc.conferenciaResultado}
+                    erro={doc.conferenciaErro}
+                  />
+                )}
+                <span className="truncate text-xs text-app">{doc.originalName}</span>
+              </span>
+              <span className="flex shrink-0 gap-1">
+                <button
+                  type="button"
+                  title="Visualizar"
+                  onClick={() => void viewFile()}
+                  className="rounded p-1 text-app-muted hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20"
+                >
+                  <Eye className="h-3.5 w-3.5" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  title="Excluir PDF"
+                  disabled={removing}
+                  onClick={removeCurrent}
+                  className="rounded p-1 text-app-muted hover:bg-red-50 hover:text-red-500 disabled:opacity-60 dark:hover:bg-red-900/20"
+                >
+                  {removing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                  )}
+                </button>
+              </span>
+            </div>
             {extras.map((extra) => (
               <div
                 key={extra.id}
@@ -1905,11 +1907,16 @@ function AttachPdfModal({
                     onClick={() => void removeExtra(extra.id)}
                     className="rounded p-1 text-app-muted hover:bg-red-50 hover:text-red-500 disabled:opacity-60 dark:hover:bg-red-900/20"
                   >
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                    {removingExtraId === extra.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                    )}
                   </button>
                 </span>
               </div>
             ))}
+            <p className="text-xs text-app-muted">Selecionar um novo arquivo abaixo vai substituir o PDF principal.</p>
           </div>
         )}
 
