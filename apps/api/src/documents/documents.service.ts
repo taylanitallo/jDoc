@@ -667,6 +667,23 @@ export class DocumentsService {
       byDocument.set(r.document_id, list);
     }
     const groups = [...byDocument.values()].sort((a, b) => (a[0]!.docCaixa ?? '').localeCompare(b[0]!.docCaixa ?? ''));
+    const totalDivergente = [...primaryRows, ...extraRows].filter((r) => r.conferencia_status === 'divergente').length;
+    const totalFalha = [...primaryRows, ...extraRows].filter((r) => r.conferencia_status === 'falha').length;
+
+    // Paleta alinhada com os selos do site (laranja=divergente, vermelho=falha,
+    // azul=nome do campo) — mesmo balao colorido que aparece no hover da tela.
+    const COLOR = {
+      headerFrom: '#1e3a8a',
+      headerTo: '#7c3aed',
+      purple: '#7c3aed',
+      blue: '#2563eb',
+      orange: '#ea580c',
+      red: '#dc2626',
+      textStrong: '#111827',
+      textBody: '#374151',
+      textMuted: '#6b7280',
+      divider: '#e5e7eb',
+    };
 
     return new Promise((resolve, reject) => {
       const doc = new PDFKitDocument({ margin: 50 });
@@ -675,17 +692,40 @@ export class DocumentsService {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      doc.fontSize(16).font('Helvetica-Bold').text('CRÍTICAS DA CONFERÊNCIA POR IA', { align: 'center' });
-      doc
-        .fontSize(9)
-        .font('Helvetica')
-        .text(`Gerado em ${new Date().toLocaleString('pt-BR')} — ${groups.length} documento(s)`, {
-          align: 'center',
-        });
-      doc.moveDown(1.5);
+      const pageWidth = doc.page.width;
+      const marginX = 50;
+      const contentWidth = pageWidth - marginX * 2;
+      const headerHeight = 74;
+
+      const drawPageHeader = (): void => {
+        const gradient = doc.linearGradient(0, 0, pageWidth, 0);
+        gradient.stop(0, COLOR.headerFrom).stop(1, COLOR.headerTo);
+        doc.rect(0, 0, pageWidth, headerHeight).fill(gradient);
+        doc
+          .fillColor('#ffffff')
+          .fontSize(17)
+          .font('Helvetica-Bold')
+          .text('CRÍTICAS DA CONFERÊNCIA POR IA', marginX, 24, { align: 'center', width: contentWidth });
+        const resumoPartes = [`${groups.length} documento(s)`];
+        if (totalDivergente > 0) resumoPartes.push(`${totalDivergente} divergência(s)`);
+        if (totalFalha > 0) resumoPartes.push(`${totalFalha} falha(s)`);
+        doc
+          .fillColor('#e0e7ff')
+          .fontSize(9)
+          .font('Helvetica')
+          .text(`Gerado em ${new Date().toLocaleString('pt-BR')} — ${resumoPartes.join(' · ')}`, marginX, 48, {
+            align: 'center',
+            width: contentWidth,
+          });
+        doc.fillColor(COLOR.textStrong);
+        doc.y = headerHeight + 24;
+      };
+
+      drawPageHeader();
+      doc.on('pageAdded', drawPageHeader);
 
       if (groups.length === 0) {
-        doc.fontSize(11).text('Nenhuma divergência ou falha encontrada neste lote.');
+        doc.fontSize(11).fillColor(COLOR.textBody).text('Nenhuma divergência ou falha encontrada neste lote.', marginX);
       }
 
       for (const group of groups) {
@@ -695,34 +735,84 @@ export class DocumentsService {
             ? '—'
             : Number(first.value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-        doc.fontSize(11).font('Helvetica-Bold').text(`Doc. Caixa ${first.docCaixa ?? '—'} — ${first.credor ?? '—'}`);
-        doc.fontSize(9).font('Helvetica').text(`Empenho: ${first.empenho ?? '—'}    Valor: ${valorFmt}`);
+        if (doc.y > doc.page.height - doc.page.margins.bottom - 130) doc.addPage();
+
+        const groupTop = doc.y;
+        doc.rect(marginX, groupTop + 2, 4, 16).fill(COLOR.purple);
+        doc
+          .fillColor(COLOR.textStrong)
+          .fontSize(12)
+          .font('Helvetica-Bold')
+          .text(`Doc. Caixa ${first.docCaixa ?? '—'} — ${first.credor ?? '—'}`, marginX + 12, groupTop, {
+            width: contentWidth - 12,
+          });
+        doc
+          .fillColor(COLOR.textMuted)
+          .fontSize(9)
+          .font('Helvetica')
+          .text(`Empenho: ${first.empenho ?? '—'}    Valor: ${valorFmt}`, marginX + 12);
+        doc.moveDown(0.5);
 
         for (const entry of group) {
           const resultado =
             typeof entry.resultado === 'string'
               ? (JSON.parse(entry.resultado) as ConferenciaResultado)
               : entry.resultado;
-          const statusLabel = entry.status === 'divergente' ? 'DIVERGENTE' : 'FALHA NA ANÁLISE';
+          const isDivergente = entry.status === 'divergente';
+          const statusColor = isDivergente ? COLOR.orange : COLOR.red;
+          const statusLabel = isDivergente ? 'DIVERGENTE' : 'FALHA NA ANÁLISE';
 
-          doc.moveDown(0.3);
-          doc.fontSize(9).font('Helvetica-Bold').text(`  Arquivo: ${entry.fileLabel} — ${statusLabel}`);
-          doc.font('Helvetica');
-          if (entry.status === 'divergente' && resultado) {
-            doc.text(`  Resumo: ${resultado.resumo}`);
+          if (doc.y > doc.page.height - doc.page.margins.bottom - 80) doc.addPage();
+
+          doc
+            .fontSize(9.5)
+            .font('Helvetica-Bold')
+            .fillColor(COLOR.textStrong)
+            .text(`Arquivo: ${entry.fileLabel}`, marginX + 12, doc.y, { continued: true })
+            .fillColor(statusColor)
+            .text(`  ●  ${statusLabel}`);
+          doc.font('Helvetica').fillColor(COLOR.textBody);
+
+          if (isDivergente && resultado) {
+            if (resultado.resumo) {
+              doc
+                .fontSize(8.5)
+                .fillColor(COLOR.textMuted)
+                .text(resultado.resumo, marginX + 12, doc.y, { width: contentWidth - 12 });
+            }
+            doc.moveDown(0.15);
             for (const d of resultado.divergencias) {
-              doc.text(`    •  ${d.campo}: esperado "${d.esperado ?? '—'}", encontrado "${d.encontrado ?? '—'}"`);
+              doc
+                .fontSize(8.5)
+                .fillColor(COLOR.blue)
+                .font('Helvetica-Bold')
+                .text(`•  ${d.campo}`, marginX + 22, doc.y, { continued: true })
+                .font('Helvetica')
+                .fillColor(COLOR.textBody)
+                .text(`: esperado `, { continued: true })
+                .fillColor(COLOR.textMuted)
+                .text(`"${d.esperado ?? '—'}"`, { continued: true })
+                .fillColor(COLOR.textBody)
+                .text(`, encontrado `, { continued: true })
+                .fillColor(statusColor)
+                .text(`"${d.encontrado ?? '—'}"`);
             }
           } else if (entry.erro) {
-            doc.text(`  Motivo: ${entry.erro}`);
+            doc
+              .fontSize(8.5)
+              .fillColor(COLOR.red)
+              .text(`Motivo: ${entry.erro}`, marginX + 12, doc.y, { width: contentWidth - 12 });
           }
+          doc.fillColor(COLOR.textStrong);
+          doc.moveDown(0.5);
         }
 
-        doc.moveDown(0.6);
+        doc.moveDown(0.2);
         doc
-          .moveTo(50, doc.y)
-          .lineTo(560, doc.y)
-          .strokeColor('#dddddd')
+          .moveTo(marginX, doc.y)
+          .lineTo(pageWidth - marginX, doc.y)
+          .strokeColor(COLOR.divider)
+          .lineWidth(1)
           .stroke();
         doc.moveDown(0.6);
       }
