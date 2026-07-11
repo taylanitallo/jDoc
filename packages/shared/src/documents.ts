@@ -222,3 +222,12 @@ export const etiquetasByDocCaixaQuerySchema = z
   })
   .strict();
 export type EtiquetasByDocCaixaQuery = z.infer<typeof etiquetasByDocCaixaQuerySchema>;
+
+/** Etiquetas de um modulo ainda sem PDF (aguardando_arquivo) — painel + total. */
+export const etiquetasPendentesQuerySchema = z.object({ module: docModuleSchema }).strict();
+export type EtiquetasPendentesQuery = z.infer<typeof etiquetasPendentesQuerySchema>;
+
+export interface EtiquetasPendentesResult {
+  total: number;
+  items: EtiquetaCandidate[];
+}

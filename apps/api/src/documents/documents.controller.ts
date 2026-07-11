@@ -23,6 +23,7 @@ import {
   docSubtypeSchema,
   documentFieldsSchema,
   etiquetasByDocCaixaQuerySchema,
+  etiquetasPendentesQuerySchema,
   searchDocumentsSchema,
   trashQuerySchema,
   updateDocumentSchema,
@@ -30,6 +31,8 @@ import {
   type DocumentView,
   type EtiquetaCandidate,
   type EtiquetasByDocCaixaQuery,
+  type EtiquetasPendentesQuery,
+  type EtiquetasPendentesResult,
   type SearchDocumentsQuery,
   type TenantAccessClaims,
   type TrashQuery,
@@ -128,6 +131,15 @@ export class DocumentsController {
     @Query(new ZodValidationPipe(etiquetasByDocCaixaQuerySchema)) q: EtiquetasByDocCaixaQuery,
   ): Promise<EtiquetaCandidate[]> {
     return this.docs.findEtiquetasByDocCaixa(user, q.module, q.docCaixa);
+  }
+
+  @Permissions()
+  @Get('etiquetas-pendentes')
+  etiquetasPendentes(
+    @CurrentUser() user: TenantAccessClaims,
+    @Query(new ZodValidationPipe(etiquetasPendentesQuerySchema)) q: EtiquetasPendentesQuery,
+  ): Promise<EtiquetasPendentesResult> {
+    return this.docs.listEtiquetasPendentes(user, q.module);
   }
 
   @Permissions()

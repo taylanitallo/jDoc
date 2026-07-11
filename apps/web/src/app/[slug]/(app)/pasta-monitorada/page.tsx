@@ -3,8 +3,19 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { FolderSync, FileUp, Trash2, Link2, AlertTriangle, ArrowUpCircle } from 'lucide-react';
-import type { EtiquetaCandidate } from '@jdoc/shared';
+import {
+  FolderSync,
+  FileUp,
+  Trash2,
+  Link2,
+  AlertTriangle,
+  ArrowUpCircle,
+  ClipboardList,
+  ChevronDown,
+  ChevronUp,
+  CheckCheck,
+} from 'lucide-react';
+import type { EtiquetaCandidate, EtiquetasPendentesResult } from '@jdoc/shared';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/toast';
 import { EmptyState } from '@/components/empty-state';
@@ -65,6 +76,16 @@ export default function PastaMonitoradaPage() {
   const [folder, setFolder] = useState<string | null>(null);
   const [folderBusy, setFolderBusy] = useState(false);
   const [files, setFiles] = useState<PendingFile[]>([]);
+  const [showPendentes, setShowPendentes] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
+
+  // Etiquetas de despesa que ainda estao sem PDF (painel + total).
+  const { data: pendentes } = useQuery({
+    queryKey: ['etiquetas-pendentes', slug],
+    queryFn: () =>
+      api<EtiquetasPendentesResult>(`/t/${slug}/documents/etiquetas-pendentes?module=despesas`),
+    enabled: desktop && !outdated,
+  });
 
   // Checagem client-only (evita mismatch de hidratacao — servidor nao sabe se e desktop).
   useEffect(() => {
@@ -111,6 +132,57 @@ export default function PastaMonitoradaPage() {
     }
   }
 
+  /**
+   * Vincula de uma vez todos os arquivos que casam com EXATAMENTE UMA etiqueta
+   * (sem ambiguidade). Pula os que tem varias candidatas (o usuario escolhe) e
+   * os sem etiqueta. Evita usar a mesma etiqueta pra dois arquivos no mesmo lote.
+   */
+  async function vincularTodos() {
+    setBatchBusy(true);
+    const usados = new Set<string>();
+    let ok = 0;
+    let ambiguos = 0;
+    let semEtiqueta = 0;
+    try {
+      for (const f of files) {
+        const cands = await qc.fetchQuery({
+          queryKey: ['etiquetas', slug, f.docCaixa],
+          queryFn: () =>
+            api<EtiquetaCandidate[]>(
+              `/t/${slug}/documents/etiquetas?module=despesas&docCaixa=${encodeURIComponent(f.docCaixa)}`,
+            ),
+        });
+        const livres = cands.filter((c) => !usados.has(c.id));
+        if (livres.length === 0) {
+          if (cands.length === 0) semEtiqueta++;
+          else ambiguos++; // todas as candidatas ja foram usadas neste lote
+          continue;
+        }
+        if (livres.length > 1) {
+          ambiguos++;
+          continue;
+        }
+        const etiqueta = livres[0]!;
+        try {
+          await window.jdoc!.invoke('watch:attach', { fileId: f.fileId, documentId: etiqueta.id });
+          usados.add(etiqueta.id);
+          ok++;
+        } catch {
+          // falha pontual (rede/quota) — segue os demais.
+        }
+      }
+      await qc.invalidateQueries({ queryKey: ['etiquetas'] });
+      await qc.invalidateQueries({ queryKey: ['etiquetas-pendentes', slug] });
+      const partes = [`${ok} vinculado(s)`];
+      if (ambiguos > 0) partes.push(`${ambiguos} com escolha pendente`);
+      if (semEtiqueta > 0) partes.push(`${semEtiqueta} sem etiqueta`);
+      if (ok > 0) toast.success(partes.join(' · '));
+      else toast.info(partes.join(' · '));
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
   if (!checked) return null;
 
   if (!desktop) {
@@ -150,23 +222,72 @@ export default function PastaMonitoradaPage() {
         </p>
       </div>
 
-      <div className={`${cardCls} flex items-center gap-4 p-4`}>
-        {folder ? (
-          <>
-            <span className="flex-1 truncate text-sm text-app" title={folder}>
-              <b className="text-app-muted">Pasta monitorada:</b> {folder}
-            </span>
-            <button type="button" className={btnGhost} onClick={() => void stopWatching()} disabled={folderBusy}>
-              parar monitoramento
-            </button>
-          </>
-        ) : (
-          <>
-            <span className="flex-1 text-sm text-app-muted">Nenhuma pasta monitorada.</span>
-            <button type="button" className={btnPrimary} onClick={() => void chooseFolder()} disabled={folderBusy}>
-              escolher pasta
-            </button>
-          </>
+      <div className={`${cardCls} p-4`}>
+        <div className="flex flex-wrap items-center gap-3">
+          {folder ? (
+            <>
+              <span className="min-w-0 flex-1 truncate text-sm text-app" title={folder}>
+                <b className="text-app-muted">Pasta monitorada:</b> {folder}
+              </span>
+              <button
+                type="button"
+                className={btnGhost}
+                onClick={() => setShowPendentes((s) => !s)}
+                title="Etiquetas de despesa que ainda estão sem arquivo"
+              >
+                <ClipboardList className="h-4 w-4" aria-hidden />
+                Etiquetas aguardando arquivo
+                {pendentes ? <b className="ml-1">({pendentes.total})</b> : null}
+                {showPendentes ? (
+                  <ChevronUp className="h-4 w-4" aria-hidden />
+                ) : (
+                  <ChevronDown className="h-4 w-4" aria-hidden />
+                )}
+              </button>
+              <button type="button" className={btnGhost} onClick={() => void stopWatching()} disabled={folderBusy}>
+                parar monitoramento
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="flex-1 text-sm text-app-muted">Nenhuma pasta monitorada.</span>
+              <button type="button" className={btnPrimary} onClick={() => void chooseFolder()} disabled={folderBusy}>
+                escolher pasta
+              </button>
+            </>
+          )}
+        </div>
+
+        {folder && showPendentes && (
+          <div className="mt-3 border-t border-app-border pt-3">
+            {!pendentes ? (
+              <p className="text-xs text-app-muted">Carregando…</p>
+            ) : pendentes.items.length === 0 ? (
+              <p className="text-xs text-app-muted">Nenhuma etiqueta de despesa aguardando arquivo. 🎉</p>
+            ) : (
+              <>
+                <p className="mb-2 text-xs text-app-muted">
+                  {pendentes.total} etiqueta(s) de despesa ainda sem PDF
+                  {pendentes.total > pendentes.items.length ? ` (mostrando ${pendentes.items.length})` : ''}:
+                </p>
+                <ul className="max-h-64 space-y-1 overflow-y-auto pr-1">
+                  {pendentes.items.map((e) => (
+                    <li
+                      key={e.id}
+                      className="flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded border border-app-border px-2.5 py-1.5 text-xs"
+                    >
+                      <span className="rounded bg-app-badge-gray-bg px-1.5 py-0.5 text-app-badge-gray-text">
+                        {e.docCaixa ?? '—'}
+                      </span>
+                      <span className="text-app-muted">Emp. {e.empenho ?? '—'}</span>
+                      <span className="min-w-0 flex-1 truncate text-app">{e.credor ?? '—'}</span>
+                      <span className="font-semibold text-app">{formatBRL(e.value)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
         )}
       </div>
 
@@ -177,11 +298,28 @@ export default function PastaMonitoradaPage() {
           description="Solte um PDF (nomeado pelo doc de caixa) na pasta monitorada para vinculá-lo à etiqueta."
         />
       ) : (
-        <ul className="space-y-3">
-          {files.map((f) => (
-            <PendingRow key={f.fileId} slug={slug} file={f} toast={toast} qc={qc} />
-          ))}
-        </ul>
+        <>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="flex-1 text-sm text-app-muted">
+              {files.length} arquivo(s) na pasta.
+            </p>
+            <button
+              type="button"
+              className={btnPrimary}
+              onClick={() => void vincularTodos()}
+              disabled={batchBusy}
+              title="Vincula de uma vez os arquivos que casam com exatamente uma etiqueta"
+            >
+              <CheckCheck className="h-4 w-4" aria-hidden />
+              {batchBusy ? 'Vinculando…' : 'Vincular todos os compatíveis'}
+            </button>
+          </div>
+          <ul className="space-y-3">
+            {files.map((f) => (
+              <PendingRow key={f.fileId} slug={slug} file={f} toast={toast} qc={qc} />
+            ))}
+          </ul>
+        </>
       )}
     </div>
   );
@@ -223,8 +361,10 @@ function PendingRow({
       await window.jdoc!.invoke('watch:attach', { fileId: file.fileId, documentId: selected });
       toast.success(`${file.name} vinculado à etiqueta ${file.docCaixa}.`);
       // A etiqueta usada deixa de ser "aguardando_arquivo": revalida para sumir
-      // de outros arquivos com o mesmo doc de caixa. O arquivo some via onWatchPending.
+      // de outros arquivos com o mesmo doc de caixa e atualizar o painel de
+      // pendentes. O arquivo some via onWatchPending.
       await qc.invalidateQueries({ queryKey: ['etiquetas', slug, file.docCaixa] });
+      await qc.invalidateQueries({ queryKey: ['etiquetas-pendentes', slug] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Falha ao vincular o arquivo.');
       setBusy(false);
