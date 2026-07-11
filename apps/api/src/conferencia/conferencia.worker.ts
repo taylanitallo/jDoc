@@ -263,8 +263,10 @@ export class ConferenciaWorker implements OnModuleInit, OnModuleDestroy {
 
     // PDF inline em base64 — limite do Gemini pra PDF e 50MB (nossos
     // documentos, ate ~30MB, cabem tranquilo sem precisar da Files API dele).
+    // "gemini-2.5-flash" foi descontinuado pra contas novas (404); o alias
+    // "-latest" aponta sempre pro flash atual, evitando esse tipo de quebra.
     const response = await this.gemini.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-flash-latest',
       contents: [
         {
           role: 'user',
