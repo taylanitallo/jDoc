@@ -10,6 +10,8 @@ import {
 } from '@nestjs/common';
 import {
   TRASH_RETENTION_DAYS,
+  type ConferenciaResultado,
+  type ConferenciaStatus,
   type DocModule,
   type DocumentFields,
   type DocumentPage,
@@ -28,6 +30,7 @@ import { loadEnv } from '../config/env';
 import { requireTenantContext } from '../tenancy/tenant-context';
 import { SignatureService } from '../signature/signature.service';
 import { hasSignature } from '../signature/pdf-signature';
+import { ConferenciaService } from '../conferencia/conferencia.service';
 
 const PDF_MAGIC = Buffer.from('%PDF');
 
@@ -62,9 +65,17 @@ interface DocRow {
   status: string;
   criado_em: Date;
   deleted_at: Date | null;
+  conferencia_status: ConferenciaStatus | null;
+  conferencia_resultado: ConferenciaResultado | string | null;
+  conferencia_verificada_em: Date | null;
 }
 
 function toView(r: DocRow): DocumentView {
+  // jsonb pode chegar como string dependendo do driver — parse defensivo.
+  const conferenciaResultado =
+    typeof r.conferencia_resultado === 'string'
+      ? (JSON.parse(r.conferencia_resultado) as ConferenciaResultado)
+      : r.conferencia_resultado;
   return {
     id: r.id,
     module: r.module,
@@ -95,6 +106,9 @@ function toView(r: DocRow): DocumentView {
     status: r.status,
     criadoEm: r.criado_em.toISOString(),
     deletedAt: r.deleted_at ? r.deleted_at.toISOString() : null,
+    conferenciaStatus: r.conferencia_status,
+    conferenciaResultado: conferenciaResultado,
+    conferenciaVerificadaEm: r.conferencia_verificada_em ? r.conferencia_verificada_em.toISOString() : null,
   };
 }
 
@@ -105,6 +119,7 @@ export class DocumentsService {
     private readonly storage: StorageService,
     private readonly audit: AuditService,
     private readonly signature: SignatureService,
+    private readonly conferencia: ConferenciaService,
   ) {}
 
   /**
@@ -393,6 +408,21 @@ export class DocumentsService {
       });
     }
 
+    // Conferencia por IA: so faz sentido quando ja existe um valor "esperado"
+    // pra comparar (etiqueta de despesa), que e exatamente o caso do anexo.
+    if (row.module === 'despesas') {
+      await this.conferencia.enqueueConferencia({
+        schemaName: ctx.schemaName,
+        slug: ctx.slug,
+        documentId: id,
+        fileKey,
+        docCaixa: row.doc_caixa,
+        empenho: row.empenho,
+        credor: row.credor,
+        value: row.value === null ? null : Number(row.value),
+      });
+    }
+
     return this.get(user, id);
   }
 
@@ -473,7 +503,8 @@ export class DocumentsService {
              d.document_date, d.value, d.competencia, d.exercicio,
              d.banco, d.agencia, d.conta,
              d.original_name, d.file_key, d.file_size, d.file_hash, d.paginas, d.status,
-             d.criado_em, d.deleted_at
+             d.criado_em, d.deleted_at,
+             d.conferencia_status, d.conferencia_resultado, d.conferencia_verificada_em
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
@@ -505,7 +536,8 @@ export class DocumentsService {
              d.document_date, d.value, d.competencia, d.exercicio,
              d.banco, d.agencia, d.conta,
              d.original_name, d.file_key, d.file_size, d.file_hash, d.paginas, d.status,
-             d.criado_em, d.deleted_at
+             d.criado_em, d.deleted_at,
+             d.conferencia_status, d.conferencia_resultado, d.conferencia_verificada_em
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
@@ -777,7 +809,8 @@ export class DocumentsService {
              d.document_date, d.value, d.competencia, d.exercicio,
              d.banco, d.agencia, d.conta,
              d.original_name, d.file_key, d.file_size, d.file_hash, d.paginas, d.status,
-             d.criado_em, d.deleted_at
+             d.criado_em, d.deleted_at,
+             d.conferencia_status, d.conferencia_resultado, d.conferencia_verificada_em
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
