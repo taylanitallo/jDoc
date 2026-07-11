@@ -15,6 +15,7 @@ import {
   type DocumentPage,
   type DocumentView,
   type EtiquetaCandidate,
+  type EtiquetasPendentesResult,
   type SearchDocumentsQuery,
   type TenantAccessClaims,
   type TrashQuery,
@@ -274,6 +275,53 @@ export class DocumentsService {
       documentDate: r.document_date ? r.document_date.toISOString().slice(0, 10) : null,
       value: r.value === null ? null : Number(r.value),
     }));
+  }
+
+  /**
+   * Lista as ETIQUETAS de um modulo ainda sem PDF (aguardando_arquivo). Usado
+   * pelo painel da Pasta Monitorada pra mostrar quais despesas ainda faltam
+   * arquivo. Itens limitados a 500 (o total real vem separado).
+   */
+  async listEtiquetasPendentes(
+    user: TenantAccessClaims,
+    module: DocModule,
+  ): Promise<EtiquetasPendentesResult> {
+    const ctx = requireTenantContext();
+    this.assertPermission(user, module, 'read');
+    const sql = this.db.tenant(ctx.schemaName);
+    const rows = await sql<
+      Array<{
+        id: string;
+        doc_caixa: string | null;
+        empenho: string | null;
+        credor: string | null;
+        subtype: string | null;
+        document_date: Date | null;
+        value: string | number | null;
+      }>
+    >`
+      SELECT id, doc_caixa, empenho, credor, subtype, document_date, value
+      FROM documents
+      WHERE module = ${module} AND status = 'aguardando_arquivo' AND deleted_at IS NULL
+      ORDER BY doc_caixa ASC NULLS LAST, document_date ASC NULLS LAST, id ASC
+      LIMIT 500
+    `;
+    const totalRows = await sql<Array<{ total: string }>>`
+      SELECT COUNT(*)::bigint AS total FROM documents
+      WHERE module = ${module} AND status = 'aguardando_arquivo' AND deleted_at IS NULL
+    `;
+    return {
+      total: Number(totalRows[0]?.total ?? 0),
+      items: rows.map((r) => ({
+        id: r.id,
+        docCaixa: r.doc_caixa,
+        empenho: r.empenho,
+        credor: r.credor,
+        subtype: r.subtype,
+        documentDate: r.document_date ? r.document_date.toISOString().slice(0, 10) : null,
+        value: r.value === null ? null : Number(r.value),
+      })),
+    };
   }
 
   /** Anexa o PDF a uma etiqueta (documento importado sem arquivo, status aguardando_arquivo). */
