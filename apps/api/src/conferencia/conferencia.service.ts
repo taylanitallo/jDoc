@@ -18,8 +18,9 @@ export interface ConferenciaJobData {
 
 /**
  * Enfileira a conferencia por IA de um documento recem-anexado. So dispara
- * se ANTHROPIC_API_KEY estiver configurada — sem a key, e um no-op (a
- * feature fica desligada, e o anexo do PDF nunca depende dela).
+ * se o provedor selecionado (CONFERENCIA_PROVIDER, default 'anthropic') tiver
+ * a API key correspondente configurada — sem ela, e um no-op (a feature fica
+ * desligada, e o anexo do PDF nunca depende dela).
  */
 @Injectable()
 export class ConferenciaService implements OnModuleDestroy {
@@ -27,12 +28,14 @@ export class ConferenciaService implements OnModuleDestroy {
   private readonly queueRedis: Redis | null;
 
   constructor() {
-    if (!loadEnv().ANTHROPIC_API_KEY) {
+    const env = loadEnv();
+    const apiKey = env.CONFERENCIA_PROVIDER === 'gemini' ? env.GEMINI_API_KEY : env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
       this.queue = null;
       this.queueRedis = null;
       return;
     }
-    this.queueRedis = new Redis(loadEnv().REDIS_URL, { maxRetriesPerRequest: null });
+    this.queueRedis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
     this.queue = new Queue<ConferenciaJobData>(CONFERENCIA_QUEUE, { connection: this.queueRedis });
   }
 
@@ -46,7 +49,7 @@ export class ConferenciaService implements OnModuleDestroy {
     await this.queue.add('conferir', data);
   }
 
-  /** Se a feature esta configurada (ANTHROPIC_API_KEY presente) neste ambiente. */
+  /** Se a feature esta configurada (API key do provedor selecionado presente) neste ambiente. */
   isEnabled(): boolean {
     return this.queue !== null;
   }

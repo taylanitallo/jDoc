@@ -16,8 +16,14 @@ const envSchema = z.object({
 
   REDIS_URL: z.string().min(1),
 
-  /** Auditoria de documentos por IA (Claude API) — opcional; ausente = feature desligada. */
+  /** Conferencia de documentos por IA — opcional; ausente = feature desligada. */
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  /**
+   * Teste com Gemini como provedor alternativo da conferencia (custo/quota).
+   * Trocar de volta pra 'anthropic' e reversao total, sem redeploy.
+   */
+  GEMINI_API_KEY: z.string().min(1).optional(),
+  CONFERENCIA_PROVIDER: z.enum(['anthropic', 'gemini']).default('anthropic'),
 
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET deve ter >= 32 chars'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET deve ter >= 32 chars'),
