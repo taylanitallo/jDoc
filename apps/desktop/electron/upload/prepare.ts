@@ -9,7 +9,7 @@ import type { EnqueueInput } from './queue';
  * main NAO confia): revalida magic bytes %PDF, tamanho maximo, e os campos
  * contra o schema canonico do @jdoc/shared. Calcula o SHA-256 do conteudo.
  */
-const MAX_UPLOAD_MB = Number(process.env['JDOC_MAX_UPLOAD_MB']) || 25;
+const MAX_UPLOAD_MB = Number(process.env['JDOC_MAX_UPLOAD_MB']) || 50;
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46] as const; // %PDF
 
 export function prepareEnqueue(payload: EnqueuePayload): EnqueueInput {

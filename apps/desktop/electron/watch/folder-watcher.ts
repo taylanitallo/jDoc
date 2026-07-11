@@ -24,7 +24,7 @@ interface InternalPendingFile extends PendingFile {
 }
 
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46] as const; // %PDF
-const MAX_UPLOAD_MB = Number(process.env['JDOC_MAX_UPLOAD_MB']) || 25;
+const MAX_UPLOAD_MB = Number(process.env['JDOC_MAX_UPLOAD_MB']) || 50;
 /** Espera o arquivo "parar de mudar" antes de considera-lo pronto (copia em andamento). */
 const STABLE_DELAY_MS = 800;
 
