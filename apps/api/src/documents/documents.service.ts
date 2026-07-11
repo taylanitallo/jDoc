@@ -213,6 +213,10 @@ export class DocumentsService {
     const pageCount = file ? await this.countPages(file.buffer) : null;
     if (file && fileKey) await this.storage.upload(ctx.slug, fileKey, file.buffer);
 
+    // Conferencia por IA dispara automatico quando ja nasce com PDF (so
+    // despesas, so se a feature estiver configurada).
+    const analisarAutomatico = !!file && fields.module === 'despesas' && this.conferencia.isEnabled();
+
     const sql = this.db.tenant(ctx.schemaName);
     const f = fields as Record<string, unknown>;
     const originalName = file
@@ -223,7 +227,7 @@ export class DocumentsService {
         module, subtype, doc_caixa, empenho, credor, historico, descricao,
         budget_unit_id, orgao_id, document_type_id, document_date, value, competencia,
         exercicio, banco, agencia, conta,
-        original_name, file_key, file_size, file_hash, paginas, status, created_by
+        original_name, file_key, file_size, file_hash, paginas, status, conferencia_status, created_by
       ) VALUES (
         ${fields.module},
         ${(f.subtype as string) ?? null},
@@ -248,6 +252,7 @@ export class DocumentsService {
         ${fileHash},
         ${pageCount},
         ${file ? 'disponivel' : 'aguardando_arquivo'},
+        ${analisarAutomatico ? 'pendente' : null},
         ${user.sub}
       )
       RETURNING id, module, subtype, doc_caixa, empenho, credor, historico, descricao,
@@ -276,6 +281,19 @@ export class DocumentsService {
         slug: ctx.slug,
         documentId,
         fileKey,
+      });
+    }
+
+    if (analisarAutomatico && documentId && fileKey) {
+      await this.conferencia.enqueueConferencia({
+        schemaName: ctx.schemaName,
+        slug: ctx.slug,
+        documentId,
+        fileKey,
+        docCaixa: (f.docCaixa as string) ?? null,
+        empenho: (f.empenho as string) ?? null,
+        credor: (f.credor as string) ?? null,
+        value: f.value === undefined ? null : (f.value as number),
       });
     }
 
@@ -699,6 +717,12 @@ export class DocumentsService {
     const pageCount = await this.countPages(file.buffer);
     await this.storage.upload(ctx.slug, fileKey, file.buffer);
 
+    // Conferencia por IA dispara automatico ao anexar (so despesas, so se a
+    // feature estiver configurada). 'pendente' ja na hora do anexo — feedback
+    // visual imediato (selo vira "carregando") em vez de ficar parecendo
+    // "nunca analisado" ate o job comecar a rodar.
+    const analisarAutomatico = row.module === 'despesas' && this.conferencia.isEnabled();
+
     const sql = this.db.tenant(ctx.schemaName);
     await sql`
       UPDATE documents SET
@@ -710,9 +734,9 @@ export class DocumentsService {
         status = 'disponivel',
         atualizado_em = now(),
         -- o veredito antigo era sobre o PDF anterior; substituir o arquivo
-        -- sem limpar isso deixaria um selo verde/laranja mentiroso ate o
-        -- usuario clicar em "Analisar Doc (IA)" de novo.
-        conferencia_status = NULL,
+        -- sem limpar isso deixaria um selo verde/laranja mentiroso ate a
+        -- nova analise terminar.
+        conferencia_status = ${analisarAutomatico ? 'pendente' : null},
         conferencia_resultado = NULL,
         conferencia_erro = NULL,
         conferencia_verificada_em = NULL
@@ -738,8 +762,18 @@ export class DocumentsService {
       });
     }
 
-    // Conferencia por IA e sob demanda (botao "Analisar Doc (IA)"), nao roda
-    // automatico no anexo — controla o custo de tokens. Ver analisarConferencia().
+    if (analisarAutomatico) {
+      await this.conferencia.enqueueConferencia({
+        schemaName: ctx.schemaName,
+        slug: ctx.slug,
+        documentId: id,
+        fileKey,
+        docCaixa: row.doc_caixa,
+        empenho: row.empenho,
+        credor: row.credor,
+        value: row.value === null ? null : Number(row.value),
+      });
+    }
 
     return this.get(user, id);
   }
