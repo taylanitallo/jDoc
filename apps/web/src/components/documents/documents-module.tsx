@@ -189,7 +189,7 @@ function ConferenciaBadge({ documento }: { documento: DocumentView }) {
     return (
       <span className="group relative inline-flex justify-center">
         <Icon className={`mx-auto h-4 w-4 ${iconColor}`} aria-label={ariaLabel} />
-        <span className="pointer-events-none absolute bottom-full right-0 z-50 mb-2 hidden w-72 rounded-lg border border-app-border bg-app-card p-3 text-left text-xs text-app shadow-lg group-hover:block">
+        <span className="pointer-events-none absolute right-0 top-full z-50 mt-2 hidden w-72 rounded-lg border border-app-border bg-app-card p-3 text-left text-xs text-app shadow-lg group-hover:block">
           {tooltip}
         </span>
       </span>
