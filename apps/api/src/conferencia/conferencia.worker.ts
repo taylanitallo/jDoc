@@ -1,13 +1,16 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { Worker, type Job } from 'bullmq';
 import Redis from 'ioredis';
-import Anthropic from '@anthropic-ai/sdk';
+import Anthropic, { toFile } from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { SCHEMA_NAME_REGEX, type ConferenciaResultado, type ConferenciaStatus } from '@jdoc/shared';
 import { DatabaseService } from '../database/database.service';
 import { StorageService } from '../storage/storage.module';
 import { loadEnv } from '../config/env';
 import { CONFERENCIA_QUEUE, type ConferenciaJobData } from './conferencia.service';
+
+/** Beta necessaria para upload de PDF via Files API (evita o limite de 32MB de payload inline). */
+const FILES_API_BETA = 'files-api-2025-04-14';
 
 /**
  * JSON schema puro (nao via zodOutputFormat) para o output_config.format do
@@ -61,13 +64,20 @@ function formatEsperado(v: string | number | null): string {
   return v === null ? 'nao informado' : String(v);
 }
 
+/** Mensagem de erro curta e legivel pra guardar/exibir (nunca o stack inteiro). */
+function erroLegivel(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.length > 400 ? `${msg.slice(0, 400)}…` : msg;
+}
+
 /**
  * Worker da conferencia por IA. Roda fora do request: baixa o PDF pelo
- * file_key, pede pra Claude extrair valor/credor/doc de caixa do documento e
- * comparar com o que a etiqueta tem cadastrado, e grava o veredito nas
- * colunas de documents. Best-effort — qualquer falha grava status 'falha' e
- * nao propaga (nunca deve derrubar a fila nem afetar o anexo, que ja
- * terminou antes deste job ser processado).
+ * file_key, sobe pra Claude via Files API (evita o limite de 32MB de payload
+ * inline em base64 — documentos grandes/escaneados passam disso facil), pede
+ * pra extrair valor/credor/doc de caixa e comparar com o que a etiqueta tem
+ * cadastrado, e grava o veredito nas colunas de documents. Best-effort —
+ * qualquer falha grava status 'falha' + o motivo (nunca propaga: nao deve
+ * derrubar a fila nem afetar o anexo, que ja terminou antes deste job).
  */
 @Injectable()
 export class ConferenciaWorker implements OnModuleInit, OnModuleDestroy {
@@ -115,19 +125,22 @@ export class ConferenciaWorker implements OnModuleInit, OnModuleDestroy {
         UPDATE documents SET
           conferencia_status = ${resultado.status},
           conferencia_resultado = ${sql.json(resultado as unknown as Parameters<typeof sql.json>[0])},
+          conferencia_erro = NULL,
           conferencia_verificada_em = now()
         WHERE id = ${documentId}
       `;
       this.logger.log(`Conferencia de ${documentId}: ${resultado.status}`);
     } catch (err) {
       const status: ConferenciaStatus = 'falha';
+      const erro = erroLegivel(err);
       await sql`
         UPDATE documents SET
           conferencia_status = ${status},
+          conferencia_erro = ${erro},
           conferencia_verificada_em = now()
         WHERE id = ${documentId}
       `;
-      this.logger.warn(`Conferencia de ${documentId} falhou: ${err instanceof Error ? err.message : err}`);
+      this.logger.warn(`Conferencia de ${documentId} falhou: ${erro}`);
     }
   }
 
@@ -137,48 +150,58 @@ export class ConferenciaWorker implements OnModuleInit, OnModuleDestroy {
   ): Promise<ConferenciaResultado & { status: ConferenciaStatus }> {
     if (!this.anthropic) throw new Error('Conferencia por IA desativada (sem ANTHROPIC_API_KEY)');
 
-    const response = await this.anthropic.messages.create({
-      // Haiku 4.5 (nao o default Opus) - decisao explicita do usuario por
-      // custo: ~5x mais barato, e essa tarefa (extrair valor/credor/doc
-      // caixa de 1 PDF e comparar) e simples o bastante pra nao precisar
-      // do modelo mais caro.
-      model: 'claude-haiku-4-5',
-      max_tokens: 4096,
-      thinking: { type: 'enabled', budget_tokens: 2048 },
-      output_config: { format: { type: 'json_schema', schema: CONFERENCIA_JSON_SCHEMA } },
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'document',
-              source: { type: 'base64', media_type: 'application/pdf', data: pdf.toString('base64') },
-            },
-            {
-              type: 'text',
-              text: [
-                'Este PDF foi anexado como comprovante de uma despesa publica (nota fiscal, empenho ou ordem de pagamento).',
-                'Extraia do documento o valor, o credor/fornecedor e o numero do documento de caixa (se aparecer), e compare com os dados cadastrados abaixo.',
-                '',
-                `Valor esperado: ${formatEsperado(etiqueta.value)}`,
-                `Credor esperado: ${formatEsperado(etiqueta.credor)}`,
-                `Empenho esperado: ${formatEsperado(etiqueta.empenho)}`,
-                `Documento de caixa esperado: ${formatEsperado(etiqueta.docCaixa)}`,
-                '',
-                'Liste em "divergencias" apenas os campos onde o valor do PDF diverge claramente do esperado (nao liste campos que baterem ou que o PDF simplesmente nao mostra).',
-                'Use status "divergente" se houver qualquer divergencia de valor ou credor; "conforme" caso contrario.',
-              ].join('\n'),
-            },
-          ],
-        },
-      ],
+    // Upload via Files API (nao embutido em base64 no corpo do request) —
+    // documentos escaneados/grandes passam facil do limite de 32MB inline.
+    const uploaded = await this.anthropic.beta.files.upload({
+      file: await toFile(pdf, 'documento.pdf', { type: 'application/pdf' }),
+      betas: [FILES_API_BETA],
     });
 
-    if (response.stop_reason === 'refusal') {
-      throw new Error(`IA recusou a analise (stop_reason=refusal)`);
+    try {
+      const response = await this.anthropic.beta.messages.create({
+        // Haiku 4.5 (nao o default Opus) - decisao explicita do usuario por
+        // custo: ~5x mais barato, e essa tarefa (extrair valor/credor/doc
+        // caixa de 1 PDF e comparar) e simples o bastante pra nao precisar
+        // do modelo mais caro.
+        model: 'claude-haiku-4-5',
+        max_tokens: 4096,
+        thinking: { type: 'enabled', budget_tokens: 2048 },
+        betas: [FILES_API_BETA],
+        output_config: { format: { type: 'json_schema', schema: CONFERENCIA_JSON_SCHEMA } },
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'document', source: { type: 'file', file_id: uploaded.id } },
+              {
+                type: 'text',
+                text: [
+                  'Este PDF foi anexado como comprovante de uma despesa publica (nota fiscal, empenho ou ordem de pagamento).',
+                  'Extraia do documento o valor, o credor/fornecedor e o numero do documento de caixa (se aparecer), e compare com os dados cadastrados abaixo.',
+                  '',
+                  `Valor esperado: ${formatEsperado(etiqueta.value)}`,
+                  `Credor esperado: ${formatEsperado(etiqueta.credor)}`,
+                  `Empenho esperado: ${formatEsperado(etiqueta.empenho)}`,
+                  `Documento de caixa esperado: ${formatEsperado(etiqueta.docCaixa)}`,
+                  '',
+                  'Liste em "divergencias" apenas os campos onde o valor do PDF diverge claramente do esperado (nao liste campos que baterem ou que o PDF simplesmente nao mostra).',
+                  'Use status "divergente" se houver qualquer divergencia de valor ou credor; "conforme" caso contrario.',
+                ].join('\n'),
+              },
+            ],
+          },
+        ],
+      });
+
+      if (response.stop_reason === 'refusal') {
+        throw new Error(`IA recusou a analise (stop_reason=refusal)`);
+      }
+      const textBlock = response.content.find((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text');
+      if (!textBlock) throw new Error('Resposta da IA sem bloco de texto');
+      return conferenciaSchema.parse(JSON.parse(textBlock.text));
+    } finally {
+      // Best-effort: nao deve derrubar a analise se a limpeza falhar.
+      await this.anthropic.beta.files.delete(uploaded.id, { betas: [FILES_API_BETA] }).catch(() => {});
     }
-    const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
-    if (!textBlock) throw new Error('Resposta da IA sem bloco de texto');
-    return conferenciaSchema.parse(JSON.parse(textBlock.text));
   }
 }

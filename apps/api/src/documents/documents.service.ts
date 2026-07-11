@@ -10,8 +10,10 @@ import {
 } from '@nestjs/common';
 import {
   TRASH_RETENTION_DAYS,
+  type AnalisarConferenciaResult,
   type ConferenciaResultado,
   type ConferenciaStatus,
+  type ConferenciaStatusItem,
   type DocModule,
   type DocumentFields,
   type DocumentPage,
@@ -67,6 +69,7 @@ interface DocRow {
   deleted_at: Date | null;
   conferencia_status: ConferenciaStatus | null;
   conferencia_resultado: ConferenciaResultado | string | null;
+  conferencia_erro: string | null;
   conferencia_verificada_em: Date | null;
 }
 
@@ -108,6 +111,7 @@ function toView(r: DocRow): DocumentView {
     deletedAt: r.deleted_at ? r.deleted_at.toISOString() : null,
     conferenciaStatus: r.conferencia_status,
     conferenciaResultado: conferenciaResultado,
+    conferenciaErro: r.conferencia_erro,
     conferenciaVerificadaEm: r.conferencia_verificada_em ? r.conferencia_verificada_em.toISOString() : null,
   };
 }
@@ -231,7 +235,7 @@ export class DocumentsService {
                 document_type_id, NULL AS document_type_nome,
                 document_date, value, competencia, exercicio, banco, agencia, conta,
                 original_name, file_key, file_size, file_hash, paginas, status, criado_em, deleted_at,
-                conferencia_status, conferencia_resultado, conferencia_verificada_em
+                conferencia_status, conferencia_resultado, conferencia_erro, conferencia_verificada_em
     `;
 
     await this.audit.logTenant({
@@ -355,10 +359,7 @@ export class DocumentsService {
    * despesas, com arquivo anexado (status disponivel). Reseta o status pra
    * 'pendente' na hora (feedback visual imediato: o selo vira "carregando").
    */
-  async analisarConferencia(
-    user: TenantAccessClaims,
-    ids: string[],
-  ): Promise<{ enqueued: string[]; skipped: number }> {
+  async analisarConferencia(user: TenantAccessClaims, ids: string[]): Promise<AnalisarConferenciaResult> {
     const ctx = requireTenantContext();
     this.assertPermission(user, 'despesas', 'update');
     if (!this.conferencia.isEnabled()) {
@@ -389,6 +390,7 @@ export class DocumentsService {
       UPDATE documents SET
         conferencia_status = 'pendente',
         conferencia_resultado = NULL,
+        conferencia_erro = NULL,
         conferencia_verificada_em = NULL
       WHERE id = ANY(${enqueuedIds})
     `;
@@ -407,19 +409,30 @@ export class DocumentsService {
     return { enqueued: enqueuedIds, skipped: rows.length - elegiveis.length };
   }
 
-  /** Status atual da conferencia de um lote (polling da barra de progresso). */
-  async statusConferencia(
-    user: TenantAccessClaims,
-    ids: string[],
-  ): Promise<Array<{ id: string; conferenciaStatus: ConferenciaStatus | null }>> {
+  /** Status atual da conferencia de um lote (polling da barra de progresso + lista de falhas). */
+  async statusConferencia(user: TenantAccessClaims, ids: string[]): Promise<ConferenciaStatusItem[]> {
     const ctx = requireTenantContext();
     this.assertPermission(user, 'despesas', 'read');
     const sql = this.db.tenant(ctx.schemaName);
-    const rows = await sql<Array<{ id: string; conferencia_status: ConferenciaStatus | null }>>`
-      SELECT id, conferencia_status FROM documents
+    const rows = await sql<
+      Array<{
+        id: string;
+        doc_caixa: string | null;
+        credor: string | null;
+        conferencia_status: ConferenciaStatus | null;
+        conferencia_erro: string | null;
+      }>
+    >`
+      SELECT id, doc_caixa, credor, conferencia_status, conferencia_erro FROM documents
       WHERE id = ANY(${ids}) AND deleted_at IS NULL AND module = 'despesas'
     `;
-    return rows.map((r) => ({ id: r.id, conferenciaStatus: r.conferencia_status }));
+    return rows.map((r) => ({
+      id: r.id,
+      docCaixa: r.doc_caixa,
+      credor: r.credor,
+      conferenciaStatus: r.conferencia_status,
+      conferenciaErro: r.conferencia_erro,
+    }));
   }
 
   /** Anexa o PDF a uma etiqueta (documento importado sem arquivo, status aguardando_arquivo). */
@@ -575,7 +588,7 @@ export class DocumentsService {
              d.banco, d.agencia, d.conta,
              d.original_name, d.file_key, d.file_size, d.file_hash, d.paginas, d.status,
              d.criado_em, d.deleted_at,
-             d.conferencia_status, d.conferencia_resultado, d.conferencia_verificada_em
+             d.conferencia_status, d.conferencia_resultado, d.conferencia_erro, d.conferencia_verificada_em
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
@@ -608,7 +621,7 @@ export class DocumentsService {
              d.banco, d.agencia, d.conta,
              d.original_name, d.file_key, d.file_size, d.file_hash, d.paginas, d.status,
              d.criado_em, d.deleted_at,
-             d.conferencia_status, d.conferencia_resultado, d.conferencia_verificada_em
+             d.conferencia_status, d.conferencia_resultado, d.conferencia_erro, d.conferencia_verificada_em
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
@@ -881,7 +894,7 @@ export class DocumentsService {
              d.banco, d.agencia, d.conta,
              d.original_name, d.file_key, d.file_size, d.file_hash, d.paginas, d.status,
              d.criado_em, d.deleted_at,
-             d.conferencia_status, d.conferencia_resultado, d.conferencia_verificada_em
+             d.conferencia_status, d.conferencia_resultado, d.conferencia_erro, d.conferencia_verificada_em
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
