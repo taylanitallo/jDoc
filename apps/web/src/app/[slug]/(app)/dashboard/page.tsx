@@ -12,7 +12,8 @@ import {
 } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
+import type { DocModule, DocumentPage } from '@jdoc/shared';
 import { useExercicio } from '@/components/topbar';
 import { cardCls } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -28,12 +29,12 @@ function formatGb(bytes: number): string {
 }
 
 const cards = [
-  { label: 'RECEITAS', icon: TrendingUp, accent: 'card-accent-green' },
-  { label: 'DESPESAS', icon: TrendingDown, accent: 'card-accent-orange' },
-  { label: 'BALANCETES', icon: Scale, accent: 'card-accent-blue' },
-  { label: 'EXTRATOS', icon: Landmark, accent: 'card-accent-purple' },
-  { label: 'OUTROS', icon: FolderOpen, accent: 'card-accent-blue' },
-] as const;
+  { label: 'RECEITAS', icon: TrendingUp, accent: 'card-accent-green', module: 'receitas' },
+  { label: 'DESPESAS', icon: TrendingDown, accent: 'card-accent-orange', module: 'despesas' },
+  { label: 'BALANCETES', icon: Scale, accent: 'card-accent-blue', module: 'balancete' },
+  { label: 'EXTRATOS', icon: Landmark, accent: 'card-accent-purple', module: 'extrato' },
+  { label: 'OUTROS', icon: FolderOpen, accent: 'card-accent-blue', module: 'outros' },
+] as const satisfies ReadonlyArray<{ label: string; icon: unknown; accent: string; module: DocModule }>;
 
 export default function DashboardPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -41,6 +42,18 @@ export default function DashboardPage() {
   const { data: uso } = useQuery({
     queryKey: ['documents', 'usage', slug],
     queryFn: () => api<UsoDisco>(`/t/${slug}/documents/usage`),
+  });
+
+  // pageSize=1: so precisamos do "total" da busca, nao dos itens.
+  const countQueries = useQueries({
+    queries: cards.map((c) => ({
+      queryKey: ['documents', 'count', slug, c.module, exercicio],
+      queryFn: () =>
+        api<DocumentPage>(
+          `/t/${slug}/documents?module=${c.module}&exercicio=${exercicio}&page=1&pageSize=1`,
+        ),
+      enabled: !!slug,
+    })),
   });
 
   return (
@@ -51,16 +64,23 @@ export default function DashboardPage() {
 
       {/* Cards de resumo */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        {cards.map(({ label, icon: Icon, accent }) => (
-          <div key={label} className={`${cardCls} p-4 ${accent}`}>
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-bold uppercase text-app-muted">{label}</p>
-              <Icon className="h-5 w-5 text-app-muted" aria-hidden />
+        {cards.map(({ label, icon: Icon, accent }, i) => {
+          const q = countQueries[i];
+          return (
+            <div key={label} className={`${cardCls} p-4 ${accent}`}>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold uppercase text-app-muted">{label}</p>
+                <Icon className="h-5 w-5 text-app-muted" aria-hidden />
+              </div>
+              {q?.isLoading ? (
+                <div className="mt-2 h-8 w-12 animate-pulse rounded bg-app-skeleton" />
+              ) : (
+                <p className="mt-2 text-2xl font-extrabold text-app">{q?.data?.total ?? 0}</p>
+              )}
+              <p className="text-[10px] text-app-muted">documentos no exercício</p>
             </div>
-            <p className="mt-2 text-2xl font-extrabold text-app">0</p>
-            <p className="text-[10px] text-app-muted">documentos no exercício</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Uso de disco */}
