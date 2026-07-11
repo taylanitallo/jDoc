@@ -22,11 +22,14 @@ import {
   docModuleSchema,
   docSubtypeSchema,
   documentFieldsSchema,
+  etiquetasByDocCaixaQuerySchema,
   searchDocumentsSchema,
   trashQuerySchema,
   updateDocumentSchema,
   type DocumentPage,
   type DocumentView,
+  type EtiquetaCandidate,
+  type EtiquetasByDocCaixaQuery,
   type SearchDocumentsQuery,
   type TenantAccessClaims,
   type TrashQuery,
@@ -115,6 +118,16 @@ export class DocumentsController {
   ): Promise<DocumentView> {
     if (!file) throw new BadRequestException('Arquivo PDF obrigatorio');
     return this.docs.create(user, fields, file, req.ip ?? '');
+  }
+
+  // ANTES de @Get(':id') pra "etiquetas" nao ser interpretado como um :id.
+  @Permissions()
+  @Get('etiquetas')
+  etiquetas(
+    @CurrentUser() user: TenantAccessClaims,
+    @Query(new ZodValidationPipe(etiquetasByDocCaixaQuerySchema)) q: EtiquetasByDocCaixaQuery,
+  ): Promise<EtiquetaCandidate[]> {
+    return this.docs.findEtiquetasByDocCaixa(user, q.module, q.docCaixa);
   }
 
   @Permissions()

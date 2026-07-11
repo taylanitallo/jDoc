@@ -2,30 +2,33 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import { FolderSync, FileUp, Trash2 } from 'lucide-react';
-import { documentFieldsSchema, DOC_SUBTYPES, type DocModule } from '@jdoc/shared';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { FolderSync, FileUp, Trash2, Link2, AlertTriangle } from 'lucide-react';
+import type { EtiquetaCandidate } from '@jdoc/shared';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/toast';
 import { EmptyState } from '@/components/empty-state';
-import { cardCls, inputCls, labelCls, btnPrimary, btnGhost, formatBytes } from '@/components/ui';
+import { cardCls, btnPrimary, btnGhost, formatBytes } from '@/components/ui';
 import { isDesktopApp, desktopInvoke } from '@/lib/desktop-bridge';
 
 /**
- * Pasta Monitorada (Marco 9 do jDoc Desktop): so existe dentro do
- * executavel — o processo main do Electron detecta PDFs soltos numa pasta
- * local e os disponibiliza aqui para o usuario escolher modulo/campos e
- * enviar, sem precisar abrir o seletor de arquivo a cada anexo.
+ * Pasta Monitorada — vinculo do PDF a ETIQUETA pelo documento de caixa.
+ *
+ * So existe dentro do jDoc Desktop. O processo main detecta PDFs soltos numa
+ * pasta local; cada arquivo e nomeado pelo doc de caixa (ex.: "2020001.pdf",
+ * ou "2020001-1.pdf"/"2020001-2.pdf" quando ha mais de um pro mesmo numero).
+ * Aqui cada arquivo e casado com a etiqueta de DESPESA "aguardando arquivo" que
+ * tem aquele doc de caixa: 1 candidata -> confirma; varias -> o usuario escolhe
+ * (pelo empenho/credor/valor); nenhuma -> avisa "sem etiqueta correspondente".
  */
 
-const MODULE_LABELS: Record<DocModule, string> = {
-  receitas: 'Receita',
-  despesas: 'Despesa',
-  balancete: 'Balancete',
-  extrato: 'Extrato',
-  outros: 'Outros',
-};
-const MODULES = Object.keys(MODULE_LABELS) as DocModule[];
+interface PendingFile {
+  fileId: string;
+  name: string;
+  docCaixa: string;
+  size: number;
+  detectedAt: string;
+}
 
 const SUBTYPE_LABEL: Record<string, string> = {
   orcamentaria: 'Orçamentária',
@@ -33,100 +36,23 @@ const SUBTYPE_LABEL: Record<string, string> = {
   resto_a_pagar: 'Resto a Pagar',
 };
 
-function subtypesFor(module: DocModule): readonly string[] {
-  return module === 'despesas' ? DOC_SUBTYPES : DOC_SUBTYPES.filter((s) => s !== 'resto_a_pagar');
-}
-
-type FieldType = 'text' | 'date' | 'competencia' | 'subtype' | 'documentType';
-interface FieldDesc {
-  name: string;
-  label: string;
-  type: FieldType;
-  required: boolean;
-}
-
-const MODULE_FIELDS: Record<DocModule, FieldDesc[]> = {
-  despesas: [
-    { name: 'docCaixa', label: 'Doc. Caixa', type: 'text', required: true },
-    { name: 'empenho', label: 'Empenho', type: 'text', required: true },
-    { name: 'credor', label: 'Credor', type: 'text', required: true },
-    { name: 'subtype', label: 'Tipo', type: 'subtype', required: true },
-    { name: 'documentDate', label: 'Data do documento', type: 'date', required: true },
-  ],
-  receitas: [
-    { name: 'subtype', label: 'Tipo', type: 'subtype', required: true },
-    { name: 'documentDate', label: 'Data do documento', type: 'date', required: true },
-  ],
-  balancete: [
-    { name: 'competencia', label: 'Competência', type: 'competencia', required: true },
-    { name: 'documentDate', label: 'Data do documento', type: 'date', required: true },
-  ],
-  extrato: [
-    { name: 'banco', label: 'Banco', type: 'text', required: true },
-    { name: 'agencia', label: 'Agência', type: 'text', required: true },
-    { name: 'conta', label: 'Conta', type: 'text', required: true },
-    { name: 'competencia', label: 'Competência', type: 'competencia', required: true },
-    { name: 'documentDate', label: 'Data do documento', type: 'date', required: true },
-  ],
-  outros: [
-    { name: 'documentTypeId', label: 'Tipo de documento', type: 'documentType', required: true },
-    { name: 'descricao', label: 'Descrição', type: 'text', required: true },
-    { name: 'documentDate', label: 'Data do documento', type: 'date', required: true },
-  ],
-};
-
-interface PendingFile {
-  fileId: string;
-  name: string;
-  size: number;
-  detectedAt: string;
-}
-
-interface PendingRow extends PendingFile {
-  module: DocModule;
-  fields: Record<string, string>;
-  error: string | null;
-  sending: boolean;
+function formatBRL(v: number | null): string {
+  if (v === null) return '—';
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 export default function PastaMonitoradaPage() {
   const { slug } = useParams<{ slug: string }>();
   const toast = useToast();
+  const qc = useQueryClient();
 
-  // Exercicio proprio (nao depende do ExercicioProvider do topbar) — aplicado
-  // como padrao aos arquivos detectados; o usuario pode ajustar por arquivo
-  // se precisar (nao ha campo de exercicio na lista, mas o valor aqui e o
-  // enviado para todos os arquivos ainda nao configurados individualmente).
-  const [exercicio, setExercicio] = useState(new Date().getFullYear());
   const [checked, setChecked] = useState(false);
   const [desktop, setDesktop] = useState(false);
   const [folder, setFolder] = useState<string | null>(null);
   const [folderBusy, setFolderBusy] = useState(false);
-  const [rows, setRows] = useState<PendingRow[]>([]);
+  const [files, setFiles] = useState<PendingFile[]>([]);
 
-  const { data: docTypes } = useQuery({
-    queryKey: ['document-types', slug],
-    queryFn: () => api<Array<{ id: string; nome: string }>>(`/t/${slug}/document-types`),
-    enabled: desktop,
-  });
-
-  function mergePending(items: PendingFile[]) {
-    setRows((prev) => {
-      const known = new Set(prev.map((r) => r.fileId));
-      const additions: PendingRow[] = items
-        .filter((f) => !known.has(f.fileId))
-        .map((f) => ({
-          ...f,
-          module: 'despesas',
-          fields: { exercicio: String(exercicio) },
-          error: null,
-          sending: false,
-        }));
-      return additions.length > 0 ? [...prev, ...additions] : prev;
-    });
-  }
-
-  // Checagem client-only (evita mismatch de hidratacao — servidor nunca sabe se e desktop).
+  // Checagem client-only (evita mismatch de hidratacao — servidor nao sabe se e desktop).
   useEffect(() => {
     const isDesktop = isDesktopApp();
     setDesktop(isDesktop);
@@ -137,9 +63,10 @@ export default function PastaMonitoradaPage() {
       const cfg = await desktopInvoke<{ folder: string | null }>('watch:get-config');
       setFolder(cfg?.folder ?? null);
       const res = await desktopInvoke<{ items: PendingFile[] }>('watch:list-pending');
-      mergePending(res?.items ?? []);
+      setFiles(res?.items ?? []);
     })();
-    const off = window.jdoc!.onWatchPending((items) => mergePending(items as PendingFile[]));
+    // O main emite a lista COMPLETA de pendentes a cada mudanca (deteccao/anexo/descarte).
+    const off = window.jdoc!.onWatchPending((items) => setFiles(items as PendingFile[]));
     return off;
   }, []);
 
@@ -158,47 +85,10 @@ export default function PastaMonitoradaPage() {
     try {
       await desktopInvoke('watch:stop');
       setFolder(null);
-      setRows([]);
+      setFiles([]);
     } finally {
       setFolderBusy(false);
     }
-  }
-
-  function patch(fileId: string, patchFn: (r: PendingRow) => PendingRow) {
-    setRows((prev) => prev.map((r) => (r.fileId === fileId ? patchFn(r) : r)));
-  }
-
-  function changeModule(fileId: string, module: DocModule) {
-    patch(fileId, (r) => ({ ...r, module, fields: { exercicio: String(exercicio) }, error: null }));
-  }
-
-  function changeField(fileId: string, name: string, value: string) {
-    patch(fileId, (r) => ({ ...r, fields: { ...r.fields, [name]: value } }));
-  }
-
-  async function sendRow(row: PendingRow) {
-    const parsed = documentFieldsSchema.safeParse({ module: row.module, ...row.fields });
-    if (!parsed.success) {
-      const issue = parsed.error.issues[0];
-      patch(row.fileId, (r) => ({
-        ...r,
-        error: issue ? `Campo ${issue.path.join('.') || '?'}: ${issue.message}` : 'Campos inválidos',
-      }));
-      return;
-    }
-    patch(row.fileId, (r) => ({ ...r, sending: true, error: null }));
-    try {
-      await window.jdoc!.invoke('watch:enqueue', { fileId: row.fileId, fields: { module: row.module, ...row.fields } });
-      setRows((prev) => prev.filter((r) => r.fileId !== row.fileId));
-      toast.success(`${row.name} enviado para a fila de upload.`);
-    } catch (e) {
-      patch(row.fileId, (r) => ({ ...r, sending: false, error: e instanceof Error ? e.message : 'Falha ao enviar' }));
-    }
-  }
-
-  async function dismissRow(fileId: string) {
-    await desktopInvoke('watch:dismiss', { fileId });
-    setRows((prev) => prev.filter((r) => r.fileId !== fileId));
   }
 
   if (!checked) return null;
@@ -209,7 +99,7 @@ export default function PastaMonitoradaPage() {
         <EmptyState
           icon={FolderSync}
           title="Disponível apenas no jDoc Desktop"
-          description="Instale o aplicativo desktop para monitorar uma pasta local e anexar PDFs automaticamente."
+          description="Instale o aplicativo desktop para monitorar uma pasta local e vincular PDFs às etiquetas automaticamente."
         />
       </div>
     );
@@ -223,23 +113,12 @@ export default function PastaMonitoradaPage() {
           Pasta Monitorada
         </h1>
         <p className="mt-1 text-app-muted">
-          PDFs soltos na pasta escolhida entram automaticamente na lista abaixo, prontos para você
-          revisar os campos e enviar.
+          Solte os PDFs nomeados pelo documento de caixa (ex.: <code>2020001.pdf</code>) na pasta abaixo.
+          Cada arquivo é vinculado à etiqueta de despesa com o mesmo número.
         </p>
       </div>
 
       <div className={`${cardCls} flex items-center gap-4 p-4`}>
-        <label className="flex shrink-0 items-center gap-2">
-          <span className={labelCls}>Exercício</span>
-          <input
-            type="number"
-            min={2000}
-            max={2100}
-            className={`${inputCls} w-24`}
-            value={exercicio}
-            onChange={(e) => setExercicio(Number(e.target.value))}
-          />
-        </label>
         {folder ? (
           <>
             <span className="flex-1 truncate text-sm text-app" title={folder}>
@@ -259,102 +138,148 @@ export default function PastaMonitoradaPage() {
         )}
       </div>
 
-      {rows.length === 0 ? (
+      {files.length === 0 ? (
         <EmptyState
           icon={FileUp}
           title="Nenhum arquivo pendente"
-          description="Solte um PDF na pasta monitorada para ele aparecer aqui."
+          description="Solte um PDF (nomeado pelo doc de caixa) na pasta monitorada para vinculá-lo à etiqueta."
         />
       ) : (
         <ul className="space-y-3">
-          {rows.map((row) => {
-            const fields = MODULE_FIELDS[row.module];
-            return (
-              <li key={row.fileId} className={`${cardCls} space-y-3 p-4`}>
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-app" title={row.name}>
-                    {row.name}
-                  </span>
-                  <span className="text-xs text-app-muted">{formatBytes(row.size)}</span>
-                  <select
-                    className={inputCls}
-                    value={row.module}
-                    onChange={(e) => changeModule(row.fileId, e.target.value as DocModule)}
-                  >
-                    {MODULES.map((m) => (
-                      <option key={m} value={m}>
-                        {MODULE_LABELS[m]}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className={btnPrimary}
-                    onClick={() => void sendRow(row)}
-                    disabled={row.sending}
-                  >
-                    {row.sending ? 'Enviando…' : 'Enviar'}
-                  </button>
-                  <button type="button" className={btnGhost} onClick={() => void dismissRow(row.fileId)}>
-                    <Trash2 className="h-4 w-4" aria-hidden /> descartar
-                  </button>
-                </div>
-
-                {row.error && (
-                  <p role="alert" className="text-xs text-app-error-text">
-                    {row.error}
-                  </p>
-                )}
-
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {fields.map((desc) => (
-                    <label key={desc.name} className="block">
-                      <span className={labelCls}>
-                        {desc.label}
-                        {desc.required ? ' *' : ''}
-                      </span>
-                      {desc.type === 'subtype' ? (
-                        <select
-                          className={inputCls}
-                          value={row.fields[desc.name] ?? ''}
-                          onChange={(e) => changeField(row.fileId, desc.name, e.target.value)}
-                        >
-                          <option value="">— selecione —</option>
-                          {subtypesFor(row.module).map((s) => (
-                            <option key={s} value={s}>
-                              {SUBTYPE_LABEL[s] ?? s}
-                            </option>
-                          ))}
-                        </select>
-                      ) : desc.type === 'documentType' ? (
-                        <select
-                          className={inputCls}
-                          value={row.fields[desc.name] ?? ''}
-                          onChange={(e) => changeField(row.fileId, desc.name, e.target.value)}
-                        >
-                          <option value="">— selecione —</option>
-                          {(docTypes ?? []).map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.nome}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          type={desc.type === 'date' ? 'date' : desc.type === 'competencia' ? 'month' : 'text'}
-                          className={inputCls}
-                          value={row.fields[desc.name] ?? ''}
-                          onChange={(e) => changeField(row.fileId, desc.name, e.target.value)}
-                        />
-                      )}
-                    </label>
-                  ))}
-                </div>
-              </li>
-            );
-          })}
+          {files.map((f) => (
+            <PendingRow key={f.fileId} slug={slug} file={f} toast={toast} qc={qc} />
+          ))}
         </ul>
       )}
     </div>
+  );
+}
+
+function PendingRow({
+  slug,
+  file,
+  toast,
+  qc,
+}: {
+  slug: string;
+  file: PendingFile;
+  toast: ReturnType<typeof useToast>;
+  qc: QueryClient;
+}) {
+  const [selected, setSelected] = useState<string>('');
+  const [busy, setBusy] = useState(false);
+
+  const { data: etiquetas, isLoading } = useQuery({
+    queryKey: ['etiquetas', slug, file.docCaixa],
+    queryFn: () =>
+      api<EtiquetaCandidate[]>(
+        `/t/${slug}/documents/etiquetas?module=despesas&docCaixa=${encodeURIComponent(file.docCaixa)}`,
+      ),
+  });
+
+  // Pre-seleciona quando ha exatamente uma candidata (o usuario ainda confirma).
+  useEffect(() => {
+    if (etiquetas && etiquetas.length === 1 && etiquetas[0] && !selected) {
+      setSelected(etiquetas[0].id);
+    }
+  }, [etiquetas, selected]);
+
+  async function vincular() {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await window.jdoc!.invoke('watch:attach', { fileId: file.fileId, documentId: selected });
+      toast.success(`${file.name} vinculado à etiqueta ${file.docCaixa}.`);
+      // A etiqueta usada deixa de ser "aguardando_arquivo": revalida para sumir
+      // de outros arquivos com o mesmo doc de caixa. O arquivo some via onWatchPending.
+      await qc.invalidateQueries({ queryKey: ['etiquetas', slug, file.docCaixa] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Falha ao vincular o arquivo.');
+      setBusy(false);
+    }
+  }
+
+  async function descartar() {
+    await desktopInvoke('watch:dismiss', { fileId: file.fileId });
+  }
+
+  const varias = (etiquetas?.length ?? 0) > 1;
+
+  return (
+    <li className={`${cardCls} space-y-3 p-4`}>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-app" title={file.name}>
+          {file.name}
+        </span>
+        <span className="rounded bg-app-badge-gray-bg px-2 py-0.5 text-xs text-app-badge-gray-text">
+          Doc. caixa: <b>{file.docCaixa}</b>
+        </span>
+        <span className="text-xs text-app-muted">{formatBytes(file.size)}</span>
+      </div>
+
+      {isLoading ? (
+        <p className="text-xs text-app-muted">Buscando etiqueta…</p>
+      ) : !etiquetas || etiquetas.length === 0 ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-orange-700">
+          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+          <span className="flex-1">
+            Sem etiqueta de despesa aguardando arquivo com o documento de caixa <b>{file.docCaixa}</b>.
+            Importe a etiqueta correspondente ou descarte o arquivo.
+          </span>
+          <button type="button" className={btnGhost} onClick={() => void descartar()}>
+            <Trash2 className="h-4 w-4" aria-hidden /> descartar
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {varias && (
+            <p className="text-xs font-semibold text-app-muted">
+              Mais de uma etiqueta com esse documento de caixa — escolha a que este arquivo pertence:
+            </p>
+          )}
+          <div className="space-y-1.5">
+            {etiquetas.map((e) => (
+              <label
+                key={e.id}
+                className="flex cursor-pointer items-center gap-3 rounded-lg border border-app-border p-2.5 text-sm hover:border-accent"
+              >
+                <input
+                  type="radio"
+                  name={`et-${file.fileId}`}
+                  checked={selected === e.id}
+                  onChange={() => setSelected(e.id)}
+                />
+                <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-app">
+                  <span>
+                    <span className="text-app-muted">Empenho</span> {e.empenho ?? '—'}
+                  </span>
+                  <span>
+                    <span className="text-app-muted">Credor</span> {e.credor ?? '—'}
+                  </span>
+                  <span className="font-semibold">{formatBRL(e.value)}</span>
+                  <span className="text-app-muted">{e.documentDate ?? '—'}</span>
+                  {e.subtype && (
+                    <span className="text-app-muted">{SUBTYPE_LABEL[e.subtype] ?? e.subtype}</span>
+                  )}
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              className={btnPrimary}
+              disabled={!selected || busy}
+              onClick={() => void vincular()}
+            >
+              <Link2 className="h-4 w-4" aria-hidden /> {busy ? 'Vinculando…' : 'Vincular'}
+            </button>
+            <button type="button" className={btnGhost} onClick={() => void descartar()}>
+              <Trash2 className="h-4 w-4" aria-hidden /> descartar
+            </button>
+          </div>
+        </div>
+      )}
+    </li>
   );
 }

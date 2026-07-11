@@ -77,6 +77,15 @@ export const watchEnqueuePayloadSchema = z
   .strict();
 export type WatchEnqueuePayload = z.infer<typeof watchEnqueuePayloadSchema>;
 
+/** watch:attach — anexa um pendente a uma etiqueta (documento) existente. */
+export const watchAttachPayloadSchema = z
+  .object({
+    fileId: z.string().min(1).max(200),
+    documentId: z.string().uuid(),
+  })
+  .strict();
+export type WatchAttachPayload = z.infer<typeof watchAttachPayloadSchema>;
+
 /** watch:dismiss — descarta um pendente da pasta monitorada sem enviar. */
 export const watchDismissPayloadSchema = z.object({ fileId: z.string().min(1).max(200) }).strict();
 export type WatchDismissPayload = z.infer<typeof watchDismissPayloadSchema>;

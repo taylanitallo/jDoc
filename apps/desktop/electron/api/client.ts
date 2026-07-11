@@ -281,6 +281,25 @@ export function uploadDocument(
   return authorizedFetch(`/t/${slug}/documents`, buildInit);
 }
 
+/**
+ * Anexa o PDF a uma ETIQUETA existente (documento aguardando_arquivo) via
+ * POST /t/:slug/documents/:id/file. Usado pela Pasta Monitorada ao casar o
+ * arquivo com a etiqueta pelo doc de caixa. Lanca com a mensagem da API se falhar.
+ */
+export async function attachDocument(
+  slug: string,
+  documentId: string,
+  content: Uint8Array,
+  filename: string,
+): Promise<void> {
+  const res = await authorizedFetch(`/t/${slug}/documents/${documentId}/file`, () => {
+    const form = new FormData();
+    form.append('file', new Blob([content as unknown as BlobPart], { type: 'application/pdf' }), filename);
+    return { method: 'POST', body: form };
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `Falha ao anexar (HTTP ${res.status}).`));
+}
+
 /** Mensagem de erro do backend (ex.: quota) para refletir no status do arquivo. */
 export function readError(res: Response): Promise<string> {
   return errorMessage(res, `Falha no envio (HTTP ${res.status}).`);

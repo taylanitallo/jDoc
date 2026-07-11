@@ -187,3 +187,38 @@ export interface DocumentPage {
 
 /** Retencao da lixeira em dias. */
 export const TRASH_RETENTION_DAYS = 7;
+
+// --- Pasta Monitorada: vinculo do PDF a etiqueta pelo doc de caixa -----------
+
+/**
+ * Extrai o numero do documento de caixa a partir do NOME do arquivo. O arquivo
+ * e nomeado pelo doc de caixa (ex.: "2020001.pdf"). Quando ha mais de um PDF
+ * para o mesmo doc de caixa, eles vem com sufixo "-N" ("2020001-1.pdf",
+ * "2020001-2.pdf") — o sufixo e ignorado (le-se ate antes do "-"), pois ambos
+ * pertencem ao mesmo numero (o usuario depois escolhe qual vai em qual etiqueta).
+ */
+export function docCaixaFromFilename(fileName: string): string {
+  const base = fileName.replace(/\.[^.]+$/, '').trim(); // tira a extensao
+  const m = /^(.+)-\d+$/.exec(base); // tira o sufixo "-N" (duplicados)
+  return (m?.[1] ?? base).trim();
+}
+
+/** Etiqueta (despesa importada, ainda sem PDF) candidata a receber um arquivo. */
+export interface EtiquetaCandidate {
+  id: string;
+  docCaixa: string | null;
+  empenho: string | null;
+  credor: string | null;
+  subtype: string | null;
+  documentDate: string | null;
+  value: number | null;
+}
+
+/** Query do endpoint que busca etiquetas por doc de caixa. */
+export const etiquetasByDocCaixaQuerySchema = z
+  .object({
+    module: docModuleSchema,
+    docCaixa: z.string().trim().min(1).max(100),
+  })
+  .strict();
+export type EtiquetasByDocCaixaQuery = z.infer<typeof etiquetasByDocCaixaQuerySchema>;
