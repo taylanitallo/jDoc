@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import archiver from 'archiver';
 import { PDFDocument as PdfLibDocument } from 'pdf-lib';
+import PDFKitDocument from 'pdfkit';
 import {
   BadRequestException,
   ForbiddenException,
@@ -433,6 +434,91 @@ export class DocumentsService {
       conferenciaStatus: r.conferencia_status,
       conferenciaErro: r.conferencia_erro,
     }));
+  }
+
+  /**
+   * Relatorio em PDF ("Críticas") com os documentos divergentes/com falha na
+   * conferencia por IA — aberto pelo botao "Abrir Críticas" apos um lote de
+   * analise com problemas. So lista o que ja esta gravado no banco (nao
+   * confia em nada vindo do cliente alem dos ids a filtrar).
+   */
+  async gerarRelatorioCriticas(user: TenantAccessClaims, ids: string[]): Promise<Buffer> {
+    const ctx = requireTenantContext();
+    this.assertPermission(user, 'despesas', 'read');
+    const sql = this.db.tenant(ctx.schemaName);
+    const rows = await sql<
+      Array<{
+        doc_caixa: string | null;
+        empenho: string | null;
+        credor: string | null;
+        value: string | null;
+        conferencia_status: ConferenciaStatus | null;
+        conferencia_resultado: ConferenciaResultado | string | null;
+        conferencia_erro: string | null;
+      }>
+    >`
+      SELECT doc_caixa, empenho, credor, value, conferencia_status, conferencia_resultado, conferencia_erro
+      FROM documents
+      WHERE id = ANY(${ids}) AND deleted_at IS NULL AND module = 'despesas'
+        AND conferencia_status IN ('divergente', 'falha')
+      ORDER BY doc_caixa ASC NULLS LAST
+    `;
+
+    return new Promise((resolve, reject) => {
+      const doc = new PDFKitDocument({ margin: 50 });
+      const chunks: Buffer[] = [];
+      doc.on('data', (c: Buffer) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      doc.fontSize(16).font('Helvetica-Bold').text('CRÍTICAS DA CONFERÊNCIA POR IA', { align: 'center' });
+      doc
+        .fontSize(9)
+        .font('Helvetica')
+        .text(`Gerado em ${new Date().toLocaleString('pt-BR')} — ${rows.length} documento(s)`, {
+          align: 'center',
+        });
+      doc.moveDown(1.5);
+
+      if (rows.length === 0) {
+        doc.fontSize(11).text('Nenhuma divergência ou falha encontrada neste lote.');
+      }
+
+      for (const r of rows) {
+        const resultado =
+          typeof r.conferencia_resultado === 'string'
+            ? (JSON.parse(r.conferencia_resultado) as ConferenciaResultado)
+            : r.conferencia_resultado;
+        const valorFmt =
+          r.value === null ? '—' : Number(r.value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const statusLabel = r.conferencia_status === 'divergente' ? 'DIVERGENTE' : 'FALHA NA ANÁLISE';
+
+        doc.fontSize(11).font('Helvetica-Bold').text(`Doc. Caixa ${r.doc_caixa ?? '—'} — ${r.credor ?? '—'}`);
+        doc
+          .fontSize(9)
+          .font('Helvetica')
+          .text(`Empenho: ${r.empenho ?? '—'}    Valor: ${valorFmt}    Status: ${statusLabel}`);
+
+        if (r.conferencia_status === 'divergente' && resultado) {
+          doc.fontSize(9).text(`Resumo: ${resultado.resumo}`);
+          for (const d of resultado.divergencias) {
+            doc.text(`  •  ${d.campo}: esperado "${d.esperado ?? '—'}", encontrado "${d.encontrado ?? '—'}"`);
+          }
+        } else if (r.conferencia_erro) {
+          doc.fontSize(9).text(`Motivo: ${r.conferencia_erro}`);
+        }
+
+        doc.moveDown(0.6);
+        doc
+          .moveTo(50, doc.y)
+          .lineTo(560, doc.y)
+          .strokeColor('#dddddd')
+          .stroke();
+        doc.moveDown(0.6);
+      }
+
+      doc.end();
+    });
   }
 
   /** Anexa o PDF a uma etiqueta (documento importado sem arquivo, status aguardando_arquivo). */

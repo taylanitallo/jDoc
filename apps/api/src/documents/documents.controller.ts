@@ -166,6 +166,20 @@ export class DocumentsController {
   }
 
   @Permissions()
+  @Post('conferencia/relatorio')
+  @HttpCode(200)
+  async relatorioConferencia(
+    @CurrentUser() user: TenantAccessClaims,
+    @Body(new ZodValidationPipe(bulkIdsSchema)) body: z.infer<typeof bulkIdsSchema>,
+    @Res() res: Response,
+  ): Promise<void> {
+    const pdf = await this.docs.gerarRelatorioCriticas(user, body.ids);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="criticas-conferencia.pdf"');
+    res.send(pdf);
+  }
+
+  @Permissions()
   @Get(':id')
   get(
     @CurrentUser() user: TenantAccessClaims,
