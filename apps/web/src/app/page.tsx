@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { isDesktopApp } from '@/lib/desktop-bridge';
 
 const DESKTOP_DOWNLOAD_URL =
-  'https://buknzokboidzhenafwpi.supabase.co/storage/v1/object/public/downloads/jDoc-Desktop-1.0.1-x64.exe';
+  'https://buknzokboidzhenafwpi.supabase.co/storage/v1/object/public/downloads/jDoc-Desktop-1.0.2-x64.exe';
 
 interface PublicTenantListItem {
   slug: string;
