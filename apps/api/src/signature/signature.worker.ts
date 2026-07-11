@@ -41,7 +41,7 @@ export class SignatureWorker implements OnModuleInit, OnModuleDestroy {
   }
 
   private async process(job: Job<SignatureJobData>): Promise<void> {
-    const { schemaName, slug, documentId, fileKey } = job.data;
+    const { schemaName, slug, documentId, targetTable, targetId, fileKey } = job.data;
     if (!SCHEMA_NAME_REGEX.test(schemaName)) {
       throw new Error(`Schema invalido no job: ${schemaName}`);
     }
@@ -50,13 +50,18 @@ export class SignatureWorker implements OnModuleInit, OnModuleDestroy {
     const result = await validatePdfSignature(pdf);
 
     const sql = this.db.tenant(schemaName);
+    // targetTable so vem de 'documents' | 'document_files' (uniao de tipos
+    // fixada no job data, nunca de input de usuario) — sql() e o helper de
+    // identificador seguro do postgres.js, nao interpolacao crua.
     await sql`
-      UPDATE documents SET
+      UPDATE ${sql(targetTable)} SET
         assinatura_status = ${result.status},
         assinado_por = ${result.signerCN},
         assinatura_verificada_em = now()
-      WHERE id = ${documentId}
+      WHERE id = ${targetId}
     `;
-    this.logger.log(`Assinatura de ${documentId}: ${result.status} (signer: ${result.signerCN ?? '—'})`);
+    this.logger.log(
+      `Assinatura de ${documentId} (${targetTable}:${targetId}): ${result.status} (signer: ${result.signerCN ?? '—'})`,
+    );
   }
 }

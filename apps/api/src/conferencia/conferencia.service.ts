@@ -8,7 +8,11 @@ export const CONFERENCIA_QUEUE = 'document-conferencia';
 export interface ConferenciaJobData {
   schemaName: string;
   slug: string;
+  /** Documento "dono" (pra permissao/cancelamento/logs) — a etiqueta e sempre dele, mesmo pra arquivos extras. */
   documentId: string;
+  /** Onde gravar o resultado: o documento principal, ou um arquivo extra dele. */
+  targetTable: 'documents' | 'document_files';
+  targetId: string;
   fileKey: string;
   docCaixa: string | null;
   empenho: string | null;
@@ -54,9 +58,10 @@ export class ConferenciaService implements OnModuleDestroy {
    * 'delayed') — economiza o custo dos que nem foram enviados pra IA ainda.
    * Jobs ja em andamento (no maximo 2, concurrency do worker) terminam
    * normalmente; nao da pra abortar uma chamada de API ja em voo com
-   * seguranca. Filtra por job.data.documentId (nao por jobId — mantemos IDs
-   * auto-gerados pra evitar colisao quando o mesmo documento e reanalisado).
-   * Devolve quantos foram cancelados de fato.
+   * seguranca. Filtra por job.data.targetId OU documentId (nao por jobId —
+   * mantemos IDs auto-gerados pra evitar colisao quando o mesmo documento e
+   * reanalisado) — targetId cobre arquivos extras, documentId cobre o
+   * principal. Devolve quantos foram cancelados de fato.
    */
   async cancelarPendentes(ids: string[]): Promise<number> {
     if (!this.queue) return 0;
@@ -64,7 +69,7 @@ export class ConferenciaService implements OnModuleDestroy {
     const jobs = await this.queue.getJobs(['waiting', 'delayed']);
     let cancelados = 0;
     for (const job of jobs) {
-      if (idSet.has(job.data.documentId)) {
+      if (idSet.has(job.data.targetId) || idSet.has(job.data.documentId)) {
         await job.remove();
         cancelados++;
       }

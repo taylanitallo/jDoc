@@ -246,6 +246,42 @@ export class DocumentsController {
   }
 
   @Permissions()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post(':id/files')
+  @UseInterceptors(FileInterceptor('file'))
+  addExtraFile(
+    @CurrentUser() user: TenantAccessClaims,
+    @Param('id', new ZodValidationPipe(uuidSchema)) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Req() req: Request,
+  ): Promise<DocumentView> {
+    if (!file) throw new BadRequestException('Arquivo PDF obrigatorio');
+    return this.docs.addExtraFile(user, id, file, req.ip ?? '');
+  }
+
+  @Permissions()
+  @Delete(':id/files/:extraId')
+  removeExtraFile(
+    @CurrentUser() user: TenantAccessClaims,
+    @Param('id', new ZodValidationPipe(uuidSchema)) id: string,
+    @Param('extraId', new ZodValidationPipe(uuidSchema)) extraId: string,
+    @Req() req: Request,
+  ): Promise<DocumentView> {
+    return this.docs.removeExtraFile(user, id, extraId, req.ip ?? '');
+  }
+
+  @Permissions()
+  @Get(':id/files/:extraId/url')
+  extraFileUrl(
+    @CurrentUser() user: TenantAccessClaims,
+    @Param('id', new ZodValidationPipe(uuidSchema)) id: string,
+    @Param('extraId', new ZodValidationPipe(uuidSchema)) extraId: string,
+    @Req() req: Request,
+  ): Promise<{ url: string }> {
+    return this.docs.extraFileSignedUrl(user, id, extraId, req.ip ?? '');
+  }
+
+  @Permissions()
   @Patch(':id')
   update(
     @CurrentUser() user: TenantAccessClaims,

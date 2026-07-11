@@ -18,6 +18,7 @@ import {
   type ConferenciaStatusItem,
   type DocModule,
   type DocumentFields,
+  type DocumentFileView,
   type DocumentPage,
   type DocumentView,
   type EtiquetaCandidate,
@@ -94,7 +95,40 @@ interface DocRow {
   conferencia_verificada_em: Date | null;
 }
 
-function toView(r: DocRow): DocumentView {
+interface DocumentFileRow {
+  id: string;
+  document_id: string;
+  original_name: string;
+  file_size: string;
+  paginas: number | null;
+  assinatura_status: string;
+  assinado_por: string | null;
+  conferencia_status: ConferenciaStatus | null;
+  conferencia_resultado: ConferenciaResultado | string | null;
+  conferencia_erro: string | null;
+  criado_em: Date;
+}
+
+function toFileView(r: DocumentFileRow): DocumentFileView {
+  const conferenciaResultado =
+    typeof r.conferencia_resultado === 'string'
+      ? (JSON.parse(r.conferencia_resultado) as ConferenciaResultado)
+      : r.conferencia_resultado;
+  return {
+    id: r.id,
+    originalName: r.original_name,
+    fileSize: Number(r.file_size),
+    pageCount: r.paginas,
+    assinaturaStatus: r.assinatura_status,
+    assinadoPor: r.assinado_por,
+    conferenciaStatus: r.conferencia_status,
+    conferenciaResultado,
+    conferenciaErro: r.conferencia_erro,
+    criadoEm: r.criado_em.toISOString(),
+  };
+}
+
+function toView(r: DocRow, arquivosExtras: DocumentFileView[] = []): DocumentView {
   // jsonb pode chegar como string dependendo do driver — parse defensivo.
   const conferenciaResultado =
     typeof r.conferencia_resultado === 'string'
@@ -134,6 +168,7 @@ function toView(r: DocRow): DocumentView {
     conferenciaResultado: conferenciaResultado,
     conferenciaErro: r.conferencia_erro,
     conferenciaVerificadaEm: r.conferencia_verificada_em ? r.conferencia_verificada_em.toISOString() : null,
+    arquivosExtras,
   };
 }
 
@@ -275,6 +310,8 @@ export class DocumentsService {
         schemaName: ctx.schemaName,
         slug: ctx.slug,
         documentId,
+        targetTable: 'documents',
+        targetId: documentId,
         fileKey,
       });
     }
@@ -379,6 +416,9 @@ export class DocumentsService {
    * tokens em vez de rodar automatico em todo anexo). So elegiveis: modulo
    * despesas, com arquivo anexado (status disponivel). Reseta o status pra
    * 'pendente' na hora (feedback visual imediato: o selo vira "carregando").
+   * Analisa tambem os arquivos EXTRAS de cada documento selecionado (cada
+   * PDF recebe seu proprio veredito) — mesmo gatilho unico (o botao), varios
+   * resultados.
    */
   async analisarConferencia(user: TenantAccessClaims, ids: string[]): Promise<AnalisarConferenciaResult> {
     const ctx = requireTenantContext();
@@ -404,27 +444,63 @@ export class DocumentsService {
       WHERE id = ANY(${ids}) AND deleted_at IS NULL AND module = 'despesas'
     `;
     const elegiveis = rows.filter((r) => r.status === 'disponivel' && r.file_key);
-    if (elegiveis.length === 0) return { enqueued: [], skipped: rows.length };
 
-    const enqueuedIds = elegiveis.map((r) => r.id);
-    await sql`
-      UPDATE documents SET
-        conferencia_status = 'pendente',
-        conferencia_resultado = NULL,
-        conferencia_erro = NULL,
-        conferencia_verificada_em = NULL
-      WHERE id = ANY(${enqueuedIds})
+    const extras = await sql<Array<{ id: string; document_id: string; file_key: string }>>`
+      SELECT id, document_id, file_key FROM document_files WHERE document_id = ANY(${ids})
     `;
+
+    if (elegiveis.length === 0 && extras.length === 0) return { enqueued: [], skipped: rows.length };
+
+    const enqueuedIds = [...elegiveis.map((r) => r.id), ...extras.map((e) => e.id)];
+    if (elegiveis.length > 0) {
+      await sql`
+        UPDATE documents SET
+          conferencia_status = 'pendente',
+          conferencia_resultado = NULL,
+          conferencia_erro = NULL,
+          conferencia_verificada_em = NULL
+        WHERE id = ANY(${elegiveis.map((r) => r.id)})
+      `;
+    }
+    if (extras.length > 0) {
+      await sql`
+        UPDATE document_files SET
+          conferencia_status = 'pendente',
+          conferencia_resultado = NULL,
+          conferencia_erro = NULL,
+          conferencia_verificada_em = NULL
+        WHERE id = ANY(${extras.map((e) => e.id)})
+      `;
+    }
     for (const r of elegiveis) {
       await this.conferencia.enqueueConferencia({
         schemaName: ctx.schemaName,
         slug: ctx.slug,
         documentId: r.id,
+        targetTable: 'documents',
+        targetId: r.id,
         fileKey: r.file_key as string,
         docCaixa: r.doc_caixa,
         empenho: r.empenho,
         credor: r.credor,
         value: r.value === null ? null : Number(r.value),
+      });
+    }
+    for (const e of extras) {
+      // A etiqueta (doc caixa/empenho/credor/valor) e sempre a do documento
+      // "dono" — compara o EXTRA contra os mesmos dados esperados.
+      const dono = rows.find((r) => r.id === e.document_id);
+      await this.conferencia.enqueueConferencia({
+        schemaName: ctx.schemaName,
+        slug: ctx.slug,
+        documentId: e.document_id,
+        targetTable: 'document_files',
+        targetId: e.id,
+        fileKey: e.file_key,
+        docCaixa: dono?.doc_caixa ?? null,
+        empenho: dono?.empenho ?? null,
+        credor: dono?.credor ?? null,
+        value: dono?.value === null || dono?.value === undefined ? null : Number(dono.value),
       });
     }
     return { enqueued: enqueuedIds, skipped: rows.length - elegiveis.length };
@@ -445,6 +521,10 @@ export class DocumentsService {
       UPDATE documents SET conferencia_status = NULL, conferencia_verificada_em = NULL
       WHERE id = ANY(${ids}) AND deleted_at IS NULL AND module = 'despesas' AND conferencia_status = 'pendente'
     `;
+    await sql`
+      UPDATE document_files SET conferencia_status = NULL, conferencia_verificada_em = NULL
+      WHERE id = ANY(${ids}) AND conferencia_status = 'pendente'
+    `;
     return { cancelados };
   }
 
@@ -453,6 +533,9 @@ export class DocumentsService {
     const ctx = requireTenantContext();
     this.assertPermission(user, 'despesas', 'read');
     const sql = this.db.tenant(ctx.schemaName);
+    // ids pode misturar documentos "principais" e arquivos extras (mesmo
+    // lote de "Analisar Doc (IA)") — os dois espacos de UUID nao colidem,
+    // entao um UNION cobre ambos sem precisar saber de antemao qual e qual.
     const rows = await sql<
       Array<{
         id: string;
@@ -462,8 +545,14 @@ export class DocumentsService {
         conferencia_erro: string | null;
       }>
     >`
-      SELECT id, doc_caixa, credor, conferencia_status, conferencia_erro FROM documents
-      WHERE id = ANY(${ids}) AND deleted_at IS NULL AND module = 'despesas'
+      SELECT d.id, d.doc_caixa, d.credor, d.conferencia_status, d.conferencia_erro
+      FROM documents d
+      WHERE d.id = ANY(${ids}) AND d.deleted_at IS NULL AND d.module = 'despesas'
+      UNION ALL
+      SELECT df.id, dd.doc_caixa, dd.credor, df.conferencia_status, df.conferencia_erro
+      FROM document_files df
+      JOIN documents dd ON dd.id = df.document_id
+      WHERE df.id = ANY(${ids}) AND dd.module = 'despesas'
     `;
     return rows.map((r) => ({
       id: r.id,
@@ -734,6 +823,8 @@ export class DocumentsService {
         schemaName: ctx.schemaName,
         slug: ctx.slug,
         documentId: id,
+        targetTable: 'documents',
+        targetId: id,
         fileKey,
       });
     }
@@ -785,11 +876,153 @@ export class DocumentsService {
     return this.get(user, id);
   }
 
+  /** Anexa mais um PDF ao documento (alem do principal), sem substituir nada. */
+  async addExtraFile(
+    user: TenantAccessClaims,
+    id: string,
+    file: { buffer: Buffer; originalname: string; size: number },
+    ip: string,
+  ): Promise<DocumentView> {
+    const ctx = requireTenantContext();
+    const row = await this.getRow(id);
+    this.assertPermission(user, row.module, 'update');
+
+    if (file.size < 5 || !file.buffer.subarray(0, 4).equals(PDF_MAGIC)) {
+      throw new BadRequestException('Arquivo invalido: apenas PDF e aceito');
+    }
+    const env = loadEnv();
+    const maxBytes = env.MAX_UPLOAD_MB * 1024 * 1024;
+    if (file.size > maxBytes) {
+      throw new PayloadTooLargeException(`Arquivo excede o limite de ${env.MAX_UPLOAD_MB} MB`);
+    }
+
+    const quotaBytes = ctx.quotaDiscoMb * 1024 * 1024;
+    const uso = await this.usageBytes();
+    if (uso + file.size > quotaBytes) {
+      throw new ForbiddenException(
+        'Quota de disco do orgao atingida. Contate a JEOS para ampliar o plano.',
+      );
+    }
+
+    const fileKey = `${randomUUID()}.pdf`;
+    const fileHash = createHash('sha256').update(file.buffer).digest('hex');
+    const pageCount = await this.countPages(file.buffer);
+    await this.storage.upload(ctx.slug, fileKey, file.buffer);
+
+    const sql = this.db.tenant(ctx.schemaName);
+    const rows = await sql<Array<{ id: string }>>`
+      INSERT INTO document_files (
+        document_id, file_key, original_name, file_size, file_hash, paginas, criado_por
+      ) VALUES (
+        ${id}, ${fileKey}, ${file.originalname.slice(0, 255)}, ${file.size}, ${fileHash}, ${pageCount}, ${user.sub}
+      )
+      RETURNING id
+    `;
+    const extraId = rows[0]!.id;
+
+    await this.audit.logTenant({
+      actorId: user.sub,
+      action: 'document_extra_file_attached',
+      resourceType: 'document',
+      resourceId: id,
+      ip,
+      metadata: { module: row.module, fileKey, fileHash, size: file.size, extraId },
+    });
+
+    if (hasSignature(file.buffer)) {
+      await this.signature.enqueueValidation({
+        schemaName: ctx.schemaName,
+        slug: ctx.slug,
+        documentId: id,
+        targetTable: 'document_files',
+        targetId: extraId,
+        fileKey,
+      });
+    }
+
+    // Conferencia por IA e sob demanda (botao "Analisar Doc (IA)"), mesma
+    // regra do arquivo principal — nao dispara sozinho ao anexar.
+
+    return this.get(user, id);
+  }
+
+  /** Remove um arquivo extra especifico (nao o principal). */
+  async removeExtraFile(user: TenantAccessClaims, id: string, extraId: string, ip: string): Promise<DocumentView> {
+    const ctx = requireTenantContext();
+    const row = await this.getRow(id);
+    this.assertPermission(user, row.module, 'update');
+
+    const sql = this.db.tenant(ctx.schemaName);
+    const extraRows = await sql<Array<{ file_key: string }>>`
+      SELECT file_key FROM document_files WHERE id = ${extraId} AND document_id = ${id}
+    `;
+    const extra = extraRows[0];
+    if (!extra) throw new NotFoundException('Arquivo nao encontrado');
+
+    await sql`DELETE FROM document_files WHERE id = ${extraId} AND document_id = ${id}`;
+    await this.storage.delete(ctx.slug, extra.file_key);
+
+    await this.audit.logTenant({
+      actorId: user.sub,
+      action: 'document_extra_file_removed',
+      resourceType: 'document',
+      resourceId: id,
+      ip,
+      metadata: { module: row.module, fileKey: extra.file_key, extraId },
+    });
+
+    return this.get(user, id);
+  }
+
+  /** Signed URL 60s de um arquivo extra especifico — mesma checagem de posse do principal. */
+  async extraFileSignedUrl(user: TenantAccessClaims, id: string, extraId: string, ip: string): Promise<{ url: string }> {
+    const ctx = requireTenantContext();
+    const row = await this.getRow(id);
+    this.assertPermission(user, row.module, 'read');
+
+    const sql = this.db.tenant(ctx.schemaName);
+    const extraRows = await sql<Array<{ file_key: string }>>`
+      SELECT file_key FROM document_files WHERE id = ${extraId} AND document_id = ${id}
+    `;
+    const extra = extraRows[0];
+    if (!extra) throw new NotFoundException('Arquivo nao encontrado');
+
+    const url = await this.storage.createSignedUrl(ctx.slug, extra.file_key);
+    await this.audit.logTenant({
+      actorId: user.sub,
+      action: 'document_extra_file_download_url',
+      resourceType: 'document',
+      resourceId: id,
+      ip,
+      metadata: { extraId },
+    });
+    return { url };
+  }
+
   /**
    * WHERE compartilhado por search() e gerarRelatorioEtiquetas() — garante
    * que o relatorio impresso respeite exatamente os mesmos filtros da tela
    * (nunca duplicar essa logica).
    */
+  /** Arquivos extras de um lote de documentos, agrupados por document_id (evita N+1). */
+  private async fetchExtrasMap(sql: Sql, documentIds: string[]): Promise<Map<string, DocumentFileView[]>> {
+    const map = new Map<string, DocumentFileView[]>();
+    if (documentIds.length === 0) return map;
+    const rows = await sql<DocumentFileRow[]>`
+      SELECT id, document_id, original_name, file_size, paginas, assinatura_status, assinado_por,
+             conferencia_status, conferencia_resultado, conferencia_erro, criado_em
+      FROM document_files
+      WHERE document_id = ANY(${documentIds})
+      ORDER BY criado_em ASC
+    `;
+    for (const r of rows) {
+      const list = map.get(r.document_id) ?? [];
+      list.push(toFileView(r));
+      map.set(r.document_id, list);
+    }
+    return map;
+  }
+
   private buildSearchWhere(sql: Sql, q: SearchDocumentsQuery) {
     const text = q.q ? `%${q.q}%` : null;
     const dateQuery = parseDateQuery(q.q);
@@ -862,9 +1095,10 @@ export class DocumentsService {
     const totalRows = await sql<Array<{ total: string }>>`
       SELECT COUNT(*)::bigint AS total FROM documents d WHERE ${where}
     `;
+    const extrasMap = await this.fetchExtrasMap(sql, items.map((i) => i.id));
 
     return {
-      items: items.map(toView),
+      items: items.map((r) => toView(r, extrasMap.get(r.id) ?? [])),
       total: Number(totalRows[0]?.total ?? 0),
       page: q.page,
       pageSize: q.pageSize,
@@ -898,9 +1132,12 @@ export class DocumentsService {
   }
 
   async get(user: TenantAccessClaims, id: string): Promise<DocumentView> {
+    const ctx = requireTenantContext();
     const row = await this.getRow(id);
     this.assertPermission(user, row.module, 'read');
-    return toView(row);
+    const sql = this.db.tenant(ctx.schemaName);
+    const extras = await this.fetchExtrasMap(sql, [id]);
+    return toView(row, extras.get(id) ?? []);
   }
 
   /** Signed URL 60s — checagem de permissao + posse pelo tenant ANTES de assinar. */
@@ -1073,6 +1310,10 @@ export class DocumentsService {
       this.assertPermission(user, module, 'read');
     }
 
+    const extraRows = await sql<Array<{ file_key: string; original_name: string }>>`
+      SELECT file_key, original_name FROM document_files WHERE document_id = ANY(${ids})
+    `;
+
     const archive = archiver('zip', { zlib: { level: 9 } });
     const chunks: Buffer[] = [];
     archive.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -1088,6 +1329,24 @@ export class DocumentsService {
       try {
         const content = await this.storage.download(ctx.slug, row.file_key);
         let name = (row.original_name || `${row.id}.pdf`).trim();
+        if (!name.toLowerCase().endsWith('.pdf')) name += '.pdf';
+        let finalName = name;
+        let i = 1;
+        while (usedNames.has(finalName)) {
+          finalName = name.replace(/\.pdf$/i, `-${i}.pdf`);
+          i++;
+        }
+        usedNames.add(finalName);
+        archive.append(content, { name: finalName });
+        included++;
+      } catch {
+        // arquivo ausente/corrompido — pula e segue com os demais.
+      }
+    }
+    for (const extra of extraRows) {
+      try {
+        const content = await this.storage.download(ctx.slug, extra.file_key);
+        let name = (extra.original_name || `${extra.file_key}.pdf`).trim();
         if (!name.toLowerCase().endsWith('.pdf')) name += '.pdf';
         let finalName = name;
         let i = 1;
@@ -1172,7 +1431,7 @@ export class DocumentsService {
         AND (${q.module ?? null}::varchar IS NULL OR d.module = ${q.module ?? null})
     `;
     return {
-      items: rows.map(toView),
+      items: rows.map((r) => toView(r)),
       total: Number(totalRows[0]?.total ?? 0),
       page: q.page,
       pageSize: q.pageSize,

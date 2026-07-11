@@ -217,3 +217,45 @@ export function attachDocumentFile(
     xhr.send(form);
   });
 }
+
+/** Anexa mais um PDF ao documento (alem do principal), sem substituir nada. */
+export function addExtraDocumentFile(
+  slug: string,
+  documentId: string,
+  file: File,
+  onProgress: (percent: number) => void,
+): Promise<{ ok: true; body: unknown } | { ok: false; status: number; message: string }> {
+  return new Promise((resolvePromise) => {
+    const form = new FormData();
+    form.append('file', file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_URL}/t/${slug}/documents/${documentId}/files`);
+    const token = getAccessToken();
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.withCredentials = true;
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      let body: unknown = null;
+      try {
+        body = JSON.parse(xhr.responseText) as unknown;
+      } catch {
+        // sem corpo
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolvePromise({ ok: true, body });
+      } else {
+        const message =
+          (body as { message?: string } | null)?.message ?? 'Falha no upload do arquivo';
+        resolvePromise({ ok: false, status: xhr.status, message });
+      }
+    };
+    xhr.onerror = () =>
+      resolvePromise({ ok: false, status: 0, message: 'Erro de rede durante o upload' });
+
+    xhr.send(form);
+  });
+}

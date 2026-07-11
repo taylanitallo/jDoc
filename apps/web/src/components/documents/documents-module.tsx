@@ -27,14 +27,17 @@ import {
   DOC_SUBTYPES,
   TRASH_RETENTION_DAYS,
   type AnalisarConferenciaResult,
+  type ConferenciaResultado,
+  type ConferenciaStatus,
   type ConferenciaStatusItem,
   type DocModule,
+  type DocumentFileView,
   type DocumentPage,
   type DocumentView,
   type Orgao,
 } from '@jdoc/shared';
 import { api, ApiError, getAccessToken } from '@/lib/api';
-import { attachDocumentFile, uploadDocument } from '@/lib/upload';
+import { addExtraDocumentFile, attachDocumentFile, uploadDocument } from '@/lib/upload';
 import { useExercicio } from '@/components/topbar';
 import { LabelsImportModal } from '@/components/documents/labels-import-modal';
 import { DesktopSignModal } from '@/components/documents/desktop-sign-modal';
@@ -112,19 +115,46 @@ function formatDuration(ms: number): string {
   return `${minutes}min ${seconds}s`;
 }
 
+/** Quanto maior, mais grave — usado pra achar o "pior caso" entre varios arquivos do mesmo documento. */
+const CONFERENCIA_SEVERITY: Record<string, number> = { divergente: 4, falha: 3, pendente: 2, conforme: 1 };
+
+/** Pior veredito entre o arquivo principal e os extras — o selo da listagem reflete esse. */
+function worstConferencia(documento: DocumentView): {
+  status: ConferenciaStatus | null;
+  resultado: ConferenciaResultado | null;
+  erro: string | null;
+} {
+  let best = {
+    status: documento.conferenciaStatus,
+    resultado: documento.conferenciaResultado,
+    erro: documento.conferenciaErro,
+  };
+  let bestSeverity = best.status ? CONFERENCIA_SEVERITY[best.status] ?? 0 : 0;
+  for (const extra of documento.arquivosExtras) {
+    const severity = extra.conferenciaStatus ? CONFERENCIA_SEVERITY[extra.conferenciaStatus] ?? 0 : 0;
+    if (severity > bestSeverity) {
+      bestSeverity = severity;
+      best = { status: extra.conferenciaStatus, resultado: extra.conferenciaResultado, erro: extra.conferenciaErro };
+    }
+  }
+  return best;
+}
+
 /**
- * Selo da conferência por IA: cruza o PDF anexado com os dados da etiqueta.
- * Verde = conforme. Laranja = divergência. Sem veredito ainda (nunca
+ * Selo da conferência por IA: cruza o(s) PDF(s) anexado(s) com os dados da
+ * etiqueta. Verde = conforme. Laranja = divergência. Sem veredito ainda (nunca
  * analisado, falhou, ou está rodando agora) e com arquivo anexado = ícone de
  * "carregando", convidando a usar o botão "Analisar Doc (IA)". Sem arquivo
  * anexado (etiqueta aguardando PDF) não mostra nada — não há o que analisar.
+ * Quando o documento tem mais de um PDF, mostra o pior veredito entre eles.
  */
 function ConferenciaBadge({ documento }: { documento: DocumentView }) {
   // A conferencia so existe no modulo despesas — nos demais nao ha o que mostrar.
   if (documento.module !== 'despesas') return null;
-  if (documento.conferenciaStatus === 'divergente') {
-    const resumo = documento.conferenciaResultado?.resumo;
-    const divergencias = documento.conferenciaResultado?.divergencias ?? [];
+  const { status, resultado, erro } = worstConferencia(documento);
+  if (status === 'divergente') {
+    const resumo = resultado?.resumo;
+    const divergencias = resultado?.divergencias ?? [];
     const title = [
       resumo,
       ...divergencias.map((d) => `${d.campo}: esperado ${d.esperado ?? '—'}, encontrado ${d.encontrado ?? '—'}`),
@@ -140,7 +170,7 @@ function ConferenciaBadge({ documento }: { documento: DocumentView }) {
       </span>
     );
   }
-  if (documento.conferenciaStatus === 'conforme') {
+  if (status === 'conforme') {
     return (
       <span title="Conferência automática: dados conferem com o PDF">
         <CircleCheck
@@ -150,9 +180,9 @@ function ConferenciaBadge({ documento }: { documento: DocumentView }) {
       </span>
     );
   }
-  if (documento.conferenciaStatus === 'falha') {
+  if (status === 'falha') {
     return (
-      <span title={documento.conferenciaErro ?? 'Falha ao analisar — clique em "Analisar Doc (IA)" para tentar de novo'}>
+      <span title={erro ?? 'Falha ao analisar — clique em "Analisar Doc (IA)" para tentar de novo'}>
         <CircleAlert
           className="mx-auto h-4 w-4 text-red-500"
           aria-label="Conferência por IA: falhou"
@@ -164,7 +194,7 @@ function ConferenciaBadge({ documento }: { documento: DocumentView }) {
     return (
       <span
         title={
-          documento.conferenciaStatus === 'pendente'
+          status === 'pendente'
             ? 'Analisando por IA…'
             : 'Ainda não analisado — selecione e clique em "Analisar Doc (IA)"'
         }
@@ -173,6 +203,55 @@ function ConferenciaBadge({ documento }: { documento: DocumentView }) {
           className="mx-auto h-4 w-4 animate-spin text-app-muted"
           aria-label="Conferência por IA: aguardando análise"
         />
+      </span>
+    );
+  }
+  return null;
+}
+
+/** Selo compacto de conferência por IA pra uma linha de arquivo individual (dentro do modal Anexar PDF). */
+function FileConferenciaBadge({
+  status,
+  resultado,
+  erro,
+}: {
+  status: ConferenciaStatus | null;
+  resultado: ConferenciaResultado | null;
+  erro: string | null;
+}) {
+  if (status === 'divergente') {
+    const resumo = resultado?.resumo;
+    const divergencias = resultado?.divergencias ?? [];
+    const title = [
+      resumo,
+      ...divergencias.map((d) => `${d.campo}: esperado ${d.esperado ?? '—'}, encontrado ${d.encontrado ?? '—'}`),
+    ]
+      .filter(Boolean)
+      .join('\n');
+    return (
+      <span title={title || 'Divergência encontrada pela conferência automática'}>
+        <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-orange-500" aria-hidden />
+      </span>
+    );
+  }
+  if (status === 'conforme') {
+    return (
+      <span title="Conferência automática: dados conferem com o PDF">
+        <CircleCheck className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" aria-hidden />
+      </span>
+    );
+  }
+  if (status === 'falha') {
+    return (
+      <span title={erro ?? 'Falha ao analisar'}>
+        <CircleAlert className="h-3.5 w-3.5 shrink-0 text-red-500" aria-hidden />
+      </span>
+    );
+  }
+  if (status === 'pendente') {
+    return (
+      <span title="Analisando por IA…">
+        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-app-muted" aria-hidden />
       </span>
     );
   }
@@ -247,6 +326,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
   const [deleteSubtype, setDeleteSubtype] = useState('');
   const [deleteApenasSemArquivo, setDeleteApenasSemArquivo] = useState(true);
   const [attaching, setAttaching] = useState<DocumentView | null>(null);
+  const [viewPicker, setViewPicker] = useState<DocumentView | null>(null);
   const [editing, setEditing] = useState<DocumentView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -585,16 +665,29 @@ export function DocumentsModule({ module }: { module: DocModule }) {
     }
   };
 
-  const openPdf = async (doc: DocumentView) => {
+  /** Abre um arquivo especifico (principal se extraId for undefined) em nova guia. */
+  const openFile = async (doc: DocumentView, extraId?: string) => {
     const win = window.open('', '_blank');
     try {
-      const { url } = await api<{ url: string }>(`/t/${slug}/documents/${doc.id}/url`);
+      const path = extraId
+        ? `/t/${slug}/documents/${doc.id}/files/${extraId}/url`
+        : `/t/${slug}/documents/${doc.id}/url`;
+      const { url } = await api<{ url: string }>(path);
       if (win) win.location.href = url;
       else window.open(url, '_blank');
     } catch (e) {
       win?.close();
       setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Erro ao abrir PDF');
     }
+  };
+
+  /** Se o documento tem so um PDF, abre direto; se tem mais de um, pergunta qual. */
+  const openPdf = (doc: DocumentView) => {
+    if (doc.arquivosExtras.length === 0) {
+      void openFile(doc);
+      return;
+    }
+    setViewPicker(doc);
   };
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
@@ -1228,6 +1321,51 @@ export function DocumentsModule({ module }: { module: DocModule }) {
           onDone={invalidate}
         />
       )}
+      {viewPicker && (
+        <Modal title="Qual arquivo deseja visualizar?" subtitle={`${viewPicker.arquivosExtras.length + 1} PDFs neste documento`} open onClose={() => setViewPicker(null)}>
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => {
+                void openFile(viewPicker);
+                setViewPicker(null);
+              }}
+              className="flex w-full items-center justify-between gap-2 rounded-lg border border-app-border bg-app-input-bg px-3 py-2 text-left text-sm text-app transition hover:bg-app-hover"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <FileConferenciaBadge
+                  status={viewPicker.conferenciaStatus}
+                  resultado={viewPicker.conferenciaResultado}
+                  erro={viewPicker.conferenciaErro}
+                />
+                <span className="truncate">{viewPicker.originalName}</span>
+              </span>
+              <Eye className="h-3.5 w-3.5 shrink-0 text-app-muted" aria-hidden />
+            </button>
+            {viewPicker.arquivosExtras.map((extra) => (
+              <button
+                key={extra.id}
+                type="button"
+                onClick={() => {
+                  void openFile(viewPicker, extra.id);
+                  setViewPicker(null);
+                }}
+                className="flex w-full items-center justify-between gap-2 rounded-lg border border-app-border bg-app-input-bg px-3 py-2 text-left text-sm text-app transition hover:bg-app-hover"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <FileConferenciaBadge
+                    status={extra.conferenciaStatus}
+                    resultado={extra.conferenciaResultado}
+                    erro={extra.conferenciaErro}
+                  />
+                  <span className="truncate">{extra.originalName}</span>
+                </span>
+                <Eye className="h-3.5 w-3.5 shrink-0 text-app-muted" aria-hidden />
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
       {editing && (
         <EditModal
           slug={String(slug)}
@@ -1598,11 +1736,19 @@ function AttachPdfModal({
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [extras, setExtras] = useState<DocumentFileView[]>(doc.arquivosExtras);
+  const [extraProgress, setExtraProgress] = useState<number | null>(null);
+  const [extraError, setExtraError] = useState<string | null>(null);
+  const [removingExtraId, setRemovingExtraId] = useState<string | null>(null);
 
-  const viewCurrent = async () => {
+  /** Abre um arquivo especifico (principal se extraId for undefined) em nova guia. */
+  const viewFile = async (extraId?: string) => {
     const win = window.open('', '_blank');
     try {
-      const { url } = await api<{ url: string }>(`/t/${slug}/documents/${doc.id}/url`);
+      const path = extraId
+        ? `/t/${slug}/documents/${doc.id}/files/${extraId}/url`
+        : `/t/${slug}/documents/${doc.id}/url`;
+      const { url } = await api<{ url: string }>(path);
       if (win) win.location.href = url;
       else window.open(url, '_blank');
     } catch (e) {
@@ -1657,16 +1803,57 @@ function AttachPdfModal({
     }
   };
 
+  const addExtra = async (f: File) => {
+    if (f.type !== 'application/pdf' && !f.name.toLowerCase().endsWith('.pdf')) {
+      setExtraError('Apenas arquivos PDF são aceitos');
+      return;
+    }
+    setExtraError(null);
+    setExtraProgress(0);
+    const result = await addExtraDocumentFile(slug, doc.id, f, setExtraProgress);
+    setExtraProgress(null);
+    if (result.ok) {
+      const updated = result.body as DocumentView;
+      setExtras(updated.arquivosExtras);
+      onDone();
+    } else {
+      setExtraError(result.message);
+    }
+  };
+
+  const removeExtra = async (extraId: string) => {
+    setExtraError(null);
+    setRemovingExtraId(extraId);
+    try {
+      const updated = await api<DocumentView>(`/t/${slug}/documents/${doc.id}/files/${extraId}`, { method: 'DELETE' });
+      setExtras(updated.arquivosExtras);
+      onDone();
+    } catch (e) {
+      setExtraError(e instanceof ApiError ? e.message : 'Erro ao excluir arquivo');
+    } finally {
+      setRemovingExtraId(null);
+    }
+  };
+
   return (
     <Modal title={temArquivo ? 'Substituir PDF' : 'Anexar PDF'} subtitle={doc.originalName} open onClose={onClose}>
       <div className="space-y-4">
         {temArquivo && (
           <div className="rounded-lg border border-app-border bg-app-input-bg px-3 py-2">
-            <p className="mb-2 truncate text-xs font-semibold text-app">{doc.originalName}</p>
+            <div className="mb-2 flex items-center gap-2">
+              {doc.module === 'despesas' && (
+                <FileConferenciaBadge
+                  status={doc.conferenciaStatus}
+                  resultado={doc.conferenciaResultado}
+                  erro={doc.conferenciaErro}
+                />
+              )}
+              <p className="truncate text-xs font-semibold text-app">{doc.originalName}</p>
+            </div>
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={viewCurrent}
+                onClick={() => void viewFile()}
                 className="flex items-center gap-1.5 rounded-lg border border-app-input-border bg-app-card px-3 py-1.5 text-xs font-bold uppercase text-app-muted transition hover:bg-app-hover hover:text-app"
               >
                 <Eye className="h-3.5 w-3.5" aria-hidden /> Visualizar
@@ -1680,9 +1867,82 @@ function AttachPdfModal({
                 <Trash2 className="h-3.5 w-3.5" aria-hidden /> {removing ? 'Excluindo…' : 'Excluir PDF'}
               </button>
             </div>
-            <p className="mt-2 text-xs text-app-muted">Selecionar um novo arquivo abaixo vai substituir o PDF atual.</p>
+            <p className="mt-2 text-xs text-app-muted">Selecionar um novo arquivo abaixo vai substituir este PDF.</p>
           </div>
         )}
+
+        {temArquivo && extras.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold uppercase text-app-muted">Outros PDFs anexados</p>
+            {extras.map((extra) => (
+              <div
+                key={extra.id}
+                className="flex items-center justify-between gap-2 rounded-lg border border-app-border bg-app-input-bg px-3 py-2"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  {doc.module === 'despesas' && (
+                    <FileConferenciaBadge
+                      status={extra.conferenciaStatus}
+                      resultado={extra.conferenciaResultado}
+                      erro={extra.conferenciaErro}
+                    />
+                  )}
+                  <span className="truncate text-xs text-app">{extra.originalName}</span>
+                </span>
+                <span className="flex shrink-0 gap-1">
+                  <button
+                    type="button"
+                    title="Visualizar"
+                    onClick={() => void viewFile(extra.id)}
+                    className="rounded p-1 text-app-muted hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20"
+                  >
+                    <Eye className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    title="Excluir"
+                    disabled={removingExtraId === extra.id}
+                    onClick={() => void removeExtra(extra.id)}
+                    className="rounded p-1 text-app-muted hover:bg-red-50 hover:text-red-500 disabled:opacity-60 dark:hover:bg-red-900/20"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {temArquivo && (
+          <div>
+            <button
+              type="button"
+              onClick={() => document.getElementById('add-extra-file-input')?.click()}
+              disabled={extraProgress !== null}
+              className="flex items-center gap-1.5 rounded-lg border border-dashed border-app-border px-3 py-1.5 text-xs font-bold uppercase text-app-muted transition hover:border-accent hover:text-accent disabled:opacity-60"
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden />{' '}
+              {extraProgress !== null ? `Enviando… ${extraProgress}%` : 'Adicionar outro PDF'}
+            </button>
+            <input
+              id="add-extra-file-input"
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void addExtra(f);
+                e.target.value = '';
+              }}
+            />
+            {extraError && (
+              <p role="alert" className="mt-2 rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">
+                {extraError}
+              </p>
+            )}
+          </div>
+        )}
+
         <div
           role="button"
           tabIndex={0}
