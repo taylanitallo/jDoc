@@ -152,21 +152,46 @@ function ConferenciaBadge({ documento }: { documento: DocumentView }) {
   // A conferencia so existe no modulo despesas — nos demais nao ha o que mostrar.
   if (documento.module !== 'despesas') return null;
   const { status, resultado, erro } = worstConferencia(documento);
-  if (status === 'divergente') {
-    const resumo = resultado?.resumo;
-    const divergencias = resultado?.divergencias ?? [];
-    const title = [
-      resumo,
-      ...divergencias.map((d) => `${d.campo}: esperado ${d.esperado ?? '—'}, encontrado ${d.encontrado ?? '—'}`),
-    ]
-      .filter(Boolean)
-      .join('\n');
+  if (status === 'divergente' || status === 'falha') {
+    const totalArquivos = 1 + documento.arquivosExtras.length;
+    const Icon = status === 'divergente' ? TriangleAlert : CircleAlert;
+    const iconColor = status === 'divergente' ? 'text-orange-500' : 'text-red-500';
+    const ariaLabel = status === 'divergente' ? 'Conferência por IA: divergência encontrada' : 'Conferência por IA: falhou';
+
+    let tooltip: React.ReactNode;
+    if (totalArquivos > 1) {
+      // Mais de um PDF anexado: em vez de mostrar so o pior veredito (escondendo
+      // os outros), manda clicar na linha — o modal ja lista cada arquivo com
+      // seu proprio triangulo/erro individual.
+      tooltip = (
+        <p>
+          Mais de um arquivo anexado com problema.{' '}
+          <span className="font-semibold text-blue-500 dark:text-blue-400">Clique para ver detalhado.</span>
+        </p>
+      );
+    } else if (status === 'divergente') {
+      const divergencias = resultado?.divergencias ?? [];
+      tooltip = (
+        <div className="space-y-1">
+          {resultado?.resumo && <p className="text-app-muted">{resultado.resumo}</p>}
+          {divergencias.map((d, i) => (
+            <p key={i}>
+              <span className="font-semibold text-blue-500 dark:text-blue-400">{d.campo}</span>: esperado &quot;
+              {d.esperado ?? '—'}&quot;, encontrado &quot;{d.encontrado ?? '—'}&quot;
+            </p>
+          ))}
+        </div>
+      );
+    } else {
+      tooltip = <p>{erro ?? 'Falha ao analisar — clique em "Analisar Doc (IA)" para tentar de novo'}</p>;
+    }
+
     return (
-      <span title={title || 'Divergência encontrada pela conferência automática'}>
-        <TriangleAlert
-          className="mx-auto h-4 w-4 text-orange-500"
-          aria-label="Conferência por IA: divergência encontrada"
-        />
+      <span className="group relative inline-flex justify-center">
+        <Icon className={`mx-auto h-4 w-4 ${iconColor}`} aria-label={ariaLabel} />
+        <span className="pointer-events-none absolute bottom-full right-0 z-50 mb-2 hidden w-72 rounded-lg border border-app-border bg-app-card p-3 text-left text-xs text-app shadow-lg group-hover:block">
+          {tooltip}
+        </span>
       </span>
     );
   }
@@ -176,16 +201,6 @@ function ConferenciaBadge({ documento }: { documento: DocumentView }) {
         <CircleCheck
           className="mx-auto h-4 w-4 text-green-600 dark:text-green-400"
           aria-label="Conferência por IA: conforme"
-        />
-      </span>
-    );
-  }
-  if (status === 'falha') {
-    return (
-      <span title={erro ?? 'Falha ao analisar — clique em "Analisar Doc (IA)" para tentar de novo'}>
-        <CircleAlert
-          className="mx-auto h-4 w-4 text-red-500"
-          aria-label="Conferência por IA: falhou"
         />
       </span>
     );
