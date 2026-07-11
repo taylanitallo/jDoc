@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState, type DragEvent } from 'react';
+import { useCallback, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -115,6 +116,53 @@ function formatDuration(ms: number): string {
   return `${minutes}min ${seconds}s`;
 }
 
+const TOOLTIP_WIDTH = 340;
+
+/**
+ * Tooltip colorido que renderiza via portal em document.body — evita ser
+ * cortado por ancestrais com overflow-hidden/auto (tabela com scroll
+ * horizontal, modal com scroll vertical), que sempre cortavam o balao de
+ * conferencia quando ele nascia perto da borda. Posicao calculada na hora do
+ * hover a partir do icone; abre pra cima se nao houver espaco embaixo, e
+ * nunca deixa a caixa sair da largura da tela.
+ */
+function HoverTooltip({ children, content }: { children: ReactNode; content: ReactNode }) {
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
+  const ref = useRef<HTMLSpanElement>(null);
+
+  const show = () => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return;
+    let left = rect.right - TOOLTIP_WIDTH;
+    if (left < 8) left = 8;
+    if (left + TOOLTIP_WIDTH > window.innerWidth - 8) left = window.innerWidth - TOOLTIP_WIDTH - 8;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp = spaceBelow < 220 && rect.top > spaceBelow;
+    setPos(
+      openUp
+        ? { bottom: window.innerHeight - rect.top + 8, left }
+        : { top: rect.bottom + 8, left },
+    );
+  };
+
+  return (
+    <span ref={ref} onMouseEnter={show} onMouseLeave={() => setPos(null)} className="inline-flex shrink-0">
+      {children}
+      {pos &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="pointer-events-none fixed z-[100] max-h-[60vh] overflow-y-auto rounded-lg border border-app-border bg-app-card p-3 text-left text-xs text-app shadow-2xl"
+            style={{ top: pos.top, bottom: pos.bottom, left: pos.left, width: TOOLTIP_WIDTH }}
+          >
+            {content}
+          </div>,
+          document.body,
+        )}
+    </span>
+  );
+}
+
 /** Quanto maior, mais grave — usado pra achar o "pior caso" entre varios arquivos do mesmo documento. */
 const CONFERENCIA_SEVERITY: Record<string, number> = { divergente: 4, falha: 3, pendente: 2, conforme: 1 };
 
@@ -158,7 +206,7 @@ function ConferenciaBadge({ documento }: { documento: DocumentView }) {
     const iconColor = status === 'divergente' ? 'text-orange-500' : 'text-red-500';
     const ariaLabel = status === 'divergente' ? 'Conferência por IA: divergência encontrada' : 'Conferência por IA: falhou';
 
-    let tooltip: React.ReactNode;
+    let tooltip: ReactNode;
     if (totalArquivos > 1) {
       // Mais de um PDF anexado: em vez de mostrar so o pior veredito (escondendo
       // os outros), manda clicar na linha — o modal ja lista cada arquivo com
@@ -187,12 +235,9 @@ function ConferenciaBadge({ documento }: { documento: DocumentView }) {
     }
 
     return (
-      <span className="group relative inline-flex justify-center">
+      <HoverTooltip content={tooltip}>
         <Icon className={`mx-auto h-4 w-4 ${iconColor}`} aria-label={ariaLabel} />
-        <span className="pointer-events-none absolute right-0 top-full z-50 mt-2 hidden w-72 rounded-lg border border-app-border bg-app-card p-3 text-left text-xs text-app shadow-lg group-hover:block">
-          {tooltip}
-        </span>
-      </span>
+      </HoverTooltip>
     );
   }
   if (status === 'conforme') {
@@ -253,12 +298,9 @@ function FileConferenciaBadge({
         <p>{erro ?? 'Falha ao analisar'}</p>
       );
     return (
-      <span className="group relative inline-flex shrink-0">
+      <HoverTooltip content={tooltip}>
         <Icon className={`h-3.5 w-3.5 shrink-0 ${iconColor}`} aria-hidden />
-        <span className="pointer-events-none absolute left-0 top-full z-50 mt-2 hidden w-72 rounded-lg border border-app-border bg-app-card p-3 text-left text-xs text-app shadow-lg group-hover:block">
-          {tooltip}
-        </span>
-      </span>
+      </HoverTooltip>
     );
   }
   if (status === 'conforme') {
