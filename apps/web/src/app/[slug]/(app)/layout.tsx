@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Sidebar } from '@/components/sidebar';
+import { Sidebar, SidebarMobileProvider } from '@/components/sidebar';
 import { ExercicioProvider, Topbar } from '@/components/topbar';
 import { BrandingProvider } from '@/components/branding';
 import { DesktopUpdateBanner } from '@/components/desktop-update-banner';
@@ -51,14 +51,16 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <BrandingProvider slug={slug}>
         <ExercicioProvider>
-          <div className="flex min-h-screen bg-app-bg">
-            <Sidebar />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <Topbar />
-              <DesktopUpdateBanner />
-              <main className="flex-1 p-6">{children}</main>
+          <SidebarMobileProvider>
+            <div className="flex min-h-screen bg-app-bg">
+              <Sidebar />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <Topbar />
+                <DesktopUpdateBanner />
+                <main className="flex-1 overflow-x-hidden p-4 sm:p-6">{children}</main>
+              </div>
             </div>
-          </div>
+          </SidebarMobileProvider>
         </ExercicioProvider>
       </BrandingProvider>
     </QueryClientProvider>
