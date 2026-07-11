@@ -128,6 +128,13 @@ function toFileView(r: DocumentFileRow): DocumentFileView {
   };
 }
 
+/** Paginas do documento = soma do principal + todos os extras (contagem null nao entra na soma). */
+function sumPageCount(primary: number | null, arquivosExtras: DocumentFileView[]): number | null {
+  const known = [primary, ...arquivosExtras.map((e) => e.pageCount)].filter((v): v is number => v !== null);
+  if (known.length === 0) return null;
+  return known.reduce((a, b) => a + b, 0);
+}
+
 function toView(r: DocRow, arquivosExtras: DocumentFileView[] = []): DocumentView {
   // jsonb pode chegar como string dependendo do driver — parse defensivo.
   const conferenciaResultado =
@@ -160,7 +167,7 @@ function toView(r: DocRow, arquivosExtras: DocumentFileView[] = []): DocumentVie
     originalName: r.original_name,
     fileSize: r.file_size === null ? 0 : Number(r.file_size),
     fileHash: r.file_hash ?? '',
-    pageCount: r.paginas,
+    pageCount: sumPageCount(r.paginas, arquivosExtras),
     status: r.status,
     criadoEm: r.criado_em.toISOString(),
     deletedAt: r.deleted_at ? r.deleted_at.toISOString() : null,
@@ -573,8 +580,23 @@ export class DocumentsService {
     const ctx = requireTenantContext();
     this.assertPermission(user, 'despesas', 'read');
     const sql = this.db.tenant(ctx.schemaName);
-    const rows = await sql<
+
+    interface CriticaEntry {
+      documentId: string;
+      fileLabel: string;
+      docCaixa: string | null;
+      empenho: string | null;
+      credor: string | null;
+      value: string | null;
+      status: ConferenciaStatus | null;
+      resultado: ConferenciaResultado | string | null;
+      erro: string | null;
+    }
+
+    const primaryRows = await sql<
       Array<{
+        id: string;
+        original_name: string;
         doc_caixa: string | null;
         empenho: string | null;
         credor: string | null;
@@ -584,12 +606,67 @@ export class DocumentsService {
         conferencia_erro: string | null;
       }>
     >`
-      SELECT doc_caixa, empenho, credor, value, conferencia_status, conferencia_resultado, conferencia_erro
+      SELECT id, original_name, doc_caixa, empenho, credor, value, conferencia_status, conferencia_resultado, conferencia_erro
       FROM documents
       WHERE id = ANY(${ids}) AND deleted_at IS NULL AND module = 'despesas'
         AND conferencia_status IN ('divergente', 'falha')
-      ORDER BY doc_caixa ASC NULLS LAST
     `;
+    const extraRows = await sql<
+      Array<{
+        document_id: string;
+        original_name: string;
+        doc_caixa: string | null;
+        empenho: string | null;
+        credor: string | null;
+        value: string | null;
+        conferencia_status: ConferenciaStatus | null;
+        conferencia_resultado: ConferenciaResultado | string | null;
+        conferencia_erro: string | null;
+      }>
+    >`
+      SELECT df.document_id, df.original_name, dd.doc_caixa, dd.empenho, dd.credor, dd.value,
+             df.conferencia_status, df.conferencia_resultado, df.conferencia_erro
+      FROM document_files df
+      JOIN documents dd ON dd.id = df.document_id
+      WHERE df.id = ANY(${ids}) AND dd.deleted_at IS NULL AND dd.module = 'despesas'
+        AND df.conferencia_status IN ('divergente', 'falha')
+    `;
+
+    // Um documento pode ter mais de um arquivo com problema (principal + extras)
+    // — agrupa por documento pra imprimir o cabecalho uma vez so e listar cada
+    // arquivo com sua propria critica embaixo, igual aparece dentro da etiqueta.
+    const byDocument = new Map<string, CriticaEntry[]>();
+    for (const r of primaryRows) {
+      const list = byDocument.get(r.id) ?? [];
+      list.push({
+        documentId: r.id,
+        fileLabel: r.original_name,
+        docCaixa: r.doc_caixa,
+        empenho: r.empenho,
+        credor: r.credor,
+        value: r.value,
+        status: r.conferencia_status,
+        resultado: r.conferencia_resultado,
+        erro: r.conferencia_erro,
+      });
+      byDocument.set(r.id, list);
+    }
+    for (const r of extraRows) {
+      const list = byDocument.get(r.document_id) ?? [];
+      list.push({
+        documentId: r.document_id,
+        fileLabel: r.original_name,
+        docCaixa: r.doc_caixa,
+        empenho: r.empenho,
+        credor: r.credor,
+        value: r.value,
+        status: r.conferencia_status,
+        resultado: r.conferencia_resultado,
+        erro: r.conferencia_erro,
+      });
+      byDocument.set(r.document_id, list);
+    }
+    const groups = [...byDocument.values()].sort((a, b) => (a[0]!.docCaixa ?? '').localeCompare(b[0]!.docCaixa ?? ''));
 
     return new Promise((resolve, reject) => {
       const doc = new PDFKitDocument({ margin: 50 });
@@ -602,37 +679,43 @@ export class DocumentsService {
       doc
         .fontSize(9)
         .font('Helvetica')
-        .text(`Gerado em ${new Date().toLocaleString('pt-BR')} — ${rows.length} documento(s)`, {
+        .text(`Gerado em ${new Date().toLocaleString('pt-BR')} — ${groups.length} documento(s)`, {
           align: 'center',
         });
       doc.moveDown(1.5);
 
-      if (rows.length === 0) {
+      if (groups.length === 0) {
         doc.fontSize(11).text('Nenhuma divergência ou falha encontrada neste lote.');
       }
 
-      for (const r of rows) {
-        const resultado =
-          typeof r.conferencia_resultado === 'string'
-            ? (JSON.parse(r.conferencia_resultado) as ConferenciaResultado)
-            : r.conferencia_resultado;
+      for (const group of groups) {
+        const first = group[0]!;
         const valorFmt =
-          r.value === null ? '—' : Number(r.value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        const statusLabel = r.conferencia_status === 'divergente' ? 'DIVERGENTE' : 'FALHA NA ANÁLISE';
+          first.value === null
+            ? '—'
+            : Number(first.value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-        doc.fontSize(11).font('Helvetica-Bold').text(`Doc. Caixa ${r.doc_caixa ?? '—'} — ${r.credor ?? '—'}`);
-        doc
-          .fontSize(9)
-          .font('Helvetica')
-          .text(`Empenho: ${r.empenho ?? '—'}    Valor: ${valorFmt}    Status: ${statusLabel}`);
+        doc.fontSize(11).font('Helvetica-Bold').text(`Doc. Caixa ${first.docCaixa ?? '—'} — ${first.credor ?? '—'}`);
+        doc.fontSize(9).font('Helvetica').text(`Empenho: ${first.empenho ?? '—'}    Valor: ${valorFmt}`);
 
-        if (r.conferencia_status === 'divergente' && resultado) {
-          doc.fontSize(9).text(`Resumo: ${resultado.resumo}`);
-          for (const d of resultado.divergencias) {
-            doc.text(`  •  ${d.campo}: esperado "${d.esperado ?? '—'}", encontrado "${d.encontrado ?? '—'}"`);
+        for (const entry of group) {
+          const resultado =
+            typeof entry.resultado === 'string'
+              ? (JSON.parse(entry.resultado) as ConferenciaResultado)
+              : entry.resultado;
+          const statusLabel = entry.status === 'divergente' ? 'DIVERGENTE' : 'FALHA NA ANÁLISE';
+
+          doc.moveDown(0.3);
+          doc.fontSize(9).font('Helvetica-Bold').text(`  Arquivo: ${entry.fileLabel} — ${statusLabel}`);
+          doc.font('Helvetica');
+          if (entry.status === 'divergente' && resultado) {
+            doc.text(`  Resumo: ${resultado.resumo}`);
+            for (const d of resultado.divergencias) {
+              doc.text(`    •  ${d.campo}: esperado "${d.esperado ?? '—'}", encontrado "${d.encontrado ?? '—'}"`);
+            }
+          } else if (entry.erro) {
+            doc.text(`  Motivo: ${entry.erro}`);
           }
-        } else if (r.conferencia_erro) {
-          doc.fontSize(9).text(`Motivo: ${r.conferencia_erro}`);
         }
 
         doc.moveDown(0.6);
