@@ -171,6 +171,15 @@ export class DocumentsController {
   }
 
   @Permissions()
+  @Post('conferencia/cancelar')
+  cancelarConferencia(
+    @CurrentUser() user: TenantAccessClaims,
+    @Body(new ZodValidationPipe(bulkIdsSchema)) body: z.infer<typeof bulkIdsSchema>,
+  ): Promise<{ cancelados: number }> {
+    return this.docs.cancelarConferencia(user, body.ids);
+  }
+
+  @Permissions()
   @Post('conferencia/status')
   statusConferencia(
     @CurrentUser() user: TenantAccessClaims,
