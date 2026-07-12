@@ -1,5 +1,9 @@
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
-import Anthropic from '@anthropic-ai/sdk';
+// @google/genai e ESM-only (package.json "type":"module") — so tipo aqui
+// (apagado na compilacao, nunca vira require()); a classe real e importada
+// via import() dinamico dentro de ensureClient(), unico lugar onde e
+// instanciada (mesmo padrao usado em conferencia.worker.ts).
+import type { Content, FunctionDeclaration, GoogleGenAI, Part } from '@google/genai' with { 'resolution-mode': 'import' };
 import { z } from 'zod';
 import {
   DOC_MODULES,
@@ -47,53 +51,64 @@ const consultaInputSchema = z
   })
   .strict();
 
-const CONSULTAR_TOOL: Anthropic.Tool = {
+/** JSON Schema puro (Tool.parametersJsonSchema) — mesmo formato entre provedores, sem depender do enum Type do SDK. */
+const CONSULTAR_TOOL_PARAMS = {
+  type: 'object',
+  properties: {
+    modulo: { type: 'string', enum: [...DOC_MODULES], description: 'Modulo de documento a consultar' },
+    subtype: { type: 'string', enum: [...DOC_SUBTYPES] },
+    exercicio: { type: 'integer', description: 'Ano do exercicio financeiro, ex: 2026' },
+    competencia: { type: 'string', description: 'Competencia no formato AAAA-MM' },
+    orgaoId: { type: 'string', description: 'UUID do orgao — use a lista de orgaos do prompt pra achar o ID pelo nome' },
+    credor: { type: 'string', description: 'Nome (ou parte) do credor/fornecedor' },
+    empenho: { type: 'string' },
+    de: { type: 'string', description: 'Data inicial, formato AAAA-MM-DD' },
+    ate: { type: 'string', description: 'Data final, formato AAAA-MM-DD' },
+    valorMin: { type: 'number' },
+    valorMax: { type: 'number' },
+    comArquivo: { type: 'string', enum: ['sim', 'nao'], description: 'Filtra por ter (sim) ou nao ter (nao) PDF anexado' },
+    critica: { type: 'string', enum: ['sim', 'nao'], description: 'sim = so documentos com divergencia/falha na conferencia por IA' },
+    agregacao: { type: 'string', enum: ['soma_valor', 'contagem', 'media_valor', 'nenhuma'] },
+    limite: { type: 'integer', description: `Max de documentos a retornar como fonte (padrao ${LIMITE_PADRAO}, teto ${LIMITE_TETO})` },
+  },
+  required: ['modulo'],
+} as const;
+
+const CONSULTAR_TOOL: FunctionDeclaration = {
   name: 'consultar_documentos',
   description:
     'Consulta os documentos (etiquetas) de um modulo (despesas, receitas, balancete, extrato ou outros) do orgao publico, com filtros opcionais e agregacao (soma/contagem/media do campo valor). Use pra responder qualquer pergunta sobre valores, quantidades ou listas de documentos — nunca invente numeros sem chamar essa ferramenta. Pode chamar mais de uma vez (ex: um modulo por vez, ou refinando o filtro) antes da resposta final.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      modulo: { type: 'string', enum: [...DOC_MODULES], description: 'Modulo de documento a consultar' },
-      subtype: { type: 'string', enum: [...DOC_SUBTYPES] },
-      exercicio: { type: 'integer', description: 'Ano do exercicio financeiro, ex: 2026' },
-      competencia: { type: 'string', description: 'Competencia no formato AAAA-MM' },
-      orgaoId: { type: 'string', description: 'UUID do orgao — use a lista de orgaos do prompt pra achar o ID pelo nome' },
-      credor: { type: 'string', description: 'Nome (ou parte) do credor/fornecedor' },
-      empenho: { type: 'string' },
-      de: { type: 'string', description: 'Data inicial, formato AAAA-MM-DD' },
-      ate: { type: 'string', description: 'Data final, formato AAAA-MM-DD' },
-      valorMin: { type: 'number' },
-      valorMax: { type: 'number' },
-      comArquivo: { type: 'string', enum: ['sim', 'nao'], description: 'Filtra por ter (sim) ou nao ter (nao) PDF anexado' },
-      critica: { type: 'string', enum: ['sim', 'nao'], description: 'sim = so documentos com divergencia/falha na conferencia por IA' },
-      agregacao: { type: 'string', enum: ['soma_valor', 'contagem', 'media_valor', 'nenhuma'] },
-      limite: { type: 'integer', description: `Max de documentos a retornar como fonte (padrao ${LIMITE_PADRAO}, teto ${LIMITE_TETO})` },
-    },
-    required: ['modulo'],
-  },
+  parametersJsonSchema: CONSULTAR_TOOL_PARAMS,
 };
 
 @Injectable()
 export class AssistenteService {
   private readonly logger = new Logger(AssistenteService.name);
-  private readonly anthropic: Anthropic | null;
+  private gemini: GoogleGenAI | null = null;
 
   constructor(
     private readonly db: DatabaseService,
     private readonly documents: DocumentsService,
-  ) {
-    const env = loadEnv();
-    this.anthropic = env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }) : null;
-  }
+  ) {}
 
   /** Se a feature esta configurada (API key presente) neste ambiente. */
   isEnabled(): boolean {
-    return this.anthropic !== null;
+    return !!loadEnv().GEMINI_API_KEY;
+  }
+
+  private async ensureClient(): Promise<GoogleGenAI | null> {
+    const env = loadEnv();
+    if (!env.GEMINI_API_KEY) return null;
+    if (!this.gemini) {
+      const { GoogleGenAI } = await import('@google/genai');
+      this.gemini = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+    }
+    return this.gemini;
   }
 
   async perguntar(user: TenantAccessClaims, pergunta: string): Promise<AssistenteResposta> {
-    if (!this.anthropic) {
+    const client = await this.ensureClient();
+    if (!client) {
       throw new ForbiddenException('Assistente de busca por IA nao esta configurado neste ambiente.');
     }
     const ctx = requireTenantContext();
@@ -122,49 +137,38 @@ Exercício atual, se a pergunta não especificar o ano: ${new Date().getFullYear
 
     const documentosCitados = new Map<string, DocumentView>();
     const avisos: string[] = [];
-    const messages: Anthropic.MessageParam[] = [{ role: 'user', content: pergunta }];
+    const contents: Content[] = [{ role: 'user', parts: [{ text: pergunta }] }];
 
     for (let turno = 0; turno < MAX_TURNOS; turno++) {
-      const response = await this.anthropic.messages.create({
-        model: 'claude-haiku-4-5',
-        max_tokens: 1024,
-        system: systemPrompt,
-        tools: [CONSULTAR_TOOL],
-        messages,
+      const response = await client.models.generateContent({
+        model: 'gemini-flash-latest',
+        contents,
+        config: {
+          systemInstruction: systemPrompt,
+          tools: [{ functionDeclarations: [CONSULTAR_TOOL] }],
+        },
       });
 
-      const toolUses = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
-      const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
-
-      if (toolUses.length === 0) {
+      const functionCalls = response.functionCalls ?? [];
+      if (functionCalls.length === 0) {
         return {
-          resposta: textBlock?.text || 'Não consegui gerar uma resposta. Tente reformular a pergunta.',
+          resposta: response.text || 'Não consegui gerar uma resposta. Tente reformular a pergunta.',
           documentos: [...documentosCitados.values()],
           avisos,
         };
       }
 
-      // Reconstroi so os blocos que de fato mandamos de volta (texto + tool_use)
-      // em vez de reenviar response.content bruto — evita blocos exoticos
-      // (thinking, server tools) que nao pedimos e que o Param nao aceita.
-      const assistantContent: Anthropic.ContentBlockParam[] = response.content
-        .filter((b): b is Anthropic.TextBlock | Anthropic.ToolUseBlock => b.type === 'text' || b.type === 'tool_use')
-        .map((b) =>
-          b.type === 'text'
-            ? { type: 'text' as const, text: b.text }
-            : { type: 'tool_use' as const, id: b.id, name: b.name, input: b.input },
-        );
-      messages.push({ role: 'assistant', content: assistantContent });
+      const modelParts: Part[] = [];
+      if (response.text) modelParts.push({ text: response.text });
+      for (const fc of functionCalls) modelParts.push({ functionCall: fc });
+      contents.push({ role: 'model', parts: modelParts });
 
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
-      for (const toolUse of toolUses) {
-        const parsed = consultaInputSchema.safeParse(toolUse.input);
+      const responseParts: Part[] = [];
+      for (const fc of functionCalls) {
+        const parsed = consultaInputSchema.safeParse(fc.args);
         if (!parsed.success) {
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: toolUse.id,
-            content: `Filtro invalido: ${parsed.error.message}`,
-            is_error: true,
+          responseParts.push({
+            functionResponse: { id: fc.id, name: fc.name, response: { error: `Filtro invalido: ${parsed.error.message}` } },
           });
           continue;
         }
@@ -172,29 +176,31 @@ Exercício atual, se a pergunta não especificar o ano: ${new Date().getFullYear
         try {
           const resultado = await this.documents.consultarAgregado(user, modulo, filtros, agregacao, limite);
           for (const doc of resultado.documentos) documentosCitados.set(doc.id, doc);
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: toolUse.id,
-            content: JSON.stringify({
-              agregado: resultado.agregado,
-              totalDocumentosRetornados: resultado.documentos.length,
-              documentos: resultado.documentos.slice(0, 10).map((d) => ({
-                id: d.id,
-                docCaixa: d.docCaixa,
-                credor: d.credor,
-                valor: d.value,
-                data: d.documentDate,
-                conferenciaStatus: d.conferenciaStatus,
-              })),
-            }),
+          responseParts.push({
+            functionResponse: {
+              id: fc.id,
+              name: fc.name,
+              response: {
+                agregado: resultado.agregado,
+                totalDocumentosRetornados: resultado.documentos.length,
+                documentos: resultado.documentos.slice(0, 10).map((d) => ({
+                  id: d.id,
+                  docCaixa: d.docCaixa,
+                  credor: d.credor,
+                  valor: d.value,
+                  data: d.documentDate,
+                  conferenciaStatus: d.conferenciaStatus,
+                })),
+              },
+            },
           });
         } catch (e) {
           const msg = e instanceof ForbiddenException ? 'Sem permissao pra consultar esse modulo.' : 'Erro ao consultar.';
           avisos.push(`${modulo}: ${msg}`);
-          toolResults.push({ type: 'tool_result', tool_use_id: toolUse.id, content: msg, is_error: true });
+          responseParts.push({ functionResponse: { id: fc.id, name: fc.name, response: { error: msg } } });
         }
       }
-      messages.push({ role: 'user', content: toolResults });
+      contents.push({ role: 'user', parts: responseParts });
     }
 
     this.logger.warn(`Pergunta nao concluida em ${MAX_TURNOS} turnos: "${pergunta}"`);
