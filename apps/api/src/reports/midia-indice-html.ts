@@ -150,19 +150,21 @@ const COLUMNS: Record<Midia, ColumnDef[]> = {
   ],
   receita: [
     { key: 'dataFmt', label: 'Data' },
+    { key: 'historico', label: 'Título/Descrição' },
     { key: 'orgao', label: 'Órgão' },
     { key: 'conta', label: 'Conta' },
-    { key: 'historico', label: 'Histórico' },
     { key: 'subtypeFmt', label: 'Tipo' },
     { key: 'valorFmt', label: 'Valor' },
   ],
   balancete: [
     { key: 'dataFmt', label: 'Data' },
+    { key: 'descricao', label: 'Título/Descrição' },
     { key: 'orgao', label: 'Órgão' },
     { key: 'competencia', label: 'Competência' },
   ],
   extrato: [
     { key: 'dataFmt', label: 'Data' },
+    { key: 'descricao', label: 'Título/Descrição' },
     { key: 'banco', label: 'Banco' },
     { key: 'agencia', label: 'Agência' },
     { key: 'conta', label: 'Conta' },
@@ -171,9 +173,9 @@ const COLUMNS: Record<Midia, ColumnDef[]> = {
   ],
   outros: [
     { key: 'dataFmt', label: 'Data' },
+    { key: 'descricao', label: 'Título/Descrição' },
     { key: 'orgao', label: 'Órgão' },
     { key: 'documentTypeNome', label: 'Tipo' },
-    { key: 'descricao', label: 'Descrição' },
   ],
 };
 
@@ -233,65 +235,91 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
 <meta charset="utf-8" />
 <title>Mídia Legislativa — ${escapeHtml(mesNome)}/${exercicio}</title>
 <style>
-  :root { color-scheme: light; --accent: #7c3aed; --accent-bg: #f5f3ff; }
+  :root { color-scheme: light; --accent: #7c3aed; --accent-bg: #f5f3ff; --ink: #1f2430; --muted: #6b7280; --line: #e7e6ef; }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: #f4f5f7; color: #1f2430; }
-  header { background: ${headerGradient(corDestaque)}; color: #fff; padding: 8px 28px; box-shadow: 0 2px 10px rgba(76,29,149,0.25); }
-  header .header-row { display: flex; align-items: center; gap: 16px; }
-  header .header-logo-img { height: 64px; width: 64px; flex-shrink: 0; object-fit: contain; border-radius: 10px; background: #fff; padding: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
-  header .header-row svg { flex-shrink: 0; }
-  header h1 { margin: 0 0 4px; font-size: 21px; }
-  header p { margin: 0; font-size: 13px; opacity: 0.9; }
-  .aviso { background: #fff7ed; border-bottom: 1px solid #fed7aa; color: #9a3412; padding: 10px 28px; font-size: 12px; display: flex; align-items: flex-start; gap: 8px; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background: linear-gradient(180deg, #f7f6fb 0, #edecf5 320px, #edecf5 100%); color: var(--ink); -webkit-font-smoothing: antialiased; }
+
+  header { background: ${headerGradient(corDestaque)}; color: #fff; padding: 26px 28px 46px; }
+  header .header-row { display: flex; align-items: center; gap: 16px; max-width: 1180px; margin: 0 auto; }
+  header .header-logo-img { height: 56px; width: 56px; flex-shrink: 0; object-fit: contain; border-radius: 14px; background: #fff; padding: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
+  header .header-row > svg { flex-shrink: 0; }
+  header .eyebrow { margin: 0 0 3px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; opacity: .78; }
+  header h1 { margin: 0 0 3px; font-size: 21px; font-weight: 800; letter-spacing: -.01em; }
+  header p { margin: 0; font-size: 13px; opacity: 0.88; }
+
+  .shell { max-width: 1180px; margin: -26px auto 36px; padding: 0 20px; position: relative; z-index: 1; }
+  .panel { background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 10px 28px rgba(31,24,63,0.07); }
+  .panel + .panel { margin-top: 16px; }
+
+  .aviso { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; padding: 12px 18px; font-size: 12.5px; display: flex; align-items: flex-start; gap: 9px; border-radius: 14px; margin-bottom: 16px; }
   .aviso svg { flex-shrink: 0; margin-top: 1px; color: #ea580c; }
   .aviso b { font-weight: 700; }
-  .info-bar { display: flex; flex-wrap: wrap; gap: 12px; padding: 16px 28px; background: #fff; border-bottom: 1px solid #e2e4e9; font-size: 12px; }
-  .info-bar div { display: flex; align-items: center; gap: 10px; background: #f4f5f7; border-radius: 10px; padding: 10px 16px; }
-  .info-bar svg { flex-shrink: 0; color: #7c3aed; }
-  .info-bar b { display: block; font-size: 10px; text-transform: uppercase; color: #6b7280; margin-bottom: 2px; font-weight: 700; letter-spacing: .02em; }
-  .info-bar span.value { font-size: 13px; font-weight: 600; color: #1f2430; }
-  .tabs { display: flex; flex-wrap: wrap; gap: 10px; padding: 20px 28px 0; }
-  .tab { cursor: pointer; border: 1px solid #e2e4e9; background: #fff; border-radius: 14px; padding: 10px 16px; font-size: 13px; font-weight: 600; color: #374151; display: flex; align-items: center; gap: 12px; min-width: 150px; transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease; }
-  .tab:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-  .tab .icon-badge { flex-shrink: 0; width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--accent-bg); color: var(--accent); }
+
+  .info-bar { display: flex; flex-wrap: wrap; gap: 12px; padding: 16px 20px; }
+  .info-bar div { display: flex; align-items: center; gap: 10px; background: #f7f6fc; border-radius: 12px; padding: 10px 16px; flex: 1 1 200px; }
+  .info-bar svg { flex-shrink: 0; color: var(--accent); }
+  .info-bar b { display: block; font-size: 10px; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; font-weight: 700; letter-spacing: .03em; }
+  .info-bar span.value { font-size: 13px; font-weight: 600; color: var(--ink); }
+
+  .tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; padding: 16px 20px; }
+  .tab { cursor: pointer; border: 1.5px solid var(--line); background: #fff; border-radius: 14px; padding: 12px 14px; font-size: 13px; font-weight: 600; color: #374151; display: flex; align-items: center; gap: 12px; transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease; }
+  .tab:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(31,24,63,0.09); }
+  .tab .icon-badge { flex-shrink: 0; width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center; background: var(--accent-bg); color: var(--accent); }
   .tab .count { display: block; font-size: 19px; font-weight: 800; color: var(--accent); line-height: 1.1; }
-  .tab .label { display: block; font-size: 11px; font-weight: 600; color: #6b7280; margin-top: 1px; }
-  .tab.active { border-color: var(--accent); background: var(--accent-bg); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-  .filters-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 16px 28px 0; }
-  .total-card { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid #e2e4e9; border-radius: 10px; padding: 10px 16px; }
-  .total-card b { display: block; font-size: 10px; text-transform: uppercase; color: #6b7280; font-weight: 700; letter-spacing: .02em; }
-  .total-card span { font-size: 17px; font-weight: 800; color: #1f2430; }
+  .tab .label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); margin-top: 1px; }
+  .tab.active { border-color: var(--accent); background: var(--accent-bg); box-shadow: 0 6px 16px rgba(31,24,63,0.09); }
+
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 20px; border-top: 1px solid var(--line); }
+  .total-card { display: flex; align-items: center; gap: 10px; background: #f7f6fc; border-radius: 12px; padding: 9px 16px; }
+  .total-card b { display: block; font-size: 10px; text-transform: uppercase; color: var(--muted); font-weight: 700; letter-spacing: .03em; }
+  .total-card span { font-size: 16px; font-weight: 800; color: var(--ink); }
   .filter-group { display: flex; align-items: center; gap: 8px; }
-  .filter-group label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #6b7280; }
-  .filter-group select, .filter-group input[type="date"] { padding: 7px 10px; border: 1px solid #d8dae0; border-radius: 8px; font-size: 12px; background: #fff; color: #1f2430; }
+  .filter-group label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted); }
+  .filter-group select, .filter-group input[type="date"] { padding: 7px 10px; border: 1px solid #d8dae0; border-radius: 9px; font-size: 12px; background: #fff; color: var(--ink); }
   .filter-group select:focus, .filter-group input[type="date"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .filter-group .date-sep { font-size: 12px; color: #9ca3af; }
-  .toolbar { padding: 18px 28px; display: flex; gap: 10px; }
-  .search-wrap { position: relative; flex: 1; max-width: 420px; display: flex; align-items: center; }
-  .search-wrap .search-icon { position: absolute; left: 10px; color: #9ca3af; pointer-events: none; }
-  .search-wrap input { width: 100%; padding: 9px 12px 9px 34px; border: 1px solid #d8dae0; border-radius: 10px; font-size: 13px; }
+
+  .toolbar { padding: 4px 20px 18px; display: flex; flex-wrap: wrap; gap: 10px; }
+  .search-wrap { position: relative; flex: 1 1 260px; max-width: 420px; display: flex; align-items: center; }
+  .search-wrap .search-icon { position: absolute; left: 11px; color: #9ca3af; pointer-events: none; }
+  .search-wrap input { width: 100%; padding: 10px 12px 10px 34px; border: 1px solid #d8dae0; border-radius: 11px; font-size: 13px; }
   .search-wrap input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-  main { padding: 0 28px 28px; }
-  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-  th, td { padding: 10px 12px; font-size: 12px; text-align: left; border-bottom: 1px solid #eef0f3; }
-  th { background: #f4f5f7; text-transform: uppercase; font-size: 10px; letter-spacing: .03em; color: #6b7280; font-weight: 400; border-bottom: 2px solid #e2e4e9; }
-  tbody tr:nth-child(even) td { background: #fafafb; }
-  tr:hover td { background: #f5f0ff; }
-  td.valor { text-align: right; font-weight: 400; font-variant-numeric: tabular-nums; color: #1f2430; }
-  a.arquivo { color: #1f2430; text-decoration: none; font-weight: 400; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+
+  .table-scroll { overflow-x: auto; border-radius: 0 0 16px 16px; }
+  table { width: 100%; min-width: 640px; border-collapse: collapse; }
+  th, td { padding: 11px 14px; font-size: 12.5px; text-align: left; border-bottom: 1px solid #f0eff6; white-space: nowrap; }
+  td.desc-cell { white-space: normal; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+  th { background: #f7f6fc; text-transform: uppercase; font-size: 10px; letter-spacing: .04em; color: var(--muted); font-weight: 700; border-bottom: 1px solid var(--line); position: sticky; top: 0; }
+  tbody tr:nth-child(even) td { background: #fbfafd; }
+  tr:hover td { background: var(--accent-bg); }
+  td.valor { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .badge { display: inline-block; padding: 3px 9px; border-radius: 999px; background: var(--accent-bg); color: var(--accent); font-size: 11px; font-weight: 700; white-space: nowrap; }
+  a.arquivo { color: var(--accent); text-decoration: none; font-weight: 700; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
   a.arquivo:hover { text-decoration: underline; }
-  .empty { padding: 48px; text-align: center; color: #9ca3af; font-size: 13px; }
+  .empty { padding: 56px 20px; text-align: center; color: #9ca3af; font-size: 13px; }
   .empty svg { display: block; margin: 0 auto 10px; color: #c4c8d0; }
-  .btn-print { display: flex; align-items: center; gap: 7px; padding: 9px 16px; border: 1px solid #d8dae0; border-radius: 10px; background: #fff; color: #1f2430; font-size: 13px; font-weight: 600; cursor: pointer; }
-  .btn-print:hover { background: #f4f5f7; }
+  .btn-print { display: flex; align-items: center; gap: 7px; padding: 10px 18px; border: none; border-radius: 11px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 16px rgba(124,58,237,0.28); }
+  .btn-print:hover { opacity: .92; }
+
+  @media (max-width: 720px) {
+    header { padding: 22px 18px 40px; }
+    .shell { padding: 0 14px; }
+    .info-bar, .tabs, .controls, .toolbar { padding-left: 14px; padding-right: 14px; }
+    .tabs { grid-template-columns: repeat(2, 1fr); }
+    .search-wrap { max-width: none; flex-basis: 100%; }
+    .btn-print { flex: 1; justify-content: center; }
+  }
+
   @media print {
     @page { margin: 10mm; }
-    .aviso, .filters-bar, .toolbar, .tabs, td .arquivo, th:last-child, td:last-child { display: none !important; }
+    .aviso, .controls, .toolbar, .tabs, td .arquivo, th:last-child, td:last-child { display: none !important; }
     body { background: #fff; margin: 0; }
     header { box-shadow: none; padding: 10px 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .info-bar { padding: 10px 0; border-bottom: none; }
-    main { padding: 0; }
-    table { box-shadow: none; width: 100%; }
+    .shell { margin-top: 16px; }
+    .panel { box-shadow: none; border: none; }
+    .info-bar { padding: 10px 0; }
+    .table-scroll { overflow: visible; }
+    table { box-shadow: none; width: 100%; min-width: 0; }
   }
 </style>
 </head>
@@ -300,53 +328,62 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
   <div class="header-row">
     ${headerLogo}
     <div>
+      <p class="eyebrow">Índice de Documentos</p>
       <h1>${escapeHtml(nomeHeader)} — Mídia Legislativa</h1>
       <p>Competência: ${escapeHtml(mesNome)}/${exercicio}</p>
     </div>
   </div>
 </header>
-<div class="aviso">
-  ${svgIcon('alertTriangle', 16)}
-  <span><b>Importante:</b> extraia todo o conteúdo do ZIP para uma pasta antes de abrir este arquivo
-  (botão direito no .zip → "Extrair Tudo"). Se abrir direto de dentro do ZIP, os links
-  "Visualizar arquivo" não vão funcionar, porque os PDFs não são extraídos junto.</span>
-</div>
-<div class="info-bar">
-  <div>${svgIcon('user', 18)}<span><b>Gerado por</b><span class="value">${escapeHtml(geradoPor)}</span></span></div>
-  <div>${svgIcon('clock', 18)}<span><b>Gerado em</b><span class="value">${escapeHtml(formatDataHoraBR(geradoEm))}</span></span></div>
-</div>
-<div class="tabs" id="tabs"></div>
-<div class="filters-bar" id="filtersBar">
-  <div class="total-card" id="totalCard" style="display:none">
-    <b id="totalLabel"></b>
-    <span id="totalValue"></span>
+<div class="shell">
+  <div class="aviso">
+    ${svgIcon('alertTriangle', 16)}
+    <span><b>Importante:</b> extraia todo o conteúdo do ZIP para uma pasta antes de abrir este arquivo
+    (botão direito no .zip → "Extrair Tudo"). Se abrir direto de dentro do ZIP, os links
+    "Visualizar arquivo" não vão funcionar, porque os PDFs não são extraídos junto.</span>
   </div>
-  <div class="filter-group" id="tipoGroup" style="display:none">
-    <label>Tipo</label>
-    <select id="filterTipo"></select>
+  <div class="panel">
+    <div class="info-bar">
+      <div>${svgIcon('user', 18)}<span><b>Gerado por</b><span class="value">${escapeHtml(geradoPor)}</span></span></div>
+      <div>${svgIcon('clock', 18)}<span><b>Gerado em</b><span class="value">${escapeHtml(formatDataHoraBR(geradoEm))}</span></span></div>
+    </div>
+    <div class="tabs" id="tabs"></div>
+    <div class="controls" id="filtersBar">
+      <div class="total-card" id="totalCard" style="display:none">
+        <b id="totalLabel"></b>
+        <span id="totalValue"></span>
+      </div>
+      <div class="filter-group" id="tipoGroup" style="display:none">
+        <label>Tipo</label>
+        <select id="filterTipo"></select>
+      </div>
+      <div class="filter-group" id="orgaoGroup" style="display:none">
+        <label>Órgão</label>
+        <select id="filterOrgao"></select>
+      </div>
+      <div class="filter-group">
+        <label>Período</label>
+        <input type="date" id="filterDateFrom" />
+        <span class="date-sep">até</span>
+        <input type="date" id="filterDateTo" />
+      </div>
+    </div>
+    <div class="toolbar">
+      <div class="search-wrap"><span class="search-icon">${svgIcon('search', 15)}</span><input id="search" type="text" placeholder="Buscar…" /></div>
+      <button type="button" class="btn-print" id="printBtn">${svgIcon('printer', 16)}<span>Imprimir</span></button>
+    </div>
   </div>
-  <div class="filter-group" id="orgaoGroup" style="display:none">
-    <label>Órgão</label>
-    <select id="filterOrgao"></select>
-  </div>
-  <div class="filter-group">
-    <label>Período</label>
-    <input type="date" id="filterDateFrom" />
-    <span class="date-sep">até</span>
-    <input type="date" id="filterDateTo" />
+  <div class="panel">
+    <main id="main">
+      <div class="table-scroll">
+        <table>
+          <thead id="thead"></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="empty" style="display:none">${svgIcon('inbox', 32)}Nenhum documento encontrado.</div>
+    </main>
   </div>
 </div>
-<div class="toolbar">
-  <div class="search-wrap"><span class="search-icon">${svgIcon('search', 15)}</span><input id="search" type="text" placeholder="Buscar…" /></div>
-  <button type="button" class="btn-print" id="printBtn">${svgIcon('printer', 16)}<span>Imprimir</span></button>
-</div>
-<main id="main">
-  <table>
-    <thead id="thead"></thead>
-    <tbody id="tbody"></tbody>
-  </table>
-  <div class="empty" id="empty" style="display:none">${svgIcon('inbox', 32)}Nenhum documento encontrado.</div>
-</main>
 <script type="application/json" id="jdoc-midia-data">${payload}</script>
 <script>
 (function () {
@@ -520,11 +557,21 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
       cols.forEach(function (col) {
         var td = document.createElement('td');
         var v = e[col.key];
+        var text = v == null || v === '' ? '—' : String(v);
         if (col.key === 'valorFmt') {
           td.className = 'valor';
-          td.textContent = v == null || v === '' ? '—' : String(v);
+          td.textContent = text;
+        } else if (col.key === 'subtypeFmt' && v) {
+          var badge = document.createElement('span');
+          badge.className = 'badge';
+          badge.textContent = text;
+          td.appendChild(badge);
+        } else if (col.key === 'descricao' || col.key === 'historico') {
+          td.className = 'desc-cell';
+          td.textContent = text;
+          td.title = text;
         } else {
-          td.textContent = v == null || v === '' ? '—' : String(v);
+          td.textContent = text;
         }
         tr.appendChild(td);
       });
