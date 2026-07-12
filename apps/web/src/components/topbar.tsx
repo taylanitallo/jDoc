@@ -2,10 +2,11 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { CalendarDays, CircleUserRound, LogOut, Menu } from 'lucide-react';
+import { Bot, CalendarDays, CircleUserRound, LogOut, Menu } from 'lucide-react';
 import { api, setAccessToken } from '@/lib/api';
 import { ThemeToggle } from './theme-toggle';
 import { useSidebarMobile } from './sidebar';
+import { useAylaVisibility } from './assistente-widget';
 
 /** Seletor global de EXERCICIO (ano) — filtra todo o sistema. */
 const ExercicioContext = createContext<{
@@ -42,6 +43,7 @@ export function Topbar({ userName = 'USUÁRIO' }: { userName?: string }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { setMobileOpen } = useSidebarMobile();
+  const { oculta: aylaOculta, setOculta: setAylaOculta } = useAylaVisibility();
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -108,7 +110,30 @@ export function Topbar({ userName = 'USUÁRIO' }: { userName?: string }) {
           </button>
 
           {menuOpen && (
-            <div className="absolute right-0 top-full z-10 mt-2 w-40 overflow-hidden rounded-lg border border-app-border bg-app-card shadow-lg">
+            <div className="absolute right-0 top-full z-10 mt-2 w-56 overflow-hidden rounded-lg border border-app-border bg-app-card shadow-lg">
+              <div className="flex items-center justify-between gap-2 px-4 py-2.5">
+                <span className="flex items-center gap-2 text-xs font-semibold text-app-muted">
+                  <Bot className="h-4 w-4" aria-hidden />
+                  Ocultar Ayla (IA)
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={aylaOculta}
+                  aria-label="Ocultar Ayla (IA)"
+                  onClick={() => setAylaOculta(!aylaOculta)}
+                  className={`relative h-5 w-9 shrink-0 rounded-full transition ${
+                    aylaOculta ? 'bg-accent' : 'bg-app-skeleton'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                      aylaOculta ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="border-t border-app-border" />
               <button
                 type="button"
                 onClick={() => void logout()}

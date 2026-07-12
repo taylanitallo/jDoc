@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useParams } from 'next/navigation';
-import { ExternalLink, MessageCircleQuestion, Send, Sparkles, X } from 'lucide-react';
+import { ExternalLink, Send, X } from 'lucide-react';
 import type { AssistenteResposta, DocumentView } from '@jdoc/shared';
 import { api, ApiError } from '@/lib/api';
 import { btnGhost, cardCls, inputCls } from '@/components/ui';
@@ -16,16 +16,47 @@ interface Turno {
   erro?: string;
 }
 
+const AYLA_OCULTA_KEY = 'jdoc:aylaOculta';
+
+/** Preferencia "ocultar Ayla" — local ao navegador (localStorage), compartilhada
+ *  entre o toggle no menu de perfil (Topbar) e o proprio widget flutuante. */
+const AylaVisibilityContext = createContext<{ oculta: boolean; setOculta: (v: boolean) => void } | null>(null);
+
+export function useAylaVisibility() {
+  const ctx = useContext(AylaVisibilityContext);
+  if (!ctx) throw new Error('useAylaVisibility fora do AylaVisibilityProvider');
+  return ctx;
+}
+
+export function AylaVisibilityProvider({ children }: { children: ReactNode }) {
+  const [oculta, setOcultaState] = useState(false);
+
+  // Le do localStorage so apos montar (evita mismatch de hidratacao SSR/client).
+  useEffect(() => {
+    setOcultaState(localStorage.getItem(AYLA_OCULTA_KEY) === '1');
+  }, []);
+
+  const setOculta = (v: boolean) => {
+    setOcultaState(v);
+    localStorage.setItem(AYLA_OCULTA_KEY, v ? '1' : '0');
+  };
+
+  const value = useMemo(() => ({ oculta, setOculta }), [oculta]);
+  return <AylaVisibilityContext.Provider value={value}>{children}</AylaVisibilityContext.Provider>;
+}
+
 /**
- * Assistente de busca por IA — widget flutuante (canto inferior direito,
- * disponivel em qualquer tela do app, nao so na listagem de documentos).
- * "Pergunte em português" sobre os documentos do tenant; traduz a pergunta
- * em consultas estruturadas no backend (nunca busca no corpo do PDF). Cada
- * pergunta e independente no backend — o historico do "chat" e so local
- * (nao persistido), pra dar a sensacao de conversa sem guardar estado.
+ * Assistente de busca por IA (Ayla) — widget flutuante (canto inferior
+ * direito, disponivel em qualquer tela do app, nao so na listagem de
+ * documentos). "Pergunte em português" sobre os documentos do tenant;
+ * traduz a pergunta em consultas estruturadas no backend (nunca busca no
+ * corpo do PDF). Cada pergunta e independente no backend — o historico do
+ * "chat" e so local (nao persistido), pra dar a sensacao de conversa sem
+ * guardar estado.
  */
 export function AssistenteWidget() {
   const { slug } = useParams<{ slug: string }>();
+  const { oculta } = useAylaVisibility();
   const [open, setOpen] = useState(false);
   const [texto, setTexto] = useState('');
   const [turnos, setTurnos] = useState<Turno[]>([]);
@@ -67,20 +98,20 @@ export function AssistenteWidget() {
     }
   };
 
-  if (!slug) return null;
+  if (!slug || oculta) return null;
 
   return (
     <>
       {open && (
         <div className="fixed bottom-24 right-4 z-50 flex h-[32rem] w-[calc(100vw-2rem)] max-w-sm flex-col overflow-hidden rounded-2xl border border-app-border bg-app-card shadow-2xl sm:right-6">
           <div className="flex items-center gap-3 bg-gradient-modal px-4 py-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20">
-              <Sparkles className="h-5 w-5 text-white" aria-hidden />
+            <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-white/20">
+              <img src="/ayla.png" alt="Ayla" className="h-full w-full object-cover" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold text-white">Assistente jDoc</p>
+              <p className="truncate text-sm font-bold text-white">AYLA</p>
               <p className="flex items-center gap-1 text-[11px] text-white/80">
-                <span className="h-1.5 w-1.5 rounded-full bg-green-400" aria-hidden /> Pronto pra ajudar
+                <span className="h-1.5 w-1.5 rounded-full bg-green-400" aria-hidden /> Assistente Virtual • Online
               </p>
             </div>
             <button
@@ -171,14 +202,26 @@ export function AssistenteWidget() {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-label={open ? 'Fechar assistente de busca por IA' : 'Abrir assistente de busca por IA'}
-        className="fixed bottom-4 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-primary text-white shadow-2xl transition hover:opacity-90 sm:right-6"
-      >
-        {open ? <X className="h-6 w-6" aria-hidden /> : <MessageCircleQuestion className="h-6 w-6" aria-hidden />}
-      </button>
+      <div className="fixed bottom-4 right-4 z-50 sm:right-6">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-label={open ? 'Fechar assistente Ayla' : 'Abrir assistente Ayla'}
+          className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-gradient-primary text-white shadow-2xl transition hover:opacity-90"
+        >
+          {open ? (
+            <X className="h-6 w-6" aria-hidden />
+          ) : (
+            <img src="/ayla.png" alt="" className="h-full w-full object-cover" aria-hidden />
+          )}
+        </button>
+        {!open && (
+          <span
+            className="pointer-events-none absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full border-2 border-app-card bg-green-400"
+            aria-hidden
+          />
+        )}
+      </div>
     </>
   );
 }
