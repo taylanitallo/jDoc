@@ -8,7 +8,7 @@ import { Sidebar, SidebarMobileProvider } from '@/components/sidebar';
 import { ExercicioProvider, Topbar } from '@/components/topbar';
 import { BrandingProvider } from '@/components/branding';
 import { DesktopUpdateBanner } from '@/components/desktop-update-banner';
-import { AssistenteWidget } from '@/components/assistente-widget';
+import { AssistenteWidget, AylaVisibilityProvider } from '@/components/assistente-widget';
 import { api, setAccessToken, setLastTenantSlug } from '@/lib/api';
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
@@ -53,15 +53,17 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
       <BrandingProvider slug={slug}>
         <ExercicioProvider>
           <SidebarMobileProvider>
-            <div className="flex min-h-screen bg-app-bg">
-              <Sidebar />
-              <div className="flex min-w-0 flex-1 flex-col">
-                <Topbar />
-                <DesktopUpdateBanner />
-                <main className="flex-1 overflow-x-hidden p-4 sm:p-6">{children}</main>
+            <AylaVisibilityProvider>
+              <div className="flex min-h-screen bg-app-bg">
+                <Sidebar />
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <Topbar />
+                  <DesktopUpdateBanner />
+                  <main className="flex-1 overflow-x-hidden p-4 sm:p-6">{children}</main>
+                </div>
+                <AssistenteWidget />
               </div>
-              <AssistenteWidget />
-            </div>
+            </AylaVisibilityProvider>
           </SidebarMobileProvider>
         </ExercicioProvider>
       </BrandingProvider>
