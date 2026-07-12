@@ -18,9 +18,10 @@ operador rodar com o EV em mãos.
    pkcs11js exige **Python + Visual Studio Build Tools** (ver
    `docs/assinatura-icp-brasil-producao.md`). Todo `pnpm install` reverte os
    nativos ao ABI do Node — rode `run rebuild` de novo depois de instalar.
-2. **Ícone**: `build/icon.ico` é o ícone oficial (logo jDoc, 256×256, recortado
-   e empacotado a partir de `logo_EXE.PNG`). `build/make-icon.mjs` gera um
-   placeholder roxo liso — só rodar se precisar voltar a um placeholder.
+2. **Ícone**: `build/icon.ico` é o ícone oficial (logo jDoc, multi-resolução
+   16–256px, gerado a partir de `Logo_executavel.png` na raiz do repo).
+   `build/make-icon.mjs` gera um placeholder roxo liso — só rodar se precisar
+   voltar a um placeholder.
 
 ## Gerar o instalador
 
