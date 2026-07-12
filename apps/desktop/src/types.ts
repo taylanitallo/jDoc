@@ -64,24 +64,3 @@ export interface WatchedPendingFile {
   size: number;
   detectedAt: string;
 }
-
-/** Espelho do status/certs de assinatura (PKCS#11) vindo do main. */
-export interface SigningStatus {
-  available: boolean;
-  libPath: string | null;
-  fromSettings: boolean;
-  detected: string[];
-  tokenPresent: boolean;
-  pending: boolean;
-  message: string;
-  error?: string;
-}
-
-export interface CertInfo {
-  id: string;
-  label: string;
-  subject: string;
-  issuer: string;
-  notBefore: string;
-  notAfter: string;
-}

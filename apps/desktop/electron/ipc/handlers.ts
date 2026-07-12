@@ -11,7 +11,6 @@ import {
   cancelPayloadSchema,
   listPayloadSchema,
   viewPayloadSchema,
-  signPayloadSchema,
   watchEnqueuePayloadSchema,
   watchAttachPayloadSchema,
   watchDismissPayloadSchema,
@@ -19,7 +18,6 @@ import {
 import * as auth from '../api/client';
 import * as queue from '../upload/queue';
 import * as lookups from '../api/lookups';
-import * as signing from '../signing/sign-service';
 import { prepareEnqueue, prepareWatchedEnqueue } from '../upload/prepare';
 import { sessionStore } from '../session/session-store';
 import * as folderWatcher from '../watch/folder-watcher';
@@ -135,10 +133,6 @@ const registry: { [K in InvokeKind]: Handler } = {
   }),
   // Signed URL de 60s para o visualizador (sem baixar para disco).
   'documents:view': defineHandler(viewPayloadSchema, (p) => auth.documentSignedUrl(requireSlug(), p.id)),
-  // Assinatura digital local (ICP-Brasil via PKCS#11). @pending teste com hardware.
-  'signing:status': defineHandler(emptyPayloadSchema, () => signing.status()),
-  'signing:certificates': defineHandler(emptyPayloadSchema, async () => ({ certificates: await signing.certificates() })),
-  'signing:sign': defineHandler(signPayloadSchema, (p) => signing.sign(p.fileId, p.certId, p.pin, p.content)),
   // Pasta monitorada (Marco 9): deteccao automatica de PDFs a anexar.
   'watch:get-config': defineHandler(emptyPayloadSchema, async () => folderWatcher.currentConfig()),
   'watch:choose-folder': defineHandler(emptyPayloadSchema, async () => {

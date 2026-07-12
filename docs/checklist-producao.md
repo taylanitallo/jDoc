@@ -22,30 +22,21 @@ certificado, toolchain ou infra do operador. Nada aqui é falta de código novo 
       (`https://updates.jeos.example/jdoc-desktop/`). Publicar `latest.yml` +
       `.exe` num host HTTPS e fixar a URL (não depender de `JDOC_UPDATE_URL`).
       → `electron-builder.yml:54-57`, `BUILD.md` §Publicar.
-- [ ] **Ícone oficial**: `build/icon.ico` é placeholder gerado por script.
-      → `BUILD.md` pré-requisito 2.
 - [ ] **Caveat pnpm ⨉ electron-builder**: monorepo com symlinks pode quebrar o
       empacotamento (`@jdoc/shared`); validar `node-linker=hoisted` ou deps
       achatadas ao rodar o primeiro `dist` com EV. → `BUILD.md` §Caveat.
 
 ## 2. Desktop — toolchain nativa (máquina do operador)
 
-- [ ] **Python 3.x + Visual Studio Build Tools (MSVC / Desktop C++)** — exigidos
-      pelo build nativo do `pkcs11js` (sem prebuilds). Sem eles,
-      `signing:status` → `available:false` (degrada, não quebra).
-- [ ] **Rebuild dos nativos para o ABI do Electron** após TODO `pnpm install`
-      (que os reverte ao ABI do Node):
-      `pnpm --filter @jdoc/desktop run rebuild` (keytar + pkcs11js).
-- [ ] Caminho com espaço (`C:\Users\Windows 10\...`) pode quebrar o node-gyp —
-      considerar checkout sem espaço.
-      → detalhes: `docs/assinatura-icp-brasil-producao.md` §1–2.
+- [ ] **Rebuild do keytar para o ABI do Electron** após TODO `pnpm install`
+      (que reverte os nativos ao ABI do Node):
+      `pnpm --filter @jdoc/desktop run rebuild`.
 
-## 3. Assinatura ICP-Brasil — hardware e bundle
+## 3. Verificação de assinatura ICP-Brasil — bundle e revogação
 
-- [ ] **Token A3 físico + middleware (DLL)** instalados; validar
-      `C_Login`/`C_Sign`, CMS/CAdES e layout PAdES com PDF real num validador
-      ICP (Validar/ITI). Todo o caminho `apps/desktop/electron/signing/` está
-      `@pending` de hardware.
+O desktop não assina documentos (feature removida — nunca foi exercitada com
+hardware real). Só a API verifica assinaturas já presentes num PDF enviado.
+
 - [ ] **Bundle de raízes ICP-Brasil na API**: baixar manualmente de
       https://acraiz.icpbrasil.gov.br, conferir hashes, colocar em
       `apps/api/certs/icp-brasil/` (ou `ICP_ROOTS_DIR`). Sem bundle, toda
@@ -58,7 +49,7 @@ certificado, toolchain ou infra do operador. Nada aqui é falta de código novo 
       de novo na conexão — contra rebinding puro falta "pinar" o IP resolvido
       no dispatcher (undici). Faixas privadas/metadata e bloqueio de redirect
       já cobrem os vetores principais.
-      → detalhes: `docs/assinatura-icp-brasil-producao.md` §3–5.
+      → detalhes: `docs/assinatura-icp-brasil-producao.md` §1–2.
 
 ## 4. Go-live (Supabase / Railway / Vercel)
 
@@ -99,11 +90,10 @@ certificado, toolchain ou infra do operador. Nada aqui é falta de código novo 
 
 ---
 
-## Critério de "pronto de verdade" (assinatura)
+## Critério de "pronto de verdade" (verificação de assinatura)
 
-1. `signing:status` → `available: true, tokenPresent: true`.
-2. PDF assinado no desktop abre válido no validador ICP (Validar/ITI).
-3. Upload do PDF assinado → `GET /t/:slug/documents/:id/signature` → `valida`.
+1. Upload de um PDF já assinado por outro sistema →
+   `GET /t/:slug/documents/:id/signature` → `valida`.
 
-Enquanto houver item aberto nas seções 2–3, o comportamento seguro vigente é:
-desktop recusa/avisa graciosamente; API marca `invalida`/`nao_verificada`.
+Enquanto houver item aberto na seção 3, o comportamento seguro vigente é:
+API marca `invalida`/`nao_verificada` (nunca trava o upload).

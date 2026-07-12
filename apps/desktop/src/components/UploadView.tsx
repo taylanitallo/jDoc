@@ -3,7 +3,6 @@ import { documentFieldsSchema } from '@jdoc/shared';
 import type { UploadSnapshot, UploadStatus, WatchedPendingFile } from '../types';
 import { MODULE_FIELDS, MODULE_LABELS, MODULES, SUBTYPE_OPTIONS, type FieldDesc } from '../upload-fields';
 import { useLookups } from '../use-lookups';
-import { SignModal } from './SignModal';
 import { WatchedFolderPanel } from './WatchedFolderPanel';
 
 /** Limite client-side (espelha MAX_UPLOAD_MB do backend; o main revalida). */
@@ -14,7 +13,7 @@ interface LocalFile {
   fileId: string;
   /** null quando a origem e a pasta monitorada (main le do disco, sem File no renderer). */
   file: File | null;
-  /** true quando detectado pela pasta monitorada — assinatura ICP-Brasil indisponivel nesta origem. */
+  /** true quando detectado pela pasta monitorada. */
   watched: boolean;
   name: string;
   size: number;
@@ -22,9 +21,6 @@ interface LocalFile {
   fields: Record<string, string>;
   clientError: string | null;
   enqueued: boolean;
-  /** Assinatura ICP-Brasil aplicada antes do envio (opcional). */
-  signed?: boolean;
-  signedContent?: Uint8Array;
 }
 
 function formatSize(bytes: number): string {
@@ -70,7 +66,6 @@ export function UploadView() {
   const [snapshot, setSnapshot] = useState<UploadSnapshot | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [signingFile, setSigningFile] = useState<LocalFile | null>(null);
   const lookups = useLookups();
 
   useEffect(() => {
@@ -173,8 +168,7 @@ export function UploadView() {
           // Origem: pasta monitorada — o main le os bytes direto do disco.
           await window.jdoc.invoke('watch:enqueue', { fileId: lf.fileId, fields: buildFields(lf) });
         } else {
-          // Se assinado, envia o PDF assinado; senao, os bytes originais.
-          const content = lf.signedContent ?? new Uint8Array(await lf.file!.arrayBuffer());
+          const content = new Uint8Array(await lf.file!.arrayBuffer());
           await window.jdoc.invoke('upload:enqueue', {
             fileId: lf.fileId,
             name: lf.name,
@@ -188,10 +182,6 @@ export function UploadView() {
         patch(lf.fileId, (x) => ({ ...x, clientError: e instanceof Error ? e.message : 'Falha ao enfileirar' }));
       }
     }
-  }
-
-  function onSigned(fileId: string, signed: Uint8Array) {
-    patch(fileId, (x) => ({ ...x, signed: true, signedContent: signed, clientError: null }));
   }
 
   function cancel(fileId: string) {
@@ -260,15 +250,9 @@ export function UploadView() {
                 </select>
                 <span className={`up-status up-status-${status}`}>{status}</span>
                 {lf.watched && <span className="up-watched" title="Detectado na pasta monitorada">📁 pasta</span>}
-                {lf.signed && <span className="up-signed" title="Assinada com certificado ICP-Brasil">✔ assinada</span>}
                 {!lf.enqueued && (
                   <button type="button" className="up-btn" onClick={() => setEditing(editing === lf.fileId ? null : lf.fileId)}>
                     campos
-                  </button>
-                )}
-                {!lf.enqueued && !lf.signed && !lf.watched && (
-                  <button type="button" className="up-btn" onClick={() => setSigningFile(lf)}>
-                    assinar
                   </button>
                 )}
                 {!lf.enqueued && lf.watched && (
@@ -335,15 +319,6 @@ export function UploadView() {
         <button type="button" className="up-send" onClick={() => void sendAll()}>
           Enviar {files.filter((f) => !f.enqueued).length} arquivo(s)
         </button>
-      )}
-
-      {signingFile?.file && (
-        <SignModal
-          fileId={signingFile.fileId}
-          file={signingFile.file}
-          onSigned={onSigned}
-          onClose={() => setSigningFile(null)}
-        />
       )}
     </div>
   );

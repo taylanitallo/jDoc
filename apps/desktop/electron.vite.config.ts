@@ -22,13 +22,13 @@ import react from '@vitejs/plugin-react';
  *
  * Ficam de fora do bundle (continuam externalizadas, resolvidas via
  * node_modules em runtime):
- * - keytar / pkcs11js: nativas de verdade (carregam um .node), nao dao
- *   pra bundlar — tambem tem entrada em `asarUnpack` no electron-builder.yml.
+ * - keytar: nativa de verdade (carrega um .node), nao da pra bundlar —
+ *   tambem tem entrada em `asarUnpack` no electron-builder.yml.
  * - @jdoc/shared: workspace package com barrel export (__exportStar) — o
  *   commonjs plugin do rollup nao extrai os named exports corretamente se
  *   ele for bundlado junto; funciona bem externalizado.
  */
-const KEEP_EXTERNAL = new Set(['keytar', 'pkcs11js', '@jdoc/shared']);
+const KEEP_EXTERNAL = new Set(['keytar', '@jdoc/shared']);
 const pkgJson = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8')) as {
   dependencies?: Record<string, string>;
 };

@@ -89,18 +89,3 @@ export type WatchAttachPayload = z.infer<typeof watchAttachPayloadSchema>;
 /** watch:dismiss — descarta um pendente da pasta monitorada sem enviar. */
 export const watchDismissPayloadSchema = z.object({ fileId: z.string().min(1).max(200) }).strict();
 export type WatchDismissPayload = z.infer<typeof watchDismissPayloadSchema>;
-
-/**
- * signing:sign — assina um PDF (bytes) com o certificado escolhido no token.
- * O PIN vive SO durante a operacao (zerado em seguida); nunca persiste.
- * `fileId` correlaciona com o item pre-fila no renderer.
- */
-export const signPayloadSchema = z
-  .object({
-    fileId: z.string().min(1).max(200),
-    certId: z.string().min(1).max(400),
-    pin: z.string().min(1).max(64),
-    content: z.instanceof(Uint8Array),
-  })
-  .strict();
-export type SignPayload = z.infer<typeof signPayloadSchema>;

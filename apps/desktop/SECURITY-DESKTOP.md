@@ -17,11 +17,9 @@ real** ao fim da Fase 8 / Marco 7. Cada item aponta o arquivo que o implementa.
 | 5 | Bloqueio de navegação externa | **parcial** |
 | 6 | Validação zod nos handlers IPC | **mitigado** |
 | 7 | Magic bytes no upload (cliente + revalidação) | **mitigado** |
-| 8 | PIN nunca persistido | **mitigado** |
-| 9 | Chave privada nunca sai do token | **mitigado por construção** (@pending hardware) |
-| 10 | CSP do renderer | **parcial** |
-| 11 | Code signing do instalador | **@pending** (certificado EV) |
-| 12 | Auto-update seguro | **parcial** (@pending EV + host real) |
+| 8 | CSP do renderer | **parcial** |
+| 9 | Code signing do instalador | **@pending** (certificado EV) |
+| 10 | Auto-update seguro | **parcial** (@pending EV + host real) |
 
 ---
 
@@ -105,32 +103,7 @@ Três camadas:
 3. **API revalida no servidor** (DECISIONS.md #27, testado e2e: `.pdf` com
    conteúdo não-PDF → 400).
 
-## 8. PIN nunca persistido — mitigado
-
-- `src/components/SignModal.tsx`: PIN em state local com `type="password"` e
-  `autoComplete="off"` (linha 121); zerado no `finally` de toda tentativa
-  (linha 71).
-- `electron/ipc/schemas.ts:63-71`: PIN só existe no payload de `signing:sign`.
-- `electron/signing/sign-service.ts:5-8`: PIN confinado à chamada de `sign()`;
-  não é guardado, logado nem enviado à rede (assinatura é 100% local).
-  Nota honesta do próprio código: strings JS são imutáveis — não há como
-  "zerar" a memória; a mitigação é não reter referência.
-- Nunca entra no keychain (`keychain.ts` guarda apenas `{ rt, email }`).
-
-## 9. Chave privada nunca sai do token — mitigado por construção (@pending hardware)
-
-`electron/signing/pkcs11.ts:216-291` (`openSigner`): a chave privada é apenas
-um **handle** PKCS#11; o `sign()` delega `C_SignInit`/`C_Sign` ao token
-(linhas 285-288) e o código nunca lê `CKA_VALUE` de chave privada — só do
-certificado (objeto público). `close()` faz logout + fecha sessão em `finally`
-(`sign-service.ts:42-44`).
-
-`@pending`: `C_Login`/`C_Sign` **não foram exercitados com token físico**
-(declarado em `pkcs11.ts:8-13`). O módulo compila e degrada graciosamente; a
-garantia "chave não sai" é estrutural do protocolo PKCS#11, mas o fluxo
-fim-a-fim só valida com hardware.
-
-## 10. CSP do renderer — parcial
+## 8. CSP do renderer — parcial
 
 `index.html:12-15`:
 `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
@@ -143,7 +116,7 @@ http://localhost:3333 https:; object-src 'self' http://localhost:3333 https:`
   a origem exata do storage em produção — mesma lacuna do item 5) e
   `style-src 'unsafe-inline'` (exigido por estilos inline do React/Vite hoje).
 
-## 11. Code signing do instalador — @pending
+## 9. Code signing do instalador — @pending
 
 **Não existe assinatura de código no repositório** — depende do certificado EV
 (pendência do operador). O que existe:
@@ -156,7 +129,7 @@ http://localhost:3333 https:; object-src 'self' http://localhost:3333 https:`
 Sem EV o instalador sai não assinado e o SmartScreen alerta "editor
 desconhecido".
 
-## 12. Auto-update seguro — parcial (@pending EV + host real)
+## 10. Auto-update seguro — parcial (@pending EV + host real)
 
 O que existe (`electron/updater.ts` + `electron-builder.yml:54-57`):
 
@@ -166,7 +139,7 @@ O que existe (`electron/updater.ts` + `electron-builder.yml:54-57`):
 
 O que falta para ser **seguro** de verdade:
 
-- **Code signing (item 11) é pré-requisito**: sem executável assinado, um host
+- **Code signing (item 9) é pré-requisito**: sem executável assinado, um host
   de updates comprometido poderia entregar binário malicioso sem nenhuma
   verificação de autoria. Não habilitar auto-update em produção antes do EV.
 - `publish.url` é placeholder (`https://updates.jeos.example/...`) — falta o
@@ -183,5 +156,6 @@ O que falta para ser **seguro** de verdade:
   login.
 - **Single-flight refresh com rotação** (`api/client.ts:56-89`): um único
   refresh em voo; o token rotacionado volta ao keychain imediatamente.
-- **Assinatura ICP-Brasil**: estados e pendências detalhados em
+- **Verificação de assinatura ICP-Brasil** (checa se um PDF enviado já vem
+  assinado — o desktop não assina nada): estados e pendências detalhados em
   [`docs/assinatura-icp-brasil-producao.md`](../../docs/assinatura-icp-brasil-producao.md).
