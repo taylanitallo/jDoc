@@ -55,6 +55,7 @@ export const balanceteFieldsSchema = z
     module: z.literal('balancete'),
     competencia: competenciaSchema,
     documentDate: z.coerce.date(),
+    descricao: z.string().max(2000).optional(),
     ...base,
   })
   .strict();
@@ -67,6 +68,7 @@ export const extratoFieldsSchema = z
     conta: z.string().min(1).max(30),
     competencia: competenciaSchema,
     documentDate: z.coerce.date(),
+    descricao: z.string().max(2000).optional(),
     ...base,
   })
   .strict();

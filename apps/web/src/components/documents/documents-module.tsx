@@ -380,25 +380,28 @@ const DETAIL_COLUMNS: Record<
     { header: 'Tipo', render: (d) => (d.subtype ? SUBTYPE_SHORT[d.subtype] ?? d.subtype : '—'), className: 'w-10 text-center' },
   ],
   receitas: [
-    { header: 'Órgão', render: orgaoLabel, className: 'w-[30%]' },
-    { header: 'Tipo', render: (d) => (d.subtype ? SUBTYPE_LABEL[d.subtype] ?? d.subtype : '—'), className: 'w-[22%]' },
-    { header: 'Conta', render: (d) => d.conta ?? '—', className: 'w-[18%]' },
+    { header: 'Título/Descrição', render: (d) => d.historico ?? '—', className: 'w-[24%]' },
+    { header: 'Órgão', render: orgaoLabel, className: 'w-[24%]' },
+    { header: 'Tipo', render: (d) => (d.subtype ? SUBTYPE_LABEL[d.subtype] ?? d.subtype : '—'), className: 'w-[18%]' },
+    { header: 'Conta', render: (d) => d.conta ?? '—', className: 'w-[14%]' },
   ],
   balancete: [
-    { header: 'Órgão', render: orgaoLabel, className: 'w-[48%]' },
-    { header: 'Competência', render: (d) => formatCompetencia(d.competencia), className: 'w-[20%]' },
-  ],
-  extrato: [
-    { header: 'Órgão', render: orgaoLabel, className: 'w-[24%]' },
-    { header: 'Banco', render: (d) => d.banco ?? '—', className: 'w-[22%]' },
-    { header: 'Agência', render: (d) => d.agencia ?? '—', className: 'w-[14%]' },
-    { header: 'Conta', render: (d) => d.conta ?? '—', className: 'w-[16%]' },
+    { header: 'Título/Descrição', render: (d) => d.descricao ?? '—', className: 'w-[30%]' },
+    { header: 'Órgão', render: orgaoLabel, className: 'w-[34%]' },
     { header: 'Competência', render: (d) => formatCompetencia(d.competencia), className: 'w-[16%]' },
   ],
+  extrato: [
+    { header: 'Título/Descrição', render: (d) => d.descricao ?? '—', className: 'w-[18%]' },
+    { header: 'Órgão', render: orgaoLabel, className: 'w-[16%]' },
+    { header: 'Banco', render: (d) => d.banco ?? '—', className: 'w-[16%]' },
+    { header: 'Agência', render: (d) => d.agencia ?? '—', className: 'w-[10%]' },
+    { header: 'Conta', render: (d) => d.conta ?? '—', className: 'w-[12%]' },
+    { header: 'Competência', render: (d) => formatCompetencia(d.competencia), className: 'w-[12%]' },
+  ],
   outros: [
+    { header: 'Título/Descrição', render: (d) => d.descricao ?? '—', className: 'w-[32%]' },
     { header: 'Órgão', render: orgaoLabel, className: 'w-[25%]' },
     { header: 'Tipo', render: (d) => d.documentTypeNome ?? '—', className: 'w-[18%]' },
-    { header: 'Descrição', render: (d) => d.descricao ?? '—', className: 'w-[32%]' },
   ],
 };
 
@@ -412,9 +415,9 @@ const DETAIL_COLUMNS: Record<
  */
 const MIN_TABLE_WIDTH: Record<DocModule, number> = {
   despesas: 900,
-  receitas: 640,
-  balancete: 560,
-  extrato: 700,
+  receitas: 760,
+  balancete: 680,
+  extrato: 820,
   outros: 620,
 };
 
@@ -1794,8 +1797,8 @@ function IncludeModal({
                 </select>
               </Field>
               <div className="col-span-2">
-                <Field label="Descrição *" id="descricao">
-                  <input id="descricao" className={inputCls} placeholder="Descrição do documento" onChange={set('descricao')} />
+                <Field label="Título/Descrição *" id="descricao">
+                  <input id="descricao" className={inputCls} placeholder="Título ou descrição do documento" onChange={set('descricao')} />
                 </Field>
               </div>
             </>
@@ -1852,6 +1855,14 @@ function IncludeModal({
             <div className="col-span-2">
               <Field label="Histórico" id="historico">
                 <textarea id="historico" rows={2} className={inputCls} placeholder="Descrição/histórico (opcional)" onChange={set('historico')} />
+              </Field>
+            </div>
+          )}
+
+          {(module === 'balancete' || module === 'extrato') && (
+            <div className="col-span-2">
+              <Field label="Título/Descrição" id="descricao">
+                <textarea id="descricao" rows={2} className={inputCls} placeholder="Título ou descrição do documento (opcional)" onChange={set('descricao')} />
               </Field>
             </div>
           )}
@@ -2299,7 +2310,7 @@ function EditModal({
           )}
           {doc.module === 'outros' && (
             <div className="col-span-2">
-              <Field label="Descrição" id="e-desc">
+              <Field label="Título/Descrição" id="e-desc">
                 <input id="e-desc" className={inputCls} defaultValue={doc.descricao ?? ''} onChange={set('descricao')} />
               </Field>
             </div>
@@ -2313,6 +2324,13 @@ function EditModal({
             <Field label="Competência" id="e-comp">
               <input id="e-comp" type="month" className={inputCls} defaultValue={doc.competencia ?? ''} onChange={set('competencia')} />
             </Field>
+          )}
+          {(doc.module === 'balancete' || doc.module === 'extrato') && (
+            <div className="col-span-2">
+              <Field label="Título/Descrição" id="e-desc-be">
+                <textarea id="e-desc-be" rows={2} className={inputCls} defaultValue={doc.descricao ?? ''} onChange={set('descricao')} />
+              </Field>
+            </div>
           )}
           <Field label="Órgão" id="e-orgao">
             <select id="e-orgao" className={inputCls} defaultValue={doc.orgaoId ?? ''} onChange={set('orgaoId')}>
