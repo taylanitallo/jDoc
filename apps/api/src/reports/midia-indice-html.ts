@@ -292,14 +292,16 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
   .btn-print:hover { opacity: .9; }
 
   .table-scroll { overflow-x: auto; }
-  table { width: 100%; min-width: 640px; border-collapse: collapse; }
-  th, td { padding: 16px 20px; font-size: 13.5px; text-align: left; white-space: nowrap; }
-  td.desc-cell { white-space: normal; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+  table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+  th, td { padding: 12px 14px; font-size: 13px; text-align: left; word-break: break-word; }
+  th:last-child, td:last-child, td.valor, td.nowrap { white-space: nowrap; word-break: normal; overflow: hidden; text-overflow: ellipsis; }
+  th:last-child, td:last-child { width: 150px; }
+  td.desc-cell { max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   th { background: var(--table-head); text-transform: uppercase; font-size: 11.5px; letter-spacing: .03em; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
   tbody tr { border-top: 1px solid var(--border); }
   tbody tr:hover td { background: var(--hover); }
   td.valor { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
-  .badge { display: inline-block; padding: 4px 11px; border-radius: 999px; background: var(--accent-bg); color: var(--accent); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; background: var(--accent-bg); color: var(--accent); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
   a.arquivo { color: var(--accent); text-decoration: none; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
   a.arquivo:hover { text-decoration: underline; }
 
