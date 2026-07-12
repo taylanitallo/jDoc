@@ -18,7 +18,6 @@ files:
 asarUnpack:
   - '**/*.node'
   - node_modules/keytar/**
-  - node_modules/pkcs11js/**
 
 # Nao deixar o electron-builder recompilar nativos (usamos `pnpm run rebuild`).
 npmRebuild: false

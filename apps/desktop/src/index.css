@@ -681,43 +681,6 @@ body {
   background: #fff;
 }
 
-/* --- Modal de assinatura -------------------------------------------------- */
-
-.sign-modal {
-  width: 100%;
-  max-width: 30rem;
-  border: 1px solid var(--app-border);
-  border-radius: 0.75rem;
-  overflow: hidden;
-  background: var(--app-card);
-}
-
-.sign-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 1rem;
-}
-
-.sign-status {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--app-muted);
-}
-
-.sign-hint {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--app-text);
-}
-
-.up-signed {
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: #6ee7b7;
-  white-space: nowrap;
-}
-
 .up-watched {
   font-size: 0.68rem;
   font-weight: 700;

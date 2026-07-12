@@ -9,7 +9,6 @@ import {
   CircleAlert,
   CircleCheck,
   Eye,
-  FileSignature,
   FileText,
   FileUp,
   Loader2,
@@ -43,8 +42,6 @@ import { api, ApiError, getAccessToken } from '@/lib/api';
 import { addExtraDocumentFile, attachDocumentFile, uploadDocument } from '@/lib/upload';
 import { useExercicio } from '@/components/topbar';
 import { LabelsImportModal } from '@/components/documents/labels-import-modal';
-import { DesktopSignModal } from '@/components/documents/desktop-sign-modal';
-import { isDesktopApp } from '@/lib/desktop-bridge';
 import { Modal, btnGhost, btnPrimary, cardCls, formatBytes, inputCls, labelCls } from '@/components/ui';
 import { useToast } from '@/components/toast';
 
@@ -1682,9 +1679,6 @@ function IncludeModal({
   const meta = MODULE_TITLES[module];
   const [fields, setFields] = useState<Record<string, string>>({ module, exercicio: String(exercicio) });
   const [file, setFile] = useState<File | null>(null);
-  const [fileId, setFileId] = useState<string | null>(null);
-  const [signed, setSigned] = useState(false);
-  const [signingOpen, setSigningOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1706,8 +1700,6 @@ function IncludeModal({
     }
     setError(null);
     setFile(f);
-    setFileId(crypto.randomUUID());
-    setSigned(false);
   };
 
   const validation = useMemo(() => {
@@ -1884,20 +1876,6 @@ function IncludeModal({
           />
         </div>
 
-        {file && isDesktopApp() && (
-          <div className="flex items-center gap-2">
-            {signed ? (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-green-600 dark:text-green-400">
-                <FileSignature className="h-3.5 w-3.5" aria-hidden /> assinada com certificado ICP-Brasil
-              </span>
-            ) : (
-              <button type="button" className={btnGhost} onClick={() => setSigningOpen(true)}>
-                <FileSignature className="h-4 w-4" aria-hidden /> assinar com certificado
-              </button>
-            )}
-          </div>
-        )}
-
         {progress !== null && (
           <div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-app-skeleton">
@@ -1918,18 +1896,6 @@ function IncludeModal({
           </button>
         </div>
       </div>
-
-      {signingOpen && file && fileId && (
-        <DesktopSignModal
-          fileId={fileId}
-          file={file}
-          onSigned={(bytes) => {
-            setFile(new File([bytes as BlobPart], file.name, { type: 'application/pdf' }));
-            setSigned(true);
-          }}
-          onClose={() => setSigningOpen(false)}
-        />
-      )}
     </Modal>
   );
 }
