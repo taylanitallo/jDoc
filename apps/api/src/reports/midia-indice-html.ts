@@ -246,39 +246,35 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
 
   .shell { max-width: 1180px; margin: 24px auto; padding: 0 20px 40px; }
 
-  .hero { display: flex; align-items: center; gap: 16px; border-radius: 16px; background: ${headerGradient(corDestaque)}; padding: 22px 24px; color: #fff; box-shadow: 0 8px 20px rgba(124,58,237,0.25); margin-bottom: 16px; }
-  .hero .header-logo-img { height: 52px; width: 52px; flex-shrink: 0; object-fit: contain; border-radius: 12px; background: #fff; padding: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+  .hero { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; border-radius: 16px; background: ${headerGradient(corDestaque)}; padding: 20px 24px; color: #fff; box-shadow: 0 8px 20px rgba(124,58,237,0.25); margin-bottom: 16px; }
+  .hero .header-logo-img { height: 50px; width: 50px; flex-shrink: 0; object-fit: contain; border-radius: 12px; background: #fff; padding: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
   .hero > svg { flex-shrink: 0; }
+  .hero-main { flex: 1 1 260px; }
   .hero .eyebrow { margin: 0 0 3px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; opacity: .8; }
-  .hero h1 { margin: 0 0 3px; font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
-  .hero p.sub { margin: 0; font-size: 13px; opacity: .88; }
+  .hero h1 { margin: 0 0 3px; font-size: 19px; font-weight: 800; letter-spacing: -.01em; }
+  .hero p.sub { margin: 0; font-size: 12.5px; opacity: .88; }
+  .hero-meta { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+  .hero-meta span { display: flex; align-items: center; gap: 7px; background: rgba(255,255,255,0.16); border-radius: 8px; padding: 5px 11px; font-size: 11.5px; white-space: nowrap; }
+  .hero-meta svg { flex-shrink: 0; opacity: .9; }
 
   .aviso { display: flex; align-items: flex-start; gap: 9px; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; padding: 12px 16px; font-size: 12.5px; border-radius: 12px; margin-bottom: 16px; }
   .aviso svg { flex-shrink: 0; margin-top: 1px; color: #ea580c; }
   .aviso b { font-weight: 700; }
 
-  .info-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
-  .stat-tile { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
-  .stat-tile .icon-box { flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--accent-bg); color: var(--accent); }
-  .stat-tile .stat-value { display: block; font-size: 15px; font-weight: 700; color: var(--ink); line-height: 1.2; }
-  .stat-tile .stat-label { display: block; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin-top: 1px; }
-
-  .tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
-  .tab { cursor: pointer; display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border); border-top: 3px solid transparent; border-radius: 12px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: border-color .12s ease, box-shadow .12s ease, transform .12s ease; }
-  .tab:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,0.07); }
-  .tab.active { border-top-color: var(--accent); box-shadow: 0 4px 10px rgba(0,0,0,0.07); }
-  .tab .icon-badge { flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--accent-bg); color: var(--accent); }
-  .tab .count { display: block; font-size: 18px; font-weight: 800; color: var(--accent); line-height: 1.15; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; background: var(--table-head); border: 1px solid var(--border); border-radius: 14px; padding: 6px; margin-bottom: 16px; }
+  .tab { cursor: pointer; flex: 1 1 150px; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; transition: background .12s ease, box-shadow .12s ease; }
+  .tab:hover { background: rgba(255,255,255,0.6); }
+  .tab.active { background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+  .tab .icon-badge { flex-shrink: 0; width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; background: #fff; color: var(--accent); box-shadow: inset 0 0 0 1px var(--border); }
+  .tab .count { display: block; font-size: 17px; font-weight: 800; color: var(--accent); line-height: 1.15; }
   .tab .label { display: block; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin-top: 1px; }
 
-  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); margin-bottom: 16px; }
-  .panel-accent-blue { border-top: 4px solid #3b82f6; }
-  .panel-accent-purple { border-top: 4px solid #a855f7; }
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); margin-bottom: 16px; overflow: hidden; }
 
-  .controls { padding: 16px; }
+  .controls { padding: 14px 16px; border-bottom: 1px solid var(--border); background: var(--table-head); }
   .controls-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
   .controls-row + .controls-row { margin-top: 10px; }
-  .total-card { display: flex; align-items: center; gap: 8px; background: var(--table-head); border-radius: 8px; padding: 8px 12px; }
+  .total-card { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
   .total-card b { font-size: 10px; text-transform: uppercase; color: var(--muted); font-weight: 700; letter-spacing: .03em; }
   .total-card span { font-size: 14px; font-weight: 800; color: var(--ink); }
   .filter-group { display: flex; align-items: center; gap: 8px; }
@@ -313,8 +309,8 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
   @media (max-width: 720px) {
     .shell { padding: 0 14px 32px; margin-top: 16px; }
     .hero { padding: 18px; }
-    .tabs { grid-template-columns: repeat(2, 1fr); }
-    .info-row { grid-template-columns: 1fr; }
+    .hero-meta { flex-direction: row; flex-wrap: wrap; }
+    .tab { flex: 1 1 45%; }
     .search-wrap { max-width: none; flex-basis: 100%; }
     .btn-print { flex: 1; justify-content: center; }
   }
@@ -334,10 +330,14 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
 <div class="shell">
   <div class="hero">
     ${headerLogo}
-    <div>
+    <div class="hero-main">
       <p class="eyebrow">Índice de Documentos</p>
       <h1>${escapeHtml(nomeHeader)} — Mídia Legislativa</h1>
       <p class="sub">Competência: ${escapeHtml(mesNome)}/${exercicio}</p>
+    </div>
+    <div class="hero-meta">
+      <span>${svgIcon('user', 13)}${escapeHtml(geradoPor)}</span>
+      <span>${svgIcon('clock', 13)}${escapeHtml(formatDataHoraBR(geradoEm))}</span>
     </div>
   </div>
 
@@ -348,14 +348,9 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
     "Visualizar arquivo" não vão funcionar, porque os PDFs não são extraídos junto.</span>
   </div>
 
-  <div class="info-row">
-    <div class="stat-tile"><div class="icon-box">${svgIcon('user', 18)}</div><div><span class="stat-value">${escapeHtml(geradoPor)}</span><span class="stat-label">Gerado por</span></div></div>
-    <div class="stat-tile"><div class="icon-box">${svgIcon('clock', 18)}</div><div><span class="stat-value">${escapeHtml(formatDataHoraBR(geradoEm))}</span><span class="stat-label">Gerado em</span></div></div>
-  </div>
-
   <div class="tabs" id="tabs"></div>
 
-  <div class="panel panel-accent-blue">
+  <div class="panel">
     <div class="controls" id="filtersBar">
       <div class="controls-row">
         <div class="total-card" id="totalCard" style="display:none">
@@ -382,9 +377,6 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
         <button type="button" class="btn-print" id="printBtn">${svgIcon('printer', 16)}<span>Imprimir</span></button>
       </div>
     </div>
-  </div>
-
-  <div class="panel panel-accent-purple">
     <main id="main">
       <div class="table-scroll">
         <table>
