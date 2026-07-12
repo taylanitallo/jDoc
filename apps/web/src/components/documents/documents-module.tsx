@@ -1245,12 +1245,15 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                   <ConferenciaBadge documento={d} />
                 </div>
                 <dl className="mt-1.5 space-y-1 text-xs">
-                  {DETAIL_COLUMNS[module].map((col) => (
-                    <div key={col.header} className="flex gap-1.5">
-                      <dt className="shrink-0 font-semibold text-app-muted">{col.header}:</dt>
-                      <dd className="truncate text-app">{col.render(d)}</dd>
-                    </div>
-                  ))}
+                  {DETAIL_COLUMNS[module]
+                    // "Doc. Caixa" ja aparece no titulo do card quando existe — nao repete.
+                    .filter((col) => !(col.header === 'Doc. Caixa' && d.docCaixa))
+                    .map((col) => (
+                      <div key={col.header} className="flex gap-1.5">
+                        <dt className="shrink-0 font-semibold text-app-muted">{col.header}:</dt>
+                        <dd className="truncate text-app">{col.render(d)}</dd>
+                      </div>
+                    ))}
                   {hasValor && (
                     <div className="flex gap-1.5">
                       <dt className="shrink-0 font-semibold text-app-muted">Valor:</dt>
