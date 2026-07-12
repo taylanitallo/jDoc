@@ -136,46 +136,48 @@ function svgIcon(name: string, size = 18): string {
 interface ColumnDef {
   key: keyof IndiceEntry | 'orgao' | 'valorFmt' | 'dataFmt' | 'subtypeFmt';
   label: string;
+  /** Largura fixa (px) pra campos curtos de formato fixo — colunas sem width dividem o espaco restante (texto livre: credor/orgao/descricao). */
+  width?: number;
 }
 
 const COLUMNS: Record<Midia, ColumnDef[]> = {
   despesa: [
-    { key: 'dataFmt', label: 'Data' },
-    { key: 'docCaixa', label: 'Doc. Caixa' },
-    { key: 'empenho', label: 'Empenho' },
+    { key: 'dataFmt', label: 'Data', width: 86 },
+    { key: 'docCaixa', label: 'Doc. Caixa', width: 100 },
+    { key: 'empenho', label: 'Empenho', width: 100 },
     { key: 'orgao', label: 'Órgão' },
     { key: 'credor', label: 'Credor' },
-    { key: 'subtypeFmt', label: 'Tipo' },
-    { key: 'valorFmt', label: 'Valor' },
+    { key: 'subtypeFmt', label: 'Tipo', width: 110 },
+    { key: 'valorFmt', label: 'Valor', width: 100 },
   ],
   receita: [
-    { key: 'dataFmt', label: 'Data' },
+    { key: 'dataFmt', label: 'Data', width: 86 },
     { key: 'historico', label: 'Título/Descrição' },
     { key: 'orgao', label: 'Órgão' },
-    { key: 'conta', label: 'Conta' },
-    { key: 'subtypeFmt', label: 'Tipo' },
-    { key: 'valorFmt', label: 'Valor' },
+    { key: 'conta', label: 'Conta', width: 90 },
+    { key: 'subtypeFmt', label: 'Tipo', width: 110 },
+    { key: 'valorFmt', label: 'Valor', width: 100 },
   ],
   balancete: [
-    { key: 'dataFmt', label: 'Data' },
+    { key: 'dataFmt', label: 'Data', width: 86 },
     { key: 'descricao', label: 'Título/Descrição' },
     { key: 'orgao', label: 'Órgão' },
-    { key: 'competencia', label: 'Competência' },
+    { key: 'competencia', label: 'Competência', width: 110 },
   ],
   extrato: [
-    { key: 'dataFmt', label: 'Data' },
+    { key: 'dataFmt', label: 'Data', width: 86 },
     { key: 'descricao', label: 'Título/Descrição' },
-    { key: 'banco', label: 'Banco' },
-    { key: 'agencia', label: 'Agência' },
-    { key: 'conta', label: 'Conta' },
-    { key: 'competencia', label: 'Competência' },
+    { key: 'banco', label: 'Banco', width: 90 },
+    { key: 'agencia', label: 'Agência', width: 80 },
+    { key: 'conta', label: 'Conta', width: 90 },
+    { key: 'competencia', label: 'Competência', width: 110 },
     { key: 'orgao', label: 'Órgão' },
   ],
   outros: [
-    { key: 'dataFmt', label: 'Data' },
+    { key: 'dataFmt', label: 'Data', width: 86 },
     { key: 'descricao', label: 'Título/Descrição' },
     { key: 'orgao', label: 'Órgão' },
-    { key: 'documentTypeNome', label: 'Tipo' },
+    { key: 'documentTypeNome', label: 'Tipo', width: 110 },
   ],
 };
 
@@ -293,16 +295,16 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
 
   .table-scroll { overflow-x: auto; }
   table { width: 100%; table-layout: fixed; border-collapse: collapse; }
-  th, td { padding: 12px 14px; font-size: 13px; text-align: left; word-break: break-word; }
+  th, td { padding: 8px 10px; font-size: 12px; text-align: left; word-break: break-word; }
   th:last-child, td:last-child, td.valor, td.nowrap { white-space: nowrap; word-break: normal; overflow: hidden; text-overflow: ellipsis; }
-  th:last-child, td:last-child { width: 150px; }
+  th:last-child, td:last-child { width: 130px; }
   td.desc-cell { max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  th { background: var(--table-head); text-transform: uppercase; font-size: 11.5px; letter-spacing: .03em; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
+  th { background: var(--table-head); text-transform: uppercase; font-size: 10.5px; letter-spacing: .03em; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
   tbody tr { border-top: 1px solid var(--border); }
   tbody tr:hover td { background: var(--hover); }
   td.valor { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
-  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; background: var(--accent-bg); color: var(--accent); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
-  a.arquivo { color: var(--accent); text-decoration: none; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; background: var(--accent-bg); color: var(--accent); font-size: 11px; font-weight: 600; white-space: nowrap; }
+  a.arquivo { color: var(--ink); text-decoration: none; font-weight: 700; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
   a.arquivo:hover { text-decoration: underline; }
 
   .empty { border: 1px dashed var(--border); border-radius: 12px; background: #fff; margin: 24px; padding: 56px 24px; text-align: center; color: #9ca3af; font-size: 14px; }
@@ -318,13 +320,14 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
   }
 
   @media print {
-    @page { margin: 10mm; }
+    @page { margin: 10mm; size: landscape; }
     .aviso, .controls, .tabs, td .arquivo, th:last-child, td:last-child { display: none !important; }
     body { background: #fff; margin: 0; }
+    .shell { max-width: none; margin: 0; padding: 0; }
     .hero { box-shadow: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .panel { box-shadow: none; }
+    .panel { box-shadow: none; border: none; }
     .table-scroll { overflow: visible; }
-    table { width: 100%; min-width: 0; }
+    table { width: 100%; table-layout: fixed; }
   }
 </style>
 </head>
@@ -518,6 +521,7 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
       var th = document.createElement('th');
       th.textContent = col.label;
       if (col.key === 'valorFmt') th.style.textAlign = 'right';
+      if (col.width) th.style.width = col.width + 'px';
       trh.appendChild(th);
     });
     var thAcoes = document.createElement('th');
