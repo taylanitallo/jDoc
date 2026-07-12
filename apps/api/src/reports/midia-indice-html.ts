@@ -235,144 +235,156 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
 <meta charset="utf-8" />
 <title>Mídia Legislativa — ${escapeHtml(mesNome)}/${exercicio}</title>
 <style>
-  :root { color-scheme: light; --accent: #7c3aed; --accent-bg: #f5f3ff; --ink: #1f2430; --muted: #6b7280; --line: #e7e6ef; }
+  :root {
+    color-scheme: light;
+    --accent: #7c3aed; --accent-bg: #f5f3ff;
+    --bg: #f8f9fb; --card: #fff; --border: #e5e7eb; --ink: #1f2937; --muted: #6b7280;
+    --table-head: #f9fafb; --hover: #f9fafb; --input-border: #d1d5db;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background: linear-gradient(180deg, #f7f6fb 0, #edecf5 320px, #edecf5 100%); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; }
 
-  header { background: ${headerGradient(corDestaque)}; color: #fff; padding: 26px 28px 46px; }
-  header .header-row { display: flex; align-items: center; gap: 16px; max-width: 1180px; margin: 0 auto; }
-  header .header-logo-img { height: 56px; width: 56px; flex-shrink: 0; object-fit: contain; border-radius: 14px; background: #fff; padding: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
-  header .header-row > svg { flex-shrink: 0; }
-  header .eyebrow { margin: 0 0 3px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; opacity: .78; }
-  header h1 { margin: 0 0 3px; font-size: 21px; font-weight: 800; letter-spacing: -.01em; }
-  header p { margin: 0; font-size: 13px; opacity: 0.88; }
+  .shell { max-width: 1180px; margin: 24px auto; padding: 0 20px 40px; }
 
-  .shell { max-width: 1180px; margin: -26px auto 36px; padding: 0 20px; position: relative; z-index: 1; }
-  .panel { background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 10px 28px rgba(31,24,63,0.07); }
-  .panel + .panel { margin-top: 16px; }
+  .hero { display: flex; align-items: center; gap: 16px; border-radius: 16px; background: ${headerGradient(corDestaque)}; padding: 22px 24px; color: #fff; box-shadow: 0 8px 20px rgba(124,58,237,0.25); margin-bottom: 16px; }
+  .hero .header-logo-img { height: 52px; width: 52px; flex-shrink: 0; object-fit: contain; border-radius: 12px; background: #fff; padding: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+  .hero > svg { flex-shrink: 0; }
+  .hero .eyebrow { margin: 0 0 3px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; opacity: .8; }
+  .hero h1 { margin: 0 0 3px; font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
+  .hero p.sub { margin: 0; font-size: 13px; opacity: .88; }
 
-  .aviso { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; padding: 12px 18px; font-size: 12.5px; display: flex; align-items: flex-start; gap: 9px; border-radius: 14px; margin-bottom: 16px; }
+  .aviso { display: flex; align-items: flex-start; gap: 9px; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; padding: 12px 16px; font-size: 12.5px; border-radius: 12px; margin-bottom: 16px; }
   .aviso svg { flex-shrink: 0; margin-top: 1px; color: #ea580c; }
   .aviso b { font-weight: 700; }
 
-  .info-bar { display: flex; flex-wrap: wrap; gap: 12px; padding: 16px 20px; }
-  .info-bar div { display: flex; align-items: center; gap: 10px; background: #f7f6fc; border-radius: 12px; padding: 10px 16px; flex: 1 1 200px; }
-  .info-bar svg { flex-shrink: 0; color: var(--accent); }
-  .info-bar b { display: block; font-size: 10px; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; font-weight: 700; letter-spacing: .03em; }
-  .info-bar span.value { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .info-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .stat-tile { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+  .stat-tile .icon-box { flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--accent-bg); color: var(--accent); }
+  .stat-tile .stat-value { display: block; font-size: 15px; font-weight: 700; color: var(--ink); line-height: 1.2; }
+  .stat-tile .stat-label { display: block; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin-top: 1px; }
 
-  .tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; padding: 16px 20px; }
-  .tab { cursor: pointer; border: 1.5px solid var(--line); background: #fff; border-radius: 14px; padding: 12px 14px; font-size: 13px; font-weight: 600; color: #374151; display: flex; align-items: center; gap: 12px; transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease; }
-  .tab:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(31,24,63,0.09); }
-  .tab .icon-badge { flex-shrink: 0; width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center; background: var(--accent-bg); color: var(--accent); }
-  .tab .count { display: block; font-size: 19px; font-weight: 800; color: var(--accent); line-height: 1.1; }
-  .tab .label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); margin-top: 1px; }
-  .tab.active { border-color: var(--accent); background: var(--accent-bg); box-shadow: 0 6px 16px rgba(31,24,63,0.09); }
+  .tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tab { cursor: pointer; display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border); border-top: 3px solid transparent; border-radius: 12px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: border-color .12s ease, box-shadow .12s ease, transform .12s ease; }
+  .tab:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,0.07); }
+  .tab.active { border-top-color: var(--accent); box-shadow: 0 4px 10px rgba(0,0,0,0.07); }
+  .tab .icon-badge { flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--accent-bg); color: var(--accent); }
+  .tab .count { display: block; font-size: 18px; font-weight: 800; color: var(--accent); line-height: 1.15; }
+  .tab .label { display: block; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin-top: 1px; }
 
-  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 20px; border-top: 1px solid var(--line); }
-  .total-card { display: flex; align-items: center; gap: 10px; background: #f7f6fc; border-radius: 12px; padding: 9px 16px; }
-  .total-card b { display: block; font-size: 10px; text-transform: uppercase; color: var(--muted); font-weight: 700; letter-spacing: .03em; }
-  .total-card span { font-size: 16px; font-weight: 800; color: var(--ink); }
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); margin-bottom: 16px; }
+  .panel-accent-blue { border-top: 4px solid #3b82f6; }
+  .panel-accent-purple { border-top: 4px solid #a855f7; }
+
+  .controls { padding: 16px; }
+  .controls-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .controls-row + .controls-row { margin-top: 10px; }
+  .total-card { display: flex; align-items: center; gap: 8px; background: var(--table-head); border-radius: 8px; padding: 8px 12px; }
+  .total-card b { font-size: 10px; text-transform: uppercase; color: var(--muted); font-weight: 700; letter-spacing: .03em; }
+  .total-card span { font-size: 14px; font-weight: 800; color: var(--ink); }
   .filter-group { display: flex; align-items: center; gap: 8px; }
   .filter-group label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted); }
-  .filter-group select, .filter-group input[type="date"] { padding: 7px 10px; border: 1px solid #d8dae0; border-radius: 9px; font-size: 12px; background: #fff; color: var(--ink); }
+  .filter-group select, .filter-group input[type="date"] { border: 1px solid var(--input-border); border-radius: 8px; padding: 7px 10px; font-size: 12px; background: #fff; color: var(--ink); }
   .filter-group select:focus, .filter-group input[type="date"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .filter-group .date-sep { font-size: 12px; color: #9ca3af; }
 
-  .toolbar { padding: 4px 20px 18px; display: flex; flex-wrap: wrap; gap: 10px; }
   .search-wrap { position: relative; flex: 1 1 260px; max-width: 420px; display: flex; align-items: center; }
   .search-wrap .search-icon { position: absolute; left: 11px; color: #9ca3af; pointer-events: none; }
-  .search-wrap input { width: 100%; padding: 10px 12px 10px 34px; border: 1px solid #d8dae0; border-radius: 11px; font-size: 13px; }
+  .search-wrap input { width: 100%; padding: 9px 12px 9px 34px; border: 1px solid var(--input-border); border-radius: 8px; font-size: 13px; }
   .search-wrap input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-  .table-scroll { overflow-x: auto; border-radius: 0 0 16px 16px; }
+  .btn-print { display: flex; align-items: center; gap: 7px; padding: 9px 16px; border: none; border-radius: 8px; background: linear-gradient(135deg, #7c3aed 0%, #d946ef 100%); color: #fff; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; cursor: pointer; }
+  .btn-print:hover { opacity: .9; }
+
+  .table-scroll { overflow-x: auto; }
   table { width: 100%; min-width: 640px; border-collapse: collapse; }
-  th, td { padding: 11px 14px; font-size: 12.5px; text-align: left; border-bottom: 1px solid #f0eff6; white-space: nowrap; }
+  th, td { padding: 10px 14px; font-size: 12.5px; text-align: left; white-space: nowrap; }
   td.desc-cell { white-space: normal; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
-  th { background: #f7f6fc; text-transform: uppercase; font-size: 10px; letter-spacing: .04em; color: var(--muted); font-weight: 700; border-bottom: 1px solid var(--line); position: sticky; top: 0; }
-  tbody tr:nth-child(even) td { background: #fbfafd; }
-  tr:hover td { background: var(--accent-bg); }
-  td.valor { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
-  .badge { display: inline-block; padding: 3px 9px; border-radius: 999px; background: var(--accent-bg); color: var(--accent); font-size: 11px; font-weight: 700; white-space: nowrap; }
-  a.arquivo { color: var(--accent); text-decoration: none; font-weight: 700; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+  th { background: var(--table-head); text-transform: uppercase; font-size: 11px; letter-spacing: .03em; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
+  tbody tr { border-top: 1px solid var(--border); }
+  tbody tr:hover td { background: var(--hover); }
+  td.valor { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--accent-bg); color: var(--accent); font-size: 11px; font-weight: 600; white-space: nowrap; }
+  a.arquivo { color: var(--accent); text-decoration: none; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
   a.arquivo:hover { text-decoration: underline; }
-  .empty { padding: 56px 20px; text-align: center; color: #9ca3af; font-size: 13px; }
+
+  .empty { border: 1px dashed var(--border); border-radius: 12px; background: #fff; margin: 20px; padding: 48px 20px; text-align: center; color: #9ca3af; font-size: 13px; }
   .empty svg { display: block; margin: 0 auto 10px; color: #c4c8d0; }
-  .btn-print { display: flex; align-items: center; gap: 7px; padding: 10px 18px; border: none; border-radius: 11px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 16px rgba(124,58,237,0.28); }
-  .btn-print:hover { opacity: .92; }
 
   @media (max-width: 720px) {
-    header { padding: 22px 18px 40px; }
-    .shell { padding: 0 14px; }
-    .info-bar, .tabs, .controls, .toolbar { padding-left: 14px; padding-right: 14px; }
+    .shell { padding: 0 14px 32px; margin-top: 16px; }
+    .hero { padding: 18px; }
     .tabs { grid-template-columns: repeat(2, 1fr); }
+    .info-row { grid-template-columns: 1fr; }
     .search-wrap { max-width: none; flex-basis: 100%; }
     .btn-print { flex: 1; justify-content: center; }
   }
 
   @media print {
     @page { margin: 10mm; }
-    .aviso, .controls, .toolbar, .tabs, td .arquivo, th:last-child, td:last-child { display: none !important; }
+    .aviso, .controls, .tabs, td .arquivo, th:last-child, td:last-child { display: none !important; }
     body { background: #fff; margin: 0; }
-    header { box-shadow: none; padding: 10px 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .shell { margin-top: 16px; }
-    .panel { box-shadow: none; border: none; }
-    .info-bar { padding: 10px 0; }
+    .hero { box-shadow: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .panel { box-shadow: none; }
     .table-scroll { overflow: visible; }
-    table { box-shadow: none; width: 100%; min-width: 0; }
+    table { width: 100%; min-width: 0; }
   }
 </style>
 </head>
 <body>
-<header>
-  <div class="header-row">
+<div class="shell">
+  <div class="hero">
     ${headerLogo}
     <div>
       <p class="eyebrow">Índice de Documentos</p>
       <h1>${escapeHtml(nomeHeader)} — Mídia Legislativa</h1>
-      <p>Competência: ${escapeHtml(mesNome)}/${exercicio}</p>
+      <p class="sub">Competência: ${escapeHtml(mesNome)}/${exercicio}</p>
     </div>
   </div>
-</header>
-<div class="shell">
+
   <div class="aviso">
     ${svgIcon('alertTriangle', 16)}
     <span><b>Importante:</b> extraia todo o conteúdo do ZIP para uma pasta antes de abrir este arquivo
     (botão direito no .zip → "Extrair Tudo"). Se abrir direto de dentro do ZIP, os links
     "Visualizar arquivo" não vão funcionar, porque os PDFs não são extraídos junto.</span>
   </div>
-  <div class="panel">
-    <div class="info-bar">
-      <div>${svgIcon('user', 18)}<span><b>Gerado por</b><span class="value">${escapeHtml(geradoPor)}</span></span></div>
-      <div>${svgIcon('clock', 18)}<span><b>Gerado em</b><span class="value">${escapeHtml(formatDataHoraBR(geradoEm))}</span></span></div>
-    </div>
-    <div class="tabs" id="tabs"></div>
+
+  <div class="info-row">
+    <div class="stat-tile"><div class="icon-box">${svgIcon('user', 18)}</div><div><span class="stat-value">${escapeHtml(geradoPor)}</span><span class="stat-label">Gerado por</span></div></div>
+    <div class="stat-tile"><div class="icon-box">${svgIcon('clock', 18)}</div><div><span class="stat-value">${escapeHtml(formatDataHoraBR(geradoEm))}</span><span class="stat-label">Gerado em</span></div></div>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="panel panel-accent-blue">
     <div class="controls" id="filtersBar">
-      <div class="total-card" id="totalCard" style="display:none">
-        <b id="totalLabel"></b>
-        <span id="totalValue"></span>
+      <div class="controls-row">
+        <div class="total-card" id="totalCard" style="display:none">
+          <b id="totalLabel"></b>
+          <span id="totalValue"></span>
+        </div>
+        <div class="filter-group" id="tipoGroup" style="display:none">
+          <label>Tipo</label>
+          <select id="filterTipo"></select>
+        </div>
+        <div class="filter-group" id="orgaoGroup" style="display:none">
+          <label>Órgão</label>
+          <select id="filterOrgao"></select>
+        </div>
+        <div class="filter-group">
+          <label>Período</label>
+          <input type="date" id="filterDateFrom" />
+          <span class="date-sep">até</span>
+          <input type="date" id="filterDateTo" />
+        </div>
       </div>
-      <div class="filter-group" id="tipoGroup" style="display:none">
-        <label>Tipo</label>
-        <select id="filterTipo"></select>
+      <div class="controls-row">
+        <div class="search-wrap"><span class="search-icon">${svgIcon('search', 15)}</span><input id="search" type="text" placeholder="Buscar…" /></div>
+        <button type="button" class="btn-print" id="printBtn">${svgIcon('printer', 16)}<span>Imprimir</span></button>
       </div>
-      <div class="filter-group" id="orgaoGroup" style="display:none">
-        <label>Órgão</label>
-        <select id="filterOrgao"></select>
-      </div>
-      <div class="filter-group">
-        <label>Período</label>
-        <input type="date" id="filterDateFrom" />
-        <span class="date-sep">até</span>
-        <input type="date" id="filterDateTo" />
-      </div>
-    </div>
-    <div class="toolbar">
-      <div class="search-wrap"><span class="search-icon">${svgIcon('search', 15)}</span><input id="search" type="text" placeholder="Buscar…" /></div>
-      <button type="button" class="btn-print" id="printBtn">${svgIcon('printer', 16)}<span>Imprimir</span></button>
     </div>
   </div>
-  <div class="panel">
+
+  <div class="panel panel-accent-purple">
     <main id="main">
       <div class="table-scroll">
         <table>
