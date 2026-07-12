@@ -3,7 +3,13 @@ import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 // (apagado na compilacao, nunca vira require()); a classe real e importada
 // via import() dinamico dentro de ensureClient(), unico lugar onde e
 // instanciada (mesmo padrao usado em conferencia.worker.ts).
-import type { Content, FunctionDeclaration, GoogleGenAI, Part } from '@google/genai' with { 'resolution-mode': 'import' };
+import type {
+  Content,
+  FunctionDeclaration,
+  GenerateContentResponse,
+  GoogleGenAI,
+  Part,
+} from '@google/genai' with { 'resolution-mode': 'import' };
 import { z } from 'zod';
 import {
   DOC_MODULES,
@@ -21,6 +27,21 @@ import { requireTenantContext } from '../tenancy/tenant-context';
 const MAX_TURNOS = 4;
 const LIMITE_PADRAO = 20;
 const LIMITE_TETO = 50;
+
+/** 429 (RESOURCE_EXHAUSTED) e 503 (UNAVAILABLE) sao transitorios — comuns no
+ *  plano gratuito do Gemini sob demanda alta; vale a pena tentar de novo. */
+const STATUS_TRANSITORIO = new Set([429, 503]);
+const MAX_TENTATIVAS = 3;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function statusDoErro(e: unknown): number | null {
+  return e instanceof Error && 'status' in e && typeof (e as { status: unknown }).status === 'number'
+    ? (e as { status: number }).status
+    : null;
+}
 
 /**
  * O que a IA pode pedir pra ferramenta consultar_documentos — espelha os
@@ -139,15 +160,57 @@ Exercício atual, se a pergunta não especificar o ano: ${new Date().getFullYear
     const avisos: string[] = [];
     const contents: Content[] = [{ role: 'user', parts: [{ text: pergunta }] }];
 
+    try {
+      return await this.executarLoop(client, contents, systemPrompt, pergunta, user, documentosCitados, avisos);
+    } catch (e) {
+      const status = statusDoErro(e);
+      this.logger.error(`Falha ao consultar o Gemini: ${e instanceof Error ? e.message : String(e)}`);
+      return {
+        resposta:
+          status && STATUS_TRANSITORIO.has(status)
+            ? 'O Gemini está sobrecarregado agora (comum no plano gratuito em horários de pico) — tente novamente em alguns instantes.'
+            : 'Não consegui consultar a IA agora. Tente novamente em instantes.',
+        documentos: [...documentosCitados.values()],
+        avisos,
+      };
+    }
+  }
+
+  /** Chama generateContent com retry curto pra 429/503 (transitorios no plano gratuito). */
+  private async gerarComRetry(client: GoogleGenAI, contents: Content[], systemPrompt: string): Promise<GenerateContentResponse> {
+    let ultimoErro: unknown;
+    for (let tentativa = 0; tentativa < MAX_TENTATIVAS; tentativa++) {
+      try {
+        return await client.models.generateContent({
+          model: 'gemini-flash-latest',
+          contents,
+          config: {
+            systemInstruction: systemPrompt,
+            tools: [{ functionDeclarations: [CONSULTAR_TOOL] }],
+          },
+        });
+      } catch (e) {
+        ultimoErro = e;
+        const status = statusDoErro(e);
+        const ultimaTentativa = tentativa === MAX_TENTATIVAS - 1;
+        if (!status || !STATUS_TRANSITORIO.has(status) || ultimaTentativa) throw e;
+        await sleep(500 * 2 ** tentativa);
+      }
+    }
+    throw ultimoErro;
+  }
+
+  private async executarLoop(
+    client: GoogleGenAI,
+    contents: Content[],
+    systemPrompt: string,
+    pergunta: string,
+    user: TenantAccessClaims,
+    documentosCitados: Map<string, DocumentView>,
+    avisos: string[],
+  ): Promise<AssistenteResposta> {
     for (let turno = 0; turno < MAX_TURNOS; turno++) {
-      const response = await client.models.generateContent({
-        model: 'gemini-flash-latest',
-        contents,
-        config: {
-          systemInstruction: systemPrompt,
-          tools: [{ functionDeclarations: [CONSULTAR_TOOL] }],
-        },
-      });
+      const response = await this.gerarComRetry(client, contents, systemPrompt);
 
       // Usa os parts BRUTOS da resposta (nao o getter response.functionCalls,
       // que descarta o thoughtSignature) — o Gemini exige que esse campo seja
