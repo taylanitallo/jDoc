@@ -131,7 +131,7 @@ export const usuarioCreateSchema = z.object({
   email: z.string().email().max(254),
   nome: z.string().min(1).max(200),
   role: z.enum(['admin', 'operador', 'consulta']),
-  senha: z.string().min(8).max(128),
+  senha: z.string().min(6).max(128),
   permissions: z.array(z.string()).default([]),
   unidadesIds: z.array(z.string().uuid()).default([]),
 });
@@ -148,7 +148,7 @@ export type UsuarioUpdate = z.infer<typeof usuarioUpdateSchema>;
 
 export const resetSenhaSchema = z.object({
   userId: z.string().uuid(),
-  novaSenha: z.string().min(8).max(128),
+  novaSenha: z.string().min(6).max(128),
 });
 export type ResetSenhaInput = z.infer<typeof resetSenhaSchema>;
 

@@ -255,7 +255,7 @@ function UsuarioModal({
                 className={inputCls}
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
-                placeholder="mínimo 8 caracteres"
+                placeholder="mínimo 6 caracteres"
               />
             </div>
           )}
@@ -385,7 +385,7 @@ function ResetSenhaModal({
                 className={inputCls}
                 value={novaSenha}
                 onChange={(e) => setNovaSenha(e.target.value)}
-                placeholder="mínimo 8 caracteres"
+                placeholder="mínimo 6 caracteres"
               />
             </div>
             {error && (

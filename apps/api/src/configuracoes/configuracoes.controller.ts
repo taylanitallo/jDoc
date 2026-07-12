@@ -94,7 +94,7 @@ const tipoDocumentoUpdateSchema = tipoDocumentoSchema.omit({ id: true }).partial
 
 const resetSenhaBodySchema = z
   .object({
-    novaSenha: z.string().min(8).max(128),
+    novaSenha: z.string().min(6).max(128),
   })
   .strict();
 
