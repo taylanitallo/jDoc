@@ -1,6 +1,9 @@
-// Gera um icone placeholder VALIDO (256x256, roxo neon JEOS) em build/icon.ico.
-// PNG-in-ICO — aceito pelo Windows e pelo electron-builder. Substitua por um
-// icone real quando disponivel. Uso: `node build/make-icon.mjs`.
+// Gerador do icone PLACEHOLDER original (256x256, roxo neon solido) em
+// build/icon.ico — SUBSTITUIDO pelo icone real (Logo_executavel.png, na raiz
+// do repo) a partir de 2026-07-11. Mantido so como fallback de emergencia;
+// nao rodar por cima do icone.ico/icon-256.png atuais sem querer.
+// PNG-in-ICO — aceito pelo Windows e pelo electron-builder.
+// Uso: `node build/make-icon.mjs`.
 import { deflateSync } from 'node:zlib';
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
