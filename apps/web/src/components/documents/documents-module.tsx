@@ -1,6 +1,15 @@
 'use client';
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type ReactNode,
+  type WheelEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -104,6 +113,16 @@ function formatCompetencia(competencia: string | null): string {
   const [ano, mes] = competencia.split('-');
   const nome = MESES.find((m) => m.value === mes)?.label;
   return nome ? `${nome.toUpperCase()}/${ano}` : competencia;
+}
+
+/**
+ * input[type=number] muda de valor com o scroll do mouse quando o campo esta
+ * focado (comportamento nativo do Chrome) — silenciosamente decrementa/
+ * incrementa pelo `step` sem o usuario perceber (ex: digitou 50000, rolou a
+ * pagina, virou 49999.98). Tira o foco do campo ao rolar pra evitar isso.
+ */
+function blurOnWheel(e: WheelEvent<HTMLInputElement>): void {
+  e.currentTarget.blur();
 }
 
 /** "125" -> "2min 5s" / "45" -> "45s" — usado no tempo estimado da analise. */
@@ -974,6 +993,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                     placeholder="Valor mín."
                     className={inputCls + ' w-32'}
                     value={valorMin}
+                    onWheel={blurOnWheel}
                     onChange={(e) => {
                       setValorMin(e.target.value);
                       setPage(1);
@@ -987,6 +1007,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                     placeholder="Valor máx."
                     className={inputCls + ' w-32'}
                     value={valorMax}
+                    onWheel={blurOnWheel}
                     onChange={(e) => {
                       setValorMax(e.target.value);
                       setPage(1);
@@ -1212,7 +1233,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
         {data?.items.map((d) => {
           const semArquivo = d.status === 'aguardando_arquivo';
           const clickable = !showTrash;
-          const titulo = d.docCaixa ? `Doc. Caixa: ${d.docCaixa}` : d.originalName;
+          const titulo = d.docCaixa ? `Doc. Caixa: ${d.docCaixa}` : MODULE_TITLES[module].singular;
           return (
             <div
               key={d.id}
@@ -1817,7 +1838,7 @@ function IncludeModal({
 
           {(module === 'despesas' || module === 'receitas') && (
             <Field label="Valor (R$)" id="value">
-              <input id="value" type="number" step="0.01" min="0" className={inputCls} placeholder="0,00" onChange={set('value')} />
+              <input id="value" type="number" step="0.01" min="0" className={inputCls} placeholder="0,00" onWheel={blurOnWheel} onChange={set('value')} />
             </Field>
           )}
 
@@ -2264,7 +2285,7 @@ function EditModal({
           {(doc.module === 'despesas' || doc.module === 'receitas') && (
             <>
               <Field label="Valor (R$)" id="e-value">
-                <input id="e-value" type="number" step="0.01" className={inputCls} defaultValue={doc.value ?? ''} onChange={set('value')} />
+                <input id="e-value" type="number" step="0.01" className={inputCls} defaultValue={doc.value ?? ''} onWheel={blurOnWheel} onChange={set('value')} />
               </Field>
               <Field label="Data do Documento" id="e-date">
                 <input id="e-date" type="date" className={inputCls} defaultValue={doc.documentDate ?? ''} onChange={set('documentDate')} />
