@@ -149,7 +149,15 @@ Exercício atual, se a pergunta não especificar o ano: ${new Date().getFullYear
         },
       });
 
-      const functionCalls = response.functionCalls ?? [];
+      // Usa os parts BRUTOS da resposta (nao o getter response.functionCalls,
+      // que descarta o thoughtSignature) — o Gemini exige que esse campo seja
+      // ecoado de volta exatamente como veio quando a functionCall entra no
+      // historico de um turno seguinte, senao rejeita com 400.
+      const rawParts = response.candidates?.[0]?.content?.parts ?? [];
+      const functionCalls = rawParts
+        .filter((p): p is Part & { functionCall: NonNullable<Part['functionCall']> } => !!p.functionCall)
+        .map((p) => p.functionCall);
+
       if (functionCalls.length === 0) {
         return {
           resposta: response.text || 'Não consegui gerar uma resposta. Tente reformular a pergunta.',
@@ -158,10 +166,7 @@ Exercício atual, se a pergunta não especificar o ano: ${new Date().getFullYear
         };
       }
 
-      const modelParts: Part[] = [];
-      if (response.text) modelParts.push({ text: response.text });
-      for (const fc of functionCalls) modelParts.push({ functionCall: fc });
-      contents.push({ role: 'model', parts: modelParts });
+      contents.push({ role: 'model', parts: rawParts });
 
       const responseParts: Part[] = [];
       for (const fc of functionCalls) {
