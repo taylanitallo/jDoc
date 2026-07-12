@@ -169,7 +169,16 @@ export function Sidebar() {
 
         {showLabels && (
           <p className="px-4 py-3 text-center text-[10px] text-app-muted">
-            © 2026 JEOS SISTEMAS • V1.0.0
+            © 2026{' '}
+            <a
+              href="https://jeossistemas.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-white hover:underline"
+            >
+              JEOS SISTEMAS
+            </a>{' '}
+            • V1.0.5
           </p>
         )}
       </aside>

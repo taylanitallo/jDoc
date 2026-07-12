@@ -170,7 +170,7 @@ export default function LoginPage() {
         >
           JEOS SISTEMAS E ASSESSORIAS LTDA
         </a>{' '}
-        • V1.0.0
+        • V1.0.5
       </footer>
     </main>
   );
