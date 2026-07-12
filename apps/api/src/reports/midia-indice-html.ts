@@ -126,6 +126,7 @@ const ICON_PATHS: Record<string, string> = {
   fileText: '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>',
   inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
   printer: '<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
+  download: '<path d="M12 15V3"/><path d="M3 15v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4"/><path d="m7 10 5 5 5-5"/>',
 };
 
 /** SVG inline (sem <img>/fonte externa) — herda cor via currentColor. */
@@ -292,12 +293,17 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
 
   .btn-print { display: flex; align-items: center; gap: 9px; padding: 12px 24px; border: none; border-radius: 9px; background: linear-gradient(135deg, #7c3aed 0%, #d946ef 100%); color: #fff; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; cursor: pointer; }
   .btn-print:hover { opacity: .9; }
+  .btn-zip { display: flex; align-items: center; gap: 9px; padding: 12px 20px; border: 1px solid var(--input-border); border-radius: 9px; background: #fff; color: var(--ink); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; cursor: pointer; }
+  .btn-zip:hover:not(:disabled) { background: var(--table-head); }
+  .btn-zip:disabled { opacity: .45; cursor: not-allowed; }
 
   .table-scroll { overflow-x: auto; }
   table { width: 100%; table-layout: fixed; border-collapse: collapse; }
   th, td { padding: 8px 10px; font-size: 12px; text-align: left; word-break: break-word; }
   th:last-child, td:last-child, td.valor, td.nowrap { white-space: nowrap; word-break: normal; overflow: hidden; text-overflow: ellipsis; }
-  th:last-child, td:last-child { width: 130px; }
+  th:last-child, td:last-child { width: 168px; }
+  th.select-col, td.select-col { width: 38px; text-align: center; padding-left: 14px; padding-right: 4px; white-space: nowrap; }
+  th.select-col input, td.select-col input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); vertical-align: middle; }
   td.desc-cell { max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   th { background: var(--table-head); text-transform: uppercase; font-size: 10.5px; letter-spacing: .03em; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
   tbody tr { border-top: 1px solid var(--border); }
@@ -316,12 +322,12 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
     .hero-meta { flex-direction: row; flex-wrap: wrap; }
     .tab { flex: 1 1 45%; }
     .search-wrap { max-width: none; flex-basis: 100%; }
-    .btn-print { flex: 1; justify-content: center; }
+    .btn-print, .btn-zip { flex: 1; justify-content: center; }
   }
 
   @media print {
     @page { margin: 10mm; size: landscape; }
-    .aviso, .controls, .tabs, td .arquivo, th:last-child, td:last-child { display: none !important; }
+    .aviso, .controls, .tabs, td .arquivo, th:last-child, td:last-child, th.select-col, td.select-col { display: none !important; }
     body { background: #fff; margin: 0; }
     .shell { max-width: none; margin: 0; padding: 0; }
     .hero { box-shadow: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -379,6 +385,7 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
       </div>
       <div class="controls-row">
         <div class="search-wrap"><span class="search-icon">${svgIcon('search', 15)}</span><input id="search" type="text" placeholder="Buscar…" /></div>
+        <button type="button" class="btn-zip" id="zipBtn" disabled>${svgIcon('download', 15)}<span>Baixar selecionados</span></button>
         <button type="button" class="btn-print" id="printBtn">${svgIcon('printer', 16)}<span>Imprimir</span></button>
       </div>
     </div>
@@ -416,6 +423,145 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
   var totalValueEl = document.getElementById('totalValue');
   var filterDateFromEl = document.getElementById('filterDateFrom');
   var filterDateToEl = document.getElementById('filterDateTo');
+  var zipBtnEl = document.getElementById('zipBtn');
+
+  var MES_NOME = ${JSON.stringify(mesNome)};
+  var EXERCICIO = ${exercicio};
+  var selected = {};
+
+  function updateZipBtn() {
+    var count = Object.keys(selected).length;
+    zipBtnEl.disabled = count === 0;
+    zipBtnEl.querySelector('span').textContent = count > 0 ? ('Baixar selecionados (' + count + ')') : 'Baixar selecionados';
+  }
+
+  /** Gerador de ZIP 100% client-side (sem dependencia externa) — metodo STORE (sem compressao). */
+  var CRC_TABLE = (function () {
+    var table = [];
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      table[n] = c >>> 0;
+    }
+    return table;
+  })();
+  function crc32(bytes) {
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) crc = CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+  function dosTime(d) { return ((d.getHours() & 0x1F) << 11) | ((d.getMinutes() & 0x3F) << 5) | (Math.floor(d.getSeconds() / 2) & 0x1F); }
+  function dosDate(d) { return (((d.getFullYear() - 1980) & 0x7F) << 9) | (((d.getMonth() + 1) & 0xF) << 5) | (d.getDate() & 0x1F); }
+  function buildZipBlob(files) {
+    var now = new Date();
+    var time = dosTime(now), date = dosDate(now);
+    var encoder = new TextEncoder();
+    var localParts = [];
+    var centralParts = [];
+    var offset = 0;
+
+    files.forEach(function (f) {
+      var nameBytes = encoder.encode(f.name);
+      var data = f.data;
+      var crc = crc32(data);
+      var size = data.length;
+
+      var lh = new Uint8Array(30 + nameBytes.length);
+      var ldv = new DataView(lh.buffer);
+      ldv.setUint32(0, 0x04034b50, true);
+      ldv.setUint16(4, 20, true);
+      ldv.setUint16(6, 0, true);
+      ldv.setUint16(8, 0, true);
+      ldv.setUint16(10, time, true);
+      ldv.setUint16(12, date, true);
+      ldv.setUint32(14, crc, true);
+      ldv.setUint32(18, size, true);
+      ldv.setUint32(22, size, true);
+      ldv.setUint16(26, nameBytes.length, true);
+      ldv.setUint16(28, 0, true);
+      lh.set(nameBytes, 30);
+      localParts.push(lh, data);
+
+      var ch = new Uint8Array(46 + nameBytes.length);
+      var cdv = new DataView(ch.buffer);
+      cdv.setUint32(0, 0x02014b50, true);
+      cdv.setUint16(4, 20, true);
+      cdv.setUint16(6, 20, true);
+      cdv.setUint16(8, 0, true);
+      cdv.setUint16(10, 0, true);
+      cdv.setUint16(12, time, true);
+      cdv.setUint16(14, date, true);
+      cdv.setUint32(16, crc, true);
+      cdv.setUint32(20, size, true);
+      cdv.setUint32(24, size, true);
+      cdv.setUint16(28, nameBytes.length, true);
+      cdv.setUint16(30, 0, true);
+      cdv.setUint16(32, 0, true);
+      cdv.setUint16(34, 0, true);
+      cdv.setUint16(36, 0, true);
+      cdv.setUint32(38, 0, true);
+      cdv.setUint32(42, offset, true);
+      ch.set(nameBytes, 46);
+      centralParts.push(ch);
+
+      offset += lh.length + data.length;
+    });
+
+    var centralSize = centralParts.reduce(function (sum, p) { return sum + p.length; }, 0);
+    var eocd = new Uint8Array(22);
+    var edv = new DataView(eocd.buffer);
+    edv.setUint32(0, 0x06054b50, true);
+    edv.setUint16(8, files.length, true);
+    edv.setUint16(10, files.length, true);
+    edv.setUint32(12, centralSize, true);
+    edv.setUint32(16, offset, true);
+
+    return new Blob(localParts.concat(centralParts, [eocd]), { type: 'application/zip' });
+  }
+
+  function sanitizeFileName(name) {
+    return String(name).replace(/[\\/:*?"<>|]/g, '-').trim() || 'documento';
+  }
+
+  async function downloadSelectedZip() {
+    var chosen = DATA.entries.filter(function (e) { return selected[e.fileKey]; });
+    if (!chosen.length) return;
+    var originalLabel = zipBtnEl.querySelector('span').textContent;
+    zipBtnEl.disabled = true;
+    zipBtnEl.querySelector('span').textContent = 'Baixando…';
+    try {
+      var used = {};
+      var files = [];
+      for (var i = 0; i < chosen.length; i++) {
+        var e = chosen[i];
+        var url = './' + e.midia + '/' + (e.subFolder ? e.subFolder + '/' : '') + e.fileKey;
+        var res = await fetch(url);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        var buf = await res.arrayBuffer();
+        var base = sanitizeFileName(e.docCaixa || e.empenho || e.fileKey.replace(/\.[a-z0-9]+$/i, ''));
+        var name = base + '.pdf';
+        var n = 2;
+        while (used[name]) { name = base + ' (' + n + ').pdf'; n++; }
+        used[name] = true;
+        files.push({ name: name, data: new Uint8Array(buf) });
+      }
+      var blob = buildZipBlob(files);
+      var zipUrl = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = zipUrl;
+      a.download = sanitizeFileName((DATA.midiaLabel[current] || 'documentos') + '-' + MES_NOME + '-' + EXERCICIO).replace(/\s+/g, '_') + '.zip';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(zipUrl); }, 4000);
+    } catch (err) {
+      alert('Não foi possível gerar o ZIP neste navegador. O Chrome e o Edge bloqueiam por padrão a leitura de arquivos locais quando este índice é aberto direto do arquivo (file://). Tente abrir este índice com o Firefox, ou use o link "Visualizar arquivo" de cada documento individualmente.');
+    } finally {
+      zipBtnEl.disabled = Object.keys(selected).length === 0;
+      updateZipBtn();
+    }
+  }
+  zipBtnEl.addEventListener('click', function () { void downloadSelectedZip(); });
 
   function currentMeta() {
     for (var i = 0; i < counts.length; i++) if (counts[i].midia === current) return counts[i];
@@ -448,6 +594,8 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
       el.appendChild(metaEl);
       el.addEventListener('click', function () {
         current = c.midia;
+        selected = {};
+        updateZipBtn();
         renderTabs();
         populateFilters();
         renderTable();
@@ -517,6 +665,13 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
     var hasValor = cols.some(function (c) { return c.key === 'valorFmt'; });
     theadEl.innerHTML = '';
     var trh = document.createElement('tr');
+    var thSelect = document.createElement('th');
+    thSelect.className = 'select-col';
+    var selectAllChk = document.createElement('input');
+    selectAllChk.type = 'checkbox';
+    selectAllChk.setAttribute('aria-label', 'Selecionar todos');
+    thSelect.appendChild(selectAllChk);
+    trh.appendChild(thSelect);
     cols.forEach(function (col) {
       var th = document.createElement('th');
       th.textContent = col.label;
@@ -561,9 +716,30 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
       totalValueEl.textContent = total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     }
 
+    function syncSelectAll() {
+      var total = rows.length;
+      var marked = rows.filter(function (e) { return selected[e.fileKey]; }).length;
+      selectAllChk.checked = total > 0 && marked === total;
+      selectAllChk.indeterminate = marked > 0 && marked < total;
+    }
+
     tbodyEl.innerHTML = '';
     rows.forEach(function (e) {
       var tr = document.createElement('tr');
+      var tdSelect = document.createElement('td');
+      tdSelect.className = 'select-col';
+      var chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.setAttribute('aria-label', 'Selecionar documento');
+      chk.checked = !!selected[e.fileKey];
+      chk.addEventListener('change', function () {
+        if (chk.checked) selected[e.fileKey] = true;
+        else delete selected[e.fileKey];
+        syncSelectAll();
+        updateZipBtn();
+      });
+      tdSelect.appendChild(chk);
+      tr.appendChild(tdSelect);
       cols.forEach(function (col) {
         var td = document.createElement('td');
         var v = e[col.key];
@@ -596,6 +772,17 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
       tr.appendChild(tdAcao);
       tbodyEl.appendChild(tr);
     });
+
+    selectAllChk.addEventListener('change', function () {
+      rows.forEach(function (e) {
+        if (selectAllChk.checked) selected[e.fileKey] = true;
+        else delete selected[e.fileKey];
+      });
+      renderTable();
+      updateZipBtn();
+    });
+    syncSelectAll();
+    updateZipBtn();
 
     emptyEl.style.display = rows.length === 0 ? 'block' : 'none';
   }
