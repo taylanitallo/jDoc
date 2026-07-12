@@ -1236,7 +1236,11 @@ export function DocumentsModule({ module }: { module: DocModule }) {
         {data?.items.map((d) => {
           const semArquivo = d.status === 'aguardando_arquivo';
           const clickable = !showTrash;
-          const titulo = d.docCaixa ? `Doc. Caixa: ${d.docCaixa}` : MODULE_TITLES[module].singular;
+          // Receitas usa "Historico" como titulo/descricao; os demais usam "Descricao".
+          const descricaoValue = module === 'receitas' ? d.historico : d.descricao;
+          const titulo = d.docCaixa
+            ? `Doc. Caixa: ${d.docCaixa}`
+            : descricaoValue || MODULE_TITLES[module].singular;
           return (
             <div
               key={d.id}
@@ -1267,8 +1271,12 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                 </div>
                 <dl className="mt-1.5 space-y-1 text-xs">
                   {DETAIL_COLUMNS[module]
-                    // "Doc. Caixa" ja aparece no titulo do card quando existe — nao repete.
-                    .filter((col) => !(col.header === 'Doc. Caixa' && d.docCaixa))
+                    // "Doc. Caixa" ou "Titulo/Descricao" ja aparecem no titulo do card quando existem — nao repete.
+                    .filter(
+                      (col) =>
+                        !(col.header === 'Doc. Caixa' && d.docCaixa) &&
+                        !(col.header === 'Título/Descrição' && !d.docCaixa && descricaoValue),
+                    )
                     .map((col) => (
                       <div key={col.header} className="flex gap-1.5">
                         <dt className="shrink-0 font-semibold text-app-muted">{col.header}:</dt>
