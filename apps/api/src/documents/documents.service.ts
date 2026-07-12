@@ -1278,6 +1278,62 @@ export class DocumentsService {
     };
   }
 
+  /**
+   * Consulta agregada usada pelo Assistente de Busca por IA — mesma linguagem
+   * de filtros de search()/buildSearchWhere(), com um agregado opcional
+   * (soma/contagem/media do valor) alem dos documentos que viram "fontes"
+   * citadas na resposta. So-leitura: filtros sao sempre tipados, nunca SQL
+   * cru vindo do modelo.
+   */
+  async consultarAgregado(
+    user: TenantAccessClaims,
+    modulo: DocModule,
+    filtros: Partial<Omit<SearchDocumentsQuery, 'module' | 'page' | 'pageSize' | 'sort'>>,
+    agregacao: 'soma_valor' | 'contagem' | 'media_valor' | 'nenhuma',
+    limite: number,
+  ): Promise<{ agregado: number | null; documentos: DocumentView[] }> {
+    const ctx = requireTenantContext();
+    this.assertPermission(user, modulo, 'read');
+    const sql = this.db.tenant(ctx.schemaName);
+
+    const q: SearchDocumentsQuery = { module: modulo, sort: 'data_desc', page: 1, pageSize: limite, ...filtros };
+    const where = this.buildSearchWhere(sql, q);
+
+    let agregado: number | null = null;
+    if (agregacao !== 'nenhuma') {
+      const expr = { soma_valor: 'SUM(d.value)', contagem: 'COUNT(*)', media_valor: 'AVG(d.value)' }[agregacao];
+      const rows = await sql<Array<{ resultado: string | null }>>`
+        SELECT ${sql.unsafe(expr)} AS resultado FROM documents d WHERE ${where}
+      `;
+      agregado = rows[0]?.resultado == null ? null : Number(rows[0].resultado);
+    }
+
+    const items = await sql<DocRow[]>`
+      SELECT d.id, d.module, d.subtype, d.doc_caixa, d.empenho, d.credor, d.historico, d.descricao,
+             d.budget_unit_id, bu.nome AS budget_unit_nome,
+             d.orgao_id, o.codigo AS orgao_codigo, o.descricao AS orgao_nome,
+             d.document_type_id, dt.nome AS document_type_nome,
+             d.document_date, d.value, d.competencia, d.exercicio,
+             d.banco, d.agencia, d.conta,
+             d.original_name, d.file_key, d.file_size, d.file_hash, d.paginas, d.status,
+             d.criado_em, d.deleted_at,
+             d.conferencia_status, d.conferencia_resultado, d.conferencia_erro, d.conferencia_verificada_em
+      FROM documents d
+      LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
+      LEFT JOIN orgaos o ON o.id = d.orgao_id
+      LEFT JOIN document_types dt ON dt.id = d.document_type_id
+      WHERE ${where}
+      ORDER BY d.document_date DESC NULLS LAST, d.doc_caixa ASC NULLS LAST
+      LIMIT ${limite}
+    `;
+    const extrasMap = await this.fetchExtrasMap(sql, items.map((i) => i.id));
+
+    return {
+      agregado,
+      documentos: items.map((r) => toView(r, extrasMap.get(r.id) ?? [])),
+    };
+  }
+
   private async getRow(id: string, includeDeleted = false): Promise<DocRow> {
     const ctx = requireTenantContext();
     const sql = this.db.tenant(ctx.schemaName);

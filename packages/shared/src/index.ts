@@ -8,3 +8,4 @@ export * from './parsers/index.js';
 export * from './reports.js';
 export * from './configuracoes.js';
 export * from './backups.js';
+export * from './assistente.js';
