@@ -2,7 +2,10 @@ import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@ne
 import { Worker, type Job } from 'bullmq';
 import Redis from 'ioredis';
 import Anthropic, { toFile } from '@anthropic-ai/sdk';
-import { GoogleGenAI, Type as GeminiType } from '@google/genai';
+// @google/genai e ESM-only (package.json "type":"module") — so tipo aqui (apagado
+// na compilacao, nunca vira require()); a classe real e importada via import()
+// dinamico dentro de onModuleInit, unico lugar onde e instanciada.
+import type { GoogleGenAI } from '@google/genai' with { 'resolution-mode': 'import' };
 import { z } from 'zod';
 import { SCHEMA_NAME_REGEX, type ConferenciaResultado, type ConferenciaStatus } from '@jdoc/shared';
 import { DatabaseService } from '../database/database.service';
@@ -46,32 +49,35 @@ const CONFERENCIA_JSON_SCHEMA = {
 } as const;
 
 /**
- * Mesmo formato acima, na sintaxe de schema do Gemini (Type.* em vez de
- * string[] pra nullable — o Gemini usa `nullable: true` em vez de union type).
+ * Mesmo formato acima, na sintaxe de schema do Gemini ('OBJECT'/'STRING'/etc
+ * em vez de string[] pra nullable — o Gemini usa `nullable: true` em vez de
+ * union type). Valores literais (nao o enum `Type` do SDK) pra nao precisar
+ * de um import de valor de um pacote ESM-only num modulo CommonJS — a API do
+ * Gemini aceita as strings puras, o enum e so acucar sintatico do SDK.
  */
 const GEMINI_RESPONSE_SCHEMA = {
-  type: GeminiType.OBJECT,
+  type: 'OBJECT',
   properties: {
-    valorEncontrado: { type: GeminiType.NUMBER, nullable: true },
-    credorEncontrado: { type: GeminiType.STRING, nullable: true },
-    docCaixaEncontrado: { type: GeminiType.STRING, nullable: true },
+    valorEncontrado: { type: 'NUMBER', nullable: true },
+    credorEncontrado: { type: 'STRING', nullable: true },
+    docCaixaEncontrado: { type: 'STRING', nullable: true },
     divergencias: {
-      type: GeminiType.ARRAY,
+      type: 'ARRAY',
       items: {
-        type: GeminiType.OBJECT,
+        type: 'OBJECT',
         properties: {
-          campo: { type: GeminiType.STRING },
-          esperado: { type: GeminiType.STRING, nullable: true },
-          encontrado: { type: GeminiType.STRING, nullable: true },
+          campo: { type: 'STRING' },
+          esperado: { type: 'STRING', nullable: true },
+          encontrado: { type: 'STRING', nullable: true },
         },
         required: ['campo', 'esperado', 'encontrado'],
       },
     },
-    resumo: { type: GeminiType.STRING },
-    status: { type: GeminiType.STRING, enum: ['conforme', 'divergente'] },
+    resumo: { type: 'STRING' },
+    status: { type: 'STRING', enum: ['conforme', 'divergente'] },
   },
   required: ['valorEncontrado', 'credorEncontrado', 'docCaixaEncontrado', 'divergencias', 'resumo', 'status'],
-};
+} as const;
 
 /** Valida em runtime a saida da IA (mesma forma dos dois schemas acima, para os dois provedores). */
 const conferenciaSchema = z.object({
@@ -144,13 +150,14 @@ export class ConferenciaWorker implements OnModuleInit, OnModuleDestroy {
     private readonly storage: StorageService,
   ) {}
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     const env = loadEnv();
     this.provider = env.CONFERENCIA_PROVIDER;
     const apiKey = this.provider === 'gemini' ? env.GEMINI_API_KEY : env.ANTHROPIC_API_KEY;
     if (!apiKey) return; // feature desligada — sem worker, sem fila (ConferenciaService.enqueueConferencia tambem e no-op).
 
     if (this.provider === 'gemini') {
+      const { GoogleGenAI } = await import('@google/genai');
       this.gemini = new GoogleGenAI({ apiKey });
     } else {
       this.anthropic = new Anthropic({ apiKey });
