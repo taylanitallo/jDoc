@@ -53,6 +53,7 @@ export const MODULE_FIELDS: Record<string, FieldDesc[]> = {
   ],
   balancete: [
     { name: 'competencia', label: 'Competência', type: 'competencia', required: true },
+    { name: 'descricao', label: 'Título/Descrição', type: 'text', required: false },
     exercicio,
     budgetUnit,
   ],
@@ -61,6 +62,7 @@ export const MODULE_FIELDS: Record<string, FieldDesc[]> = {
     { name: 'agencia', label: 'Agência', type: 'text', required: true },
     { name: 'conta', label: 'Conta', type: 'text', required: true },
     { name: 'competencia', label: 'Competência', type: 'competencia', required: true },
+    { name: 'descricao', label: 'Título/Descrição', type: 'text', required: false },
     exercicio,
     budgetUnit,
   ],
