@@ -9,5 +9,6 @@ import { DocumentsController, TenantLookupsController } from './documents.contro
   imports: [AuthModule, SignatureModule, ConferenciaModule],
   controllers: [DocumentsController, TenantLookupsController],
   providers: [DocumentsService],
+  exports: [DocumentsService],
 })
 export class DocumentsModule {}

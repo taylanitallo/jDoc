@@ -16,6 +16,7 @@ import { ConferenciaModule } from './conferencia/conferencia.module';
 import { LabelsModule } from './labels/labels.module';
 import { ConfiguracoesModule } from './configuracoes/configuracoes.module';
 import { ReportsModule } from './reports/reports.module';
+import { AssistenteModule } from './assistente/assistente.module';
 import { ThrottlerConfigModule } from './common/throttler.module';
 import { HealthController } from './health.controller';
 import { TenantsPublicController } from './tenants-public.controller';
@@ -39,6 +40,7 @@ import { TenantsPublicController } from './tenants-public.controller';
     LabelsModule,
     ConfiguracoesModule,
     ReportsModule,
+    AssistenteModule,
   ],
   controllers: [HealthController, TenantsPublicController],
 })

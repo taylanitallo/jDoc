@@ -21,6 +21,7 @@ import {
   FileText,
   FileUp,
   Loader2,
+  MessageCircleQuestion,
   Pencil,
   Plus,
   Printer,
@@ -51,6 +52,7 @@ import { api, ApiError, getAccessToken } from '@/lib/api';
 import { addExtraDocumentFile, attachDocumentFile, uploadDocument } from '@/lib/upload';
 import { useExercicio } from '@/components/topbar';
 import { LabelsImportModal } from '@/components/documents/labels-import-modal';
+import { AssistenteModal } from '@/components/documents/assistente-modal';
 import { Modal, btnGhost, btnPrimary, cardCls, formatBytes, inputCls, labelCls } from '@/components/ui';
 import { useToast } from '@/components/toast';
 
@@ -443,6 +445,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
   const [showTrash, setShowTrash] = useState(false);
   const [includeOpen, setIncludeOpen] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
+  const [assistenteOpen, setAssistenteOpen] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
   const [deleteOrgaoId, setDeleteOrgaoId] = useState('');
@@ -865,6 +868,17 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                 <span className="flex items-center gap-2">
                   <Printer className="h-4 w-4" aria-hidden />
                   {imprimindo ? 'Gerando…' : 'Imprimir Etiquetas'}
+                </span>
+              </button>
+              <button
+                type="button"
+                className={btnGhost}
+                onClick={() => setAssistenteOpen(true)}
+                title="Pergunte em português sobre os documentos (ex: quanto foi gasto com saúde em 2026?)"
+              >
+                <span className="flex items-center gap-2">
+                  <MessageCircleQuestion className="h-4 w-4" aria-hidden />
+                  Perguntar (IA)
                 </span>
               </button>
               {module === 'despesas' && (
@@ -1398,6 +1412,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
           onDone={invalidate}
         />
       )}
+      {assistenteOpen && <AssistenteModal slug={String(slug)} onClose={() => setAssistenteOpen(false)} />}
       {confirmDeleteAll && (
         <Modal
           title="Apagar todas as etiquetas"
