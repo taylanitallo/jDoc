@@ -523,21 +523,58 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
     return String(name).replace(/[\\/:*?"<>|]/g, '-').trim() || 'documento';
   }
 
+  /**
+   * No file:// (aberto direto do disco, sem servidor) o fetch() a arquivos
+   * locais e bloqueado por padrao no Chrome/Edge (funciona so no Firefox).
+   * Nesses navegadores usamos a File System Access API em vez de fetch: o
+   * usuario escolhe UMA VEZ a pasta onde este indice.html esta (a mesma que
+   * contem despesa/, balancete/ etc.) e lemos os PDFs direto do disco via
+   * FileSystemDirectoryHandle — sem bloqueio de CORS, porque nao passa por
+   * fetch/XHR nenhum.
+   */
+  var useDirPicker = window.location.protocol === 'file:' && typeof window.showDirectoryPicker === 'function';
+  var cachedDirHandle = null;
+
+  async function pickRootDir() {
+    cachedDirHandle = await window.showDirectoryPicker({ id: 'jdoc-midia-legislativa', mode: 'read' });
+    return cachedDirHandle;
+  }
+
+  async function readFileBytes(e) {
+    if (useDirPicker) {
+      if (!cachedDirHandle) await pickRootDir();
+      var dir = await cachedDirHandle.getDirectoryHandle(e.midia);
+      if (e.subFolder) dir = await dir.getDirectoryHandle(e.subFolder);
+      var fileHandle = await dir.getFileHandle(e.fileKey);
+      var file = await fileHandle.getFile();
+      return await file.arrayBuffer();
+    }
+    var url = './' + e.midia + '/' + (e.subFolder ? e.subFolder + '/' : '') + e.fileKey;
+    var res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.arrayBuffer();
+  }
+
   async function downloadSelectedZip() {
     var chosen = DATA.entries.filter(function (e) { return selected[e.fileKey]; });
     if (!chosen.length) return;
-    var originalLabel = zipBtnEl.querySelector('span').textContent;
     zipBtnEl.disabled = true;
     zipBtnEl.querySelector('span').textContent = 'Baixando…';
     try {
+      if (useDirPicker && !cachedDirHandle) {
+        try {
+          await pickRootDir();
+        } catch (cancelErr) {
+          zipBtnEl.disabled = false;
+          updateZipBtn();
+          return;
+        }
+      }
       var used = {};
       var files = [];
       for (var i = 0; i < chosen.length; i++) {
         var e = chosen[i];
-        var url = './' + e.midia + '/' + (e.subFolder ? e.subFolder + '/' : '') + e.fileKey;
-        var res = await fetch(url);
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        var buf = await res.arrayBuffer();
+        var buf = await readFileBytes(e);
         var base = sanitizeFileName(e.docCaixa || e.empenho || e.fileKey.replace(/\.[a-z0-9]+$/i, ''));
         var name = base + '.pdf';
         var n = 2;
@@ -555,7 +592,12 @@ export function buildIndiceHtml(opts: BuildIndiceHtmlOptions): string {
       a.remove();
       setTimeout(function () { URL.revokeObjectURL(zipUrl); }, 4000);
     } catch (err) {
-      alert('Não foi possível gerar o ZIP neste navegador. O Chrome e o Edge bloqueiam por padrão a leitura de arquivos locais quando este índice é aberto direto do arquivo (file://). Tente abrir este índice com o Firefox, ou use o link "Visualizar arquivo" de cada documento individualmente.');
+      cachedDirHandle = null;
+      if (useDirPicker) {
+        alert('Não encontrei os arquivos na pasta selecionada. Clique em "Baixar selecionados" de novo e escolha a pasta que contém este índice.html (a mesma pasta com as subpastas despesa, balancete, etc.).');
+      } else {
+        alert('Não foi possível gerar o ZIP neste navegador. Tente abrir este índice com o Chrome, o Edge ou o Firefox, ou use o link "Visualizar arquivo" de cada documento individualmente.');
+      }
     } finally {
       zipBtnEl.disabled = Object.keys(selected).length === 0;
       updateZipBtn();
