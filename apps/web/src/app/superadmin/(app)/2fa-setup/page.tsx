@@ -60,11 +60,11 @@ export default function TwoFaSetupPage() {
   return (
     <div className="mx-auto max-w-md space-y-6">
       <div className="flex flex-col items-center text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary">
+        <div className="flex h-14 w-14 items-center justify-center rounded-[16px] bg-brand-600">
           <ShieldCheck className="h-7 w-7 text-white" aria-hidden />
         </div>
-        <h1 className="mt-3 text-lg font-bold text-app">Configurar 2FA</h1>
-        <p className="text-xs text-app-muted">
+        <h1 className="mt-3 text-lg font-bold text-ink-800">Configurar 2FA</h1>
+        <p className="text-xs text-ink-500">
           Escaneie o QR com o Google Authenticator, Aegis ou similar, e confirme o código gerado.
         </p>
       </div>
@@ -73,14 +73,14 @@ export default function TwoFaSetupPage() {
         {qrDataUrl ? (
           <img src={qrDataUrl} alt="QR code do 2FA" className="mx-auto h-48 w-48" />
         ) : (
-          <p className="text-center text-sm text-app-muted">Gerando…</p>
+          <p className="text-center text-sm text-ink-500">Gerando…</p>
         )}
 
         {secret && (
           <div>
             <label className={labelCls}>Ou digite manualmente</label>
             <div className="flex items-center gap-2">
-              <code className="flex-1 truncate rounded-lg border border-app-input-border bg-app-input-bg px-3 py-2 text-xs text-app">
+              <code className="flex-1 truncate rounded-[10px] border border-ink-200 bg-surface px-3 py-2 text-xs text-ink-800">
                 {secret}
               </code>
               <button
@@ -111,7 +111,7 @@ export default function TwoFaSetupPage() {
         </div>
 
         {error && (
-          <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">
+          <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">
             {error}
           </p>
         )}
@@ -128,7 +128,7 @@ export default function TwoFaSetupPage() {
         <button
           type="button"
           onClick={() => router.push('/superadmin/dashboard')}
-          className="w-full text-center text-xs font-semibold text-app-muted hover:text-app"
+          className="w-full text-center text-xs font-semibold text-ink-500 hover:text-ink-800"
         >
           Configurar depois
         </button>

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { tenantSlugSchema, tenantStatusSchema } from './tenant.js';
+import { novoTenantSlugSchema, tenantStatusSchema } from './tenant.js';
+import { sistemasSchema, type Sistema } from './sistemas.js';
 import { emailSchema, passwordSchema } from './auth.js';
 import { tenantRoleSchema, permissionSchema } from './constants.js';
 
@@ -17,7 +18,7 @@ export const ufSchema = z.enum(UFS);
 
 export const createTenantSchema = z
   .object({
-    slug: tenantSlugSchema,
+    slug: novoTenantSlugSchema,
     nome: z.string().min(3).max(200),
     cidade: z.string().min(2).max(100),
     uf: ufSchema,
@@ -25,6 +26,8 @@ export const createTenantSchema = z
     email: emailSchema,
     quotaDiscoMb: z.number().int().min(100).max(1048576).default(1024),
     brasaoUrl: z.string().url().max(500).nullable().optional(),
+    /** Modulos contratados (Financeiro/Contabil e/ou Arquivo). */
+    modulos: sistemasSchema.default(['financeiro']),
   })
   .strict();
 export type CreateTenantInput = z.infer<typeof createTenantSchema>;
@@ -37,6 +40,7 @@ export const updateTenantSchema = z
     responsavel: z.string().min(3).max(200).optional(),
     email: emailSchema.optional(),
     brasaoUrl: z.string().url().max(500).nullable().optional(),
+    modulos: sistemasSchema.optional(),
   })
   .strict();
 export type UpdateTenantInput = z.infer<typeof updateTenantSchema>;
@@ -97,6 +101,7 @@ export interface TenantOverview {
   status: string;
   quotaDiscoMb: number;
   brasaoUrl: string | null;
+  modulos: Sistema[];
   criadoEm: string;
   usoBytes: number;
   usoPercent: number;

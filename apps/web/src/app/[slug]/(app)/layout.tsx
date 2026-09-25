@@ -1,72 +1,249 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { Sidebar, SidebarMobileProvider } from '@/components/sidebar';
-import { ExercicioProvider, Topbar } from '@/components/topbar';
-import { BrandingProvider } from '@/components/branding';
+import { useParams, usePathname, useRouter } from 'next/navigation';
+import {
+  Archive,
+  BarChart3,
+  FileCheck,
+  FileStack,
+  Film,
+  FolderOpen,
+  FolderSync,
+  Home,
+  Landmark,
+  Library,
+  MessagesSquare,
+  Scale,
+  ScanSearch,
+  Settings,
+  ShieldCheck,
+  ShieldAlert,
+  TrendingDown,
+  TrendingUp,
+  Warehouse,
+  BookOpenText,
+  FolderKanban,
+} from 'lucide-react';
+import type { Sistema, UsuarioAtual } from '@jdoc/shared';
+import { AppShell, type NavGroup } from '@/components/shell/app-shell';
+import { ContaMenu, ExercicioProvider, ExercicioSelect } from '@/components/topbar';
+import { BrandingProvider, useBranding } from '@/components/branding';
 import { DesktopUpdateBanner } from '@/components/desktop-update-banner';
 import { AssistenteWidget, AylaVisibilityProvider } from '@/components/assistente-widget';
 import { api, setAccessToken, setLastTenantSlug } from '@/lib/api';
+import { TelaSessao, useSessao } from '@/components/shell/sessao';
+import { isDesktopApp } from '@/lib/desktop-bridge';
+import { cn } from '@/lib/cn';
+import { MODULO_VISUAL, ModuloAtivoProvider, moduloDaRota, useModuloAtivo } from '@/components/modulo-ativo';
+import { EscolhaModulo } from '@/components/escolha-modulo';
 
-export default function AppShellLayout({ children }: { children: ReactNode }) {
+const PAPEL: Record<UsuarioAtual['role'], string> = { admin: 'Administrador', operador: 'Operador', consulta: 'Consulta' };
+
+/** Titulo e descricao do header por rota (segmento apos /<slug>/). */
+const TITULOS: Record<string, { title: string; description: string }> = {
+  dashboard: { title: 'Início', description: 'Visão geral do órgão no exercício' },
+  receitas: { title: 'Receitas', description: 'Receitas orçamentárias e extraorçamentárias' },
+  despesas: { title: 'Despesas', description: 'Empenhos, liquidações e pagamentos' },
+  balancete: { title: 'Balancete', description: 'Balancetes orçamentários mensais' },
+  extrato: { title: 'Extrato de contas', description: 'Extratos bancários por competência' },
+  outros: { title: 'Outros arquivos', description: 'Documentos diversos organizados por tipo' },
+  'prestacao-contas': { title: 'Prestação de contas', description: 'Pacotes para o Tribunal de Contas' },
+  'midia-legislativa': { title: 'Mídia legislativa', description: 'Pacotes mensais para a Câmara Municipal' },
+  'pasta-monitorada': { title: 'Pasta monitorada', description: 'Envio automático pelo jDoc Desktop' },
+  acervo: { title: 'Acervo', description: 'Documentos do Arquivo Municipal' },
+  dossies: { title: 'Dossiês e processos', description: 'Conjuntos documentais com guarda a partir do encerramento' },
+  descricao: { title: 'Descrição arquivística', description: 'NOBRADE: quadro de arranjo e instrumentos de pesquisa' },
+  'arquivo-fisico': { title: 'Arquivo físico', description: 'Caixas, localização dos originais e empréstimos' },
+  temporalidade: { title: 'Temporalidade', description: 'Prazos de guarda, transferências e eliminação' },
+  integridade: { title: 'Integridade', description: 'Conferência periódica dos arquivos digitais' },
+  relatorios: { title: 'Relatórios', description: 'Inventário, quantitativos e localização dos originais' },
+  atendimento: { title: 'Atendimento', description: 'Pedidos de consulta e acesso ao acervo (LAI)' },
+  sigilo: { title: 'Sigilo', description: 'Informações classificadas pela LAI' },
+  busca: { title: 'Busca no conteúdo', description: 'Procure dentro do texto dos PDFs' },
+  configuracoes: { title: 'Configurações', description: 'Cadastros, usuários e personalização' },
+};
+
+export default function TenantLayout({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
   const { slug } = useParams<{ slug: string }>();
-  const router = useRouter();
-  const [ready, setReady] = useState(false);
 
   // Cache o slug do tenant no cliente HTTP (necessario para refresh single-flight).
   useEffect(() => {
     if (slug) setLastTenantSlug(slug);
   }, [slug]);
 
-  // Bootstrap de sessao: tenta refresh via cookie httpOnly.
-  useEffect(() => {
-    if (!slug) return;
-    let active = true;
-    api<{ accessToken: string }>(`/t/${slug}/auth/refresh`, { method: 'POST' })
-      .then((r) => {
-        if (!active) return;
-        setAccessToken(r.accessToken);
-        setReady(true);
-      })
-      .catch(() => {
-        if (active) router.replace(`/${slug}/login`);
-      });
-    return () => {
-      active = false;
-    };
-  }, [slug, router]);
-
-  if (!ready) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-app-bg">
-        <p className="text-sm text-app-muted">Carregando…</p>
-      </div>
-    );
-  }
+  // Bootstrap de sessao: refresh via cookie httpOnly (com timeout e "Tentar novamente").
+  const { estado, tentarDeNovo } = useSessao(slug, `/${slug}/login`);
+  if (estado !== 'pronta') return <TelaSessao estado={estado} onTentar={tentarDeNovo} />;
 
   return (
     <QueryClientProvider client={queryClient}>
       <BrandingProvider slug={slug}>
         <ExercicioProvider>
-          <SidebarMobileProvider>
-            <AylaVisibilityProvider>
-              <div className="flex min-h-screen bg-app-bg">
-                <Sidebar />
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <Topbar />
-                  <DesktopUpdateBanner />
-                  <main className="flex-1 overflow-x-hidden p-4 sm:p-6">{children}</main>
-                </div>
-                <AssistenteWidget />
-              </div>
-            </AylaVisibilityProvider>
-          </SidebarMobileProvider>
+          <AylaVisibilityProvider>
+            <ModuloAtivoProvider slug={slug}>
+              <Casca slug={slug}>{children}</Casca>
+            </ModuloAtivoProvider>
+            <AssistenteWidget />
+          </AylaVisibilityProvider>
         </ExercicioProvider>
       </BrandingProvider>
     </QueryClientProvider>
+  );
+}
+
+function Casca({ slug, children }: { slug: string; children: ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { nomeExibido, modulos } = useBranding();
+  const [desktop, setDesktop] = useState(false);
+  useEffect(() => setDesktop(isDesktopApp()), []);
+
+  const { data: usuario } = useQuery({
+    queryKey: ['auth', 'me', slug],
+    queryFn: () => api<UsuarioAtual>(`/t/${slug}/auth/me`),
+    staleTime: 5 * 60_000,
+  });
+
+  const base = `/${slug}`;
+  const { ativo, ambos, trocar } = useModuloAtivo();
+  const temFinanceiro = ativo === 'financeiro' && modulos.includes('financeiro');
+  const temArquivo = ativo === 'arquivo' && modulos.includes('arquivo');
+  const groups: NavGroup[] = [
+    { title: null, items: [{ href: `${base}/dashboard`, label: 'Início', icon: Home }] },
+    ...(temFinanceiro
+      ? [
+          {
+            title: 'Financeiro / Contábil',
+            items: [
+              { href: `${base}/receitas`, label: 'Receitas', icon: TrendingUp },
+              { href: `${base}/despesas`, label: 'Despesas', icon: TrendingDown },
+              { href: `${base}/balancete`, label: 'Balancete', icon: Scale },
+              { href: `${base}/extrato`, label: 'Extrato de contas', icon: Landmark },
+              { href: `${base}/outros`, label: 'Outros arquivos', icon: FolderOpen },
+              { href: `${base}/prestacao-contas`, label: 'Prestação de contas', icon: FileCheck },
+              { href: `${base}/midia-legislativa`, label: 'Mídia legislativa', icon: Film },
+              // Pasta Monitorada so existe dentro do jDoc Desktop.
+              ...(desktop ? [{ href: `${base}/pasta-monitorada`, label: 'Pasta monitorada', icon: FolderSync }] : []),
+            ],
+          },
+        ]
+      : []),
+    ...(temArquivo
+      ? [
+          {
+            title: 'Arquivo Municipal',
+            items: [
+              { href: `${base}/acervo`, label: 'Acervo', icon: Library },
+              { href: `${base}/dossies`, label: 'Dossiês e processos', icon: FolderKanban },
+              { href: `${base}/descricao`, label: 'Descrição (NOBRADE)', icon: BookOpenText },
+              { href: `${base}/arquivo-fisico`, label: 'Arquivo físico', icon: Warehouse },
+              { href: `${base}/atendimento`, label: 'Atendimento', icon: MessagesSquare },
+              { href: `${base}/sigilo`, label: 'Sigilo', icon: ShieldAlert },
+              { href: `${base}/temporalidade`, label: 'Temporalidade', icon: Archive },
+              { href: `${base}/integridade`, label: 'Integridade', icon: ShieldCheck },
+              { href: `${base}/relatorios`, label: 'Relatórios', icon: BarChart3 },
+            ],
+          },
+        ]
+      : []),
+    {
+      title: 'Geral',
+      items: [
+        { href: `${base}/busca`, label: 'Busca no conteúdo', icon: ScanSearch },
+        { href: `${base}/configuracoes`, label: 'Configurações', icon: Settings },
+      ],
+    },
+  ];
+
+  const segmento = pathname.slice(base.length + 1).split('/')[0] ?? '';
+  const titulo = TITULOS[segmento] ?? { title: 'jDoc' };
+
+  const sair = async () => {
+    try {
+      await api(`/t/${slug}/auth/logout`, { method: 'POST' });
+    } finally {
+      setAccessToken(null);
+      router.replace(`/${slug}/login`);
+    }
+  };
+
+  // Logo apos o login: os dois quadrados para escolher o modulo (sem menu lateral).
+  if (segmento === 'modulos') return <EscolhaModulo slug={slug} nome={usuario?.nome ?? null} onSair={() => void sair()} />;
+
+
+  return (
+    <AppShell
+      appName="jDoc"
+      subtitle={nomeExibido ?? usuario?.orgao ?? 'Gestão de documentos'}
+      icon={FileStack}
+      groups={groups}
+      user={usuario ? { nome: usuario.nome, papel: PAPEL[usuario.role] } : null}
+      onLogout={sair}
+      corAtiva={ativo ? MODULO_VISUAL[ativo].solido : undefined}
+      titulo={titulo}
+      headerActions={
+        <>
+          {/* O exercicio e do Financeiro; o Arquivo lida com acervo historico (filtra por ano nas proprias telas). */}
+          {ativo !== 'arquivo' && <ExercicioSelect />}
+          <ContaMenu />
+        </>
+      }
+      banner={<DesktopUpdateBanner />}
+      switcher={
+        ambos && ativo
+          ? (compacta) => (
+              <SeletorModulo
+                ativo={ativo}
+                compacta={compacta}
+                onTrocar={(s) => {
+                  if (s === ativo) return;
+                  trocar(s);
+                  // Saindo de uma tela do outro modulo: volta ao Inicio do modulo escolhido.
+                  if (moduloDaRota(segmento)) router.push(`${base}/dashboard`);
+                }}
+              />
+            )
+          : undefined
+      }
+    >
+      {children}
+    </AppShell>
+  );
+}
+
+/** Alterna entre os dois modulos contratados (so aparece quando o orgao tem ambos). */
+function SeletorModulo({ ativo, compacta, onTrocar }: { ativo: Sistema; compacta: boolean; onTrocar: (s: Sistema) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Módulo">
+      {!compacta && <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white/35">Módulo</p>}
+      <div className={cn('rounded-[12px] bg-white/5 p-1', compacta ? 'flex flex-col gap-1' : 'grid grid-cols-2 gap-1')}>
+        {(['financeiro', 'arquivo'] as const).map((id) => {
+          const { curto, icon: Icon, solido } = MODULO_VISUAL[id];
+          const sel = id === ativo;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={sel}
+              title={MODULO_VISUAL[id].nome}
+              onClick={() => onTrocar(id)}
+              className={cn(
+                'flex items-center justify-center gap-1.5 rounded-[8px] text-[13px] font-semibold transition-colors',
+                compacta ? 'h-10' : 'h-9 px-2',
+                sel ? cn(solido, 'text-white shadow-sm') : 'text-white/65 hover:bg-white/10 hover:text-white',
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" aria-hidden />
+              {!compacta && <span className="truncate">{curto}</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }

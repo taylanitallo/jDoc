@@ -1,3 +1,4 @@
+import type { Sistema } from '@jdoc/shared';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 /**
@@ -10,6 +11,8 @@ export interface TenantContext {
   schemaName: string;
   nome: string;
   quotaDiscoMb: number;
+  /** Modulos contratados (financeiro/arquivo). */
+  modulos: Sistema[];
 }
 
 export const tenantContextStorage = new AsyncLocalStorage<TenantContext>();

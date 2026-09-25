@@ -20,6 +20,7 @@ import {
 } from '@jdoc/shared';
 import { DatabaseService } from '../database/database.service';
 import { DocumentsService } from '../documents/documents.service';
+import { BuscaService } from '../ocr/busca.service';
 import { loadEnv } from '../config/env';
 import { requireTenantContext } from '../tenancy/tenant-context';
 
@@ -102,6 +103,27 @@ const CONSULTAR_TOOL: FunctionDeclaration = {
   parametersJsonSchema: CONSULTAR_TOOL_PARAMS,
 };
 
+const buscaConteudoInputSchema = z
+  .object({
+    texto: z.string().min(2).max(200),
+    modulo: z.enum(DOC_MODULES).optional(),
+  })
+  .strict();
+
+const BUSCAR_CONTEUDO_TOOL: FunctionDeclaration = {
+  name: 'buscar_conteudo',
+  description:
+    'Procura palavras DENTRO do texto dos PDFs (inclusive escaneados, via OCR) — ex.: "qual lei trata do plano diretor", "contrato da reforma da escola X", "portaria que nomeou Fulano". Devolve os documentos mais relevantes com titulo, pagina e trecho. Use quando a pergunta depender do conteudo do documento e nao so de campos como valor/credor.',
+  parametersJsonSchema: {
+    type: 'object',
+    properties: {
+      texto: { type: 'string', description: 'Palavras-chave (sem acento tudo bem); frase exata entre aspas' },
+      modulo: { type: 'string', enum: [...DOC_MODULES], description: 'Opcional: restringe a um modulo' },
+    },
+    required: ['texto'],
+  },
+};
+
 @Injectable()
 export class AssistenteService {
   private readonly logger = new Logger(AssistenteService.name);
@@ -110,6 +132,7 @@ export class AssistenteService {
   constructor(
     private readonly db: DatabaseService,
     private readonly documents: DocumentsService,
+    private readonly busca: BuscaService,
   ) {}
 
   /** Se a feature esta configurada (API key presente) neste ambiente. */
@@ -142,14 +165,15 @@ export class AssistenteService {
       ? orgaos.map((o) => `- ${o.id}: ${o.codigo} — ${o.descricao}`).join('\n')
       : '(nenhum orgao cadastrado)';
 
-    const systemPrompt = `Voce e um assistente que responde perguntas em portugues sobre os documentos financeiros (despesas, receitas, balancetes, extratos e outros) de uma prefeitura, usando a ferramenta consultar_documentos.
+    const systemPrompt = `Voce e um assistente que responde perguntas em portugues sobre os documentos de uma prefeitura (financeiros — despesas, receitas, balancetes, extratos, outros — e o acervo do Arquivo Municipal: leis, decretos, portarias, contratos etc.). Ferramentas: consultar_documentos (campos, valores, contagens) e buscar_conteudo (palavras dentro do texto dos PDFs).
 
 Regras:
 - Sempre use a ferramenta pra buscar dados reais antes de responder — nunca invente numeros.
 - Uma pergunta pode exigir mais de uma chamada (ex: modulos diferentes, ou refinar o filtro).
 - Depois de ter os dados, responda em portugues claro e direto, citando os valores/quantidades encontrados.
 - Se nao encontrar nada, diga isso claramente — nunca invente um resultado.
-- Se a pergunta pedir algo fora do que a ferramenta cobre (ex: o conteudo do texto dentro do PDF), explique a limitacao.
+- Perguntas sobre o que o documento DIZ (assunto, nome citado, objeto do contrato, ementa) usam buscar_conteudo; cite titulo e pagina.
+- Se a busca no conteudo nao achar nada, diga isso — pode ser documento ainda nao indexado.
 
 Órgãos cadastrados (use o ID exato ao filtrar por órgão):
 ${orgaosTexto}
@@ -186,7 +210,7 @@ Exercício atual, se a pergunta não especificar o ano: ${new Date().getFullYear
           contents,
           config: {
             systemInstruction: systemPrompt,
-            tools: [{ functionDeclarations: [CONSULTAR_TOOL] }],
+            tools: [{ functionDeclarations: [CONSULTAR_TOOL, BUSCAR_CONTEUDO_TOOL] }],
           },
         });
       } catch (e) {
@@ -233,6 +257,10 @@ Exercício atual, se a pergunta não especificar o ano: ${new Date().getFullYear
 
       const responseParts: Part[] = [];
       for (const fc of functionCalls) {
+        if (fc.name === BUSCAR_CONTEUDO_TOOL.name) {
+          responseParts.push(await this.executarBuscaConteudo(user, fc, documentosCitados, avisos));
+          continue;
+        }
         const parsed = consultaInputSchema.safeParse(fc.args);
         if (!parsed.success) {
           responseParts.push({
@@ -272,6 +300,50 @@ Exercício atual, se a pergunta não especificar o ano: ${new Date().getFullYear
     }
 
     this.logger.warn(`Pergunta nao concluida em ${MAX_TURNOS} turnos: "${pergunta}"`);
+    return this.respostaIncompleta(documentosCitados, avisos);
+  }
+
+  /** Mesmo RBAC/nivel de acesso da tela de busca: BuscaService filtra por modulos legiveis e restrito. */
+  private async executarBuscaConteudo(
+    user: TenantAccessClaims,
+    fc: NonNullable<Part['functionCall']>,
+    documentosCitados: Map<string, DocumentView>,
+    avisos: string[],
+  ): Promise<Part> {
+    const parsed = buscaConteudoInputSchema.safeParse(fc.args);
+    if (!parsed.success) {
+      return { functionResponse: { id: fc.id, name: fc.name, response: { error: `Parametros invalidos: ${parsed.error.message}` } } };
+    }
+    try {
+      const r = await this.busca.buscar(user, { q: parsed.data.texto, module: parsed.data.modulo, page: 1, pageSize: 8 });
+      for (const it of r.items.slice(0, 5)) {
+        const doc = await this.documents.get(user, it.documentId).catch(() => null);
+        if (doc) documentosCitados.set(doc.id, doc);
+      }
+      return {
+        functionResponse: {
+          id: fc.id,
+          name: fc.name,
+          response: {
+            total: r.total,
+            resultados: r.items.map((it) => ({
+              id: it.documentId,
+              titulo: it.titulo,
+              modulo: it.module,
+              data: it.documentDate,
+              pagina: it.pagina,
+              trecho: it.trecho.map((s) => s.texto).join(''),
+            })),
+          },
+        },
+      };
+    } catch {
+      avisos.push('Busca no conteudo indisponivel.');
+      return { functionResponse: { id: fc.id, name: fc.name, response: { error: 'Erro ao buscar no conteudo.' } } };
+    }
+  }
+
+  private respostaIncompleta(documentosCitados: Map<string, DocumentView>, avisos: string[]): AssistenteResposta {
     return {
       resposta: 'Não consegui concluir a consulta a tempo — tente uma pergunta mais específica.',
       documentos: [...documentosCitados.values()],

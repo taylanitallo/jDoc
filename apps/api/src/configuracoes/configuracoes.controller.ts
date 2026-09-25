@@ -45,6 +45,7 @@ import {
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { TenantJwtGuard } from '../auth/tenant-jwt.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
+import { SistemaGuard } from '../common/sistema.guard';
 import { CurrentUser, Permissions, Public } from '../auth/decorators';
 import { ConfiguracoesService } from './configuracoes.service';
 
@@ -91,6 +92,7 @@ const ordenadorUpdateSchema = ordenadorDespesaSchema
 
 const tipoDocumentoCreateSchema = tipoDocumentoSchema.omit({ id: true }).strict();
 const tipoDocumentoUpdateSchema = tipoDocumentoSchema.omit({ id: true }).partial().strict();
+const tiposQuerySchema = listQuerySchema.extend({ modulo: z.enum(['outros', 'acervo']).optional() });
 
 const resetSenhaBodySchema = z
   .object({
@@ -108,7 +110,7 @@ const settingsUpdateSchema = tenantSettingsSchema.partial().strict();
  * - /settings (layout)
  */
 @Controller('t/:slug/configuracoes')
-@UseGuards(TenantJwtGuard, PermissionsGuard)
+@UseGuards(TenantJwtGuard, PermissionsGuard, SistemaGuard)
 export class ConfiguracoesController {
   constructor(private readonly service: ConfiguracoesService) {}
 
@@ -388,9 +390,18 @@ export class ConfiguracoesController {
   @Permissions('tipos_documento:read')
   @Get('tipos-documento')
   listTiposDocumento(
-    @Query(new ZodValidationPipe(listQuerySchema)) q: { page: number; pageSize: number },
+    @Query(new ZodValidationPipe(tiposQuerySchema)) q: z.infer<typeof tiposQuerySchema>,
   ): Promise<{ items: TipoDocumento[]; total: number }> {
-    return this.service.listTiposDocumento(q.page, q.pageSize);
+    return this.service.listTiposDocumento(q.page, q.pageSize, q.modulo);
+  }
+
+  @Permissions('tipos_documento:create')
+  @Post('tipos-documento/modelos-acervo')
+  criarModelosAcervo(
+    @CurrentUser() user: TenantAccessClaims,
+    @Req() req: Request,
+  ): Promise<{ criados: number }> {
+    return this.service.criarModelosAcervo(user.sub, req.ip ?? '');
   }
 
   @Permissions('tipos_documento:create')

@@ -1,10 +1,14 @@
 import { z } from 'zod';
+import { metadadosInputSchema, type Metadados } from './metadados.js';
+import type { OcrStatus } from './busca.js';
+import type { GrauSigilo } from './sigilo.js';
+import { faseArquivisticaSchema, nivelAcessoSchema, type FaseArquivistica, type NivelAcesso } from './arquivistica.js';
 
 /**
  * Documentos (Fase 3).
  * Modulos de documento = subconjunto de MODULES (sem configuracoes/prestacao).
  */
-export const DOC_MODULES = ['receitas', 'despesas', 'balancete', 'extrato', 'outros'] as const;
+export const DOC_MODULES = ['receitas', 'despesas', 'balancete', 'extrato', 'outros', 'acervo'] as const;
 export const docModuleSchema = z.enum(DOC_MODULES);
 export type DocModule = z.infer<typeof docModuleSchema>;
 
@@ -18,9 +22,15 @@ export const DOC_STATUS = ['disponivel', 'processando', 'substituido'] as const;
 export const competenciaSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Competencia deve ser YYYY-MM');
 
 const base = {
-  exercicio: z.coerce.number().int().min(2000).max(2100),
+  // Arquivo Municipal guarda documentos historicos: aceita desde 1800.
+  exercicio: z.coerce.number().int().min(1800).max(2100),
   budgetUnitId: z.string().uuid().nullable().optional(),
   orgaoId: z.string().uuid().nullable().optional(),
+  /** Classe do Plano de Classificacao. Omitida = classe padrao do modulo (Configuracoes). */
+  classificacaoId: z.string().uuid().nullable().optional(),
+  nivelAcesso: nivelAcessoSchema.optional(),
+  /** Inicio da contagem da TTD quando o evento e manual (ex.: fim do contrato). */
+  dataInicioContagem: z.coerce.date().nullable().optional(),
 };
 
 /** Campos por modulo (validacao espelhada no front e no back). */
@@ -83,12 +93,40 @@ export const outroFieldsSchema = z
   })
   .strict();
 
+/** multipart manda booleano como string. */
+const boolFromForm = z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v), z.boolean());
+
+/**
+ * Metadados de digitalizacao exigidos pelo Decreto 10.278/2020 (Anexo II) para
+ * documento digitalizado ter o mesmo valor do original.
+ */
+const digitalizacao = {
+  digitalizado: boolFromForm.optional(),
+  responsavelDigitalizacao: z.string().max(200).optional(),
+  dataDigitalizacao: z.coerce.date().optional(),
+  localDigitalizacao: z.string().max(200).optional(),
+};
+
+/** Acervo: qualquer documento do Arquivo Municipal, com metadados definidos pelo Tipo de Documento. */
+export const acervoFieldsSchema = z
+  .object({
+    module: z.literal('acervo'),
+    documentTypeId: z.string().uuid(),
+    descricao: z.string().min(1).max(2000),
+    documentDate: z.coerce.date(),
+    metadados: metadadosInputSchema.optional(),
+    ...digitalizacao,
+    ...base,
+  })
+  .strict();
+
 export const documentFieldsSchema = z.discriminatedUnion('module', [
   despesaFieldsSchema,
   receitaFieldsSchema,
   balanceteFieldsSchema,
   extratoFieldsSchema,
   outroFieldsSchema,
+  acervoFieldsSchema,
 ]);
 export type DocumentFields = z.infer<typeof documentFieldsSchema>;
 
@@ -110,7 +148,18 @@ export const updateDocumentSchema = z
     budgetUnitId: z.string().uuid().nullable().optional(),
     orgaoId: z.string().uuid().nullable().optional(),
     documentTypeId: z.string().uuid().optional(),
-    exercicio: z.coerce.number().int().min(2000).max(2100).optional(),
+    exercicio: z.coerce.number().int().min(1800).max(2100).optional(),
+    classificacaoId: z.string().uuid().nullable().optional(),
+    nivelAcesso: nivelAcessoSchema.optional(),
+    dataInicioContagem: z.coerce.date().nullable().optional(),
+    metadados: metadadosInputSchema.optional(),
+    digitalizado: z.boolean().optional(),
+    responsavelDigitalizacao: z.string().max(200).nullable().optional(),
+    dataDigitalizacao: z.coerce.date().nullable().optional(),
+    localDigitalizacao: z.string().max(200).nullable().optional(),
+    /** Caixa (ou outro local) onde esta o original em papel. */
+    localFisicoId: z.string().uuid().nullable().optional(),
+    possuiOriginalFisico: z.boolean().optional(),
   })
   .strict();
 export type UpdateDocumentInput = z.infer<typeof updateDocumentSchema>;
@@ -121,7 +170,7 @@ export const searchDocumentsSchema = z
     module: docModuleSchema,
     q: z.string().max(200).optional(),
     subtype: docSubtypeSchema.optional(),
-    exercicio: z.coerce.number().int().min(2000).max(2100).optional(),
+    exercicio: z.coerce.number().int().min(1800).max(2100).optional(),
     competencia: competenciaSchema.optional(),
     budgetUnitId: z.string().uuid().optional(),
     orgaoId: z.string().uuid().optional(),
@@ -135,6 +184,9 @@ export const searchDocumentsSchema = z
     comArquivo: z.enum(['sim', 'nao']).optional(),
     /** Filtro "Com Crítica" (divergente/falha na conferência) / "Sem Crítica". Omitido = todos. */
     critica: z.enum(['sim', 'nao']).optional(),
+    classificacaoId: z.string().uuid().optional(),
+    fase: faseArquivisticaSchema.optional(),
+    documentTypeId: z.string().uuid().optional(),
     sort: z.enum(['data_desc', 'data_asc', 'valor_desc', 'valor_asc', 'criado_desc']).default('data_desc'),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -188,6 +240,29 @@ export interface DocumentView {
   conferenciaVerificadaEm: string | null;
   /** PDFs adicionais alem do principal (colunas acima) — anexados via "+ Adicionar outro PDF". */
   arquivosExtras: DocumentFileView[];
+  /** Gestao arquivistica (Plano de Classificacao + TTD). */
+  classificacaoId: string | null;
+  classificacaoCodigo: string | null;
+  classificacaoDescricao: string | null;
+  fase: FaseArquivistica;
+  nivelAcesso: NivelAcesso;
+  /** Grau de sigilo LAI vigente (null = sem classificacao de sigilo). */
+  grauSigilo: GrauSigilo | null;
+  dataInicioContagem: string | null;
+  dataPrevistaTransferencia: string | null;
+  dataPrevistaDestinacao: string | null;
+  /** Acervo: valores dos campos definidos pelo Tipo de Documento. */
+  metadados: Metadados;
+  digitalizado: boolean;
+  responsavelDigitalizacao: string | null;
+  dataDigitalizacao: string | null;
+  localDigitalizacao: string | null;
+  /** Indexacao do conteudo para a busca (null = arquivo nunca indexado / sem arquivo). */
+  ocrStatus: OcrStatus | null;
+  /** Arquivo fisico: local do original em papel. */
+  possuiOriginalFisico: boolean;
+  localFisicoId: string | null;
+  localFisicoCodigo: string | null;
 }
 
 /** Um PDF extra anexado a um documento (alem do principal). */

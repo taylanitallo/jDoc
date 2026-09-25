@@ -8,7 +8,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { loginSchema, type LoginInput } from '@jdoc/shared';
 import { ShieldCheck, ArrowLeft, Lock } from 'lucide-react';
 import { api, setAccessToken, ApiError } from '@/lib/api';
-import { cardCls, inputCls, labelCls, btnPrimary } from '@/components/ui';
+import { AuthLayout } from '@/components/shell/auth-layout';
+import { Card, inputCls, labelCls, btnPrimary } from '@/components/ui';
 
 /**
  * Login em 2 telas distintas: email/senha primeiro, so avanca pra tela de
@@ -70,16 +71,16 @@ export default function SuperadminLoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gradient-login px-4">
-      <section className={`${cardCls} w-full max-w-md p-8`}>
+    <AuthLayout>
+      <Card className="p-5 sm:p-6">
         {step === 1 ? (
           <>
             <div className="mb-6 flex flex-col items-center text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-primary">
-                <ShieldCheck className="h-8 w-8 text-white" aria-hidden />
+              <div className="flex h-12 w-12 items-center justify-center rounded-[12px] bg-brand-50 text-brand-600 ring-1 ring-inset ring-brand-600/15">
+                <ShieldCheck className="h-6 w-6" aria-hidden />
               </div>
-              <h1 className="mt-3 text-lg font-bold text-app">SuperAdmin</h1>
-              <p className="text-xs text-app-muted">Acesso restrito ao administrador geral</p>
+              <h1 className="mt-3 text-xl font-extrabold tracking-tight text-ink-900">SuperAdmin</h1>
+              <p className="mt-0.5 text-sm text-ink-500">Acesso restrito ao administrador geral</p>
             </div>
 
             <form onSubmit={handleSubmit(onCheckCredentials)} noValidate className="space-y-4">
@@ -95,7 +96,7 @@ export default function SuperadminLoginPage() {
                   className={inputCls}
                   {...register('email')}
                 />
-                {errors.email && <p className="mt-1 text-xs text-app-error-text">{errors.email.message}</p>}
+                {errors.email && <p className="mt-1 text-xs text-danger-600">{errors.email.message}</p>}
               </div>
 
               <div>
@@ -109,16 +110,16 @@ export default function SuperadminLoginPage() {
                   className={inputCls}
                   {...register('senha')}
                 />
-                {errors.senha && <p className="mt-1 text-xs text-app-error-text">{errors.senha.message}</p>}
+                {errors.senha && <p className="mt-1 text-xs text-danger-600">{errors.senha.message}</p>}
               </div>
 
               {error && (
-                <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">
+                <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2.5 text-sm text-danger-600 ring-1 ring-inset ring-danger-600/15">
                   {error}
                 </p>
               )}
 
-              <button type="submit" disabled={checking} className={`${btnPrimary} w-full py-2.5 text-sm`}>
+              <button type="submit" disabled={checking} className={`${btnPrimary} h-12 w-full rounded-[12px]`}>
                 {checking ? 'Verificando…' : 'Continuar'}
               </button>
             </form>
@@ -126,11 +127,11 @@ export default function SuperadminLoginPage() {
         ) : (
           <>
             <div className="mb-6 flex flex-col items-center text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-500">
-                <Lock className="h-8 w-8 text-white" aria-hidden />
+              <div className="flex h-12 w-12 items-center justify-center rounded-[12px] bg-warning-50 text-warning-600 ring-1 ring-inset ring-warning-600/15">
+                <Lock className="h-6 w-6" aria-hidden />
               </div>
-              <h1 className="mt-3 text-lg font-bold text-app">Verificação em 2 etapas</h1>
-              <p className="text-xs text-app-muted">
+              <h1 className="mt-3 text-xl font-extrabold tracking-tight text-ink-900">Verificação em 2 etapas</h1>
+              <p className="mt-0.5 text-sm text-ink-500">
                 Digite o código de 6 dígitos do seu aplicativo autenticador
               </p>
             </div>
@@ -152,14 +153,14 @@ export default function SuperadminLoginPage() {
                   className={`${inputCls} text-center text-lg tracking-[0.3em]`}
                 />
                 {!totpRequired && (
-                  <p className="mt-1 text-[11px] text-app-muted">
+                  <p className="mt-1 text-[11px] text-ink-500">
                     Ainda não configurou? Deixe em branco e configure depois de entrar.
                   </p>
                 )}
               </div>
 
               {error && (
-                <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">
+                <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2.5 text-sm text-danger-600 ring-1 ring-inset ring-danger-600/15">
                   {error}
                 </p>
               )}
@@ -168,7 +169,7 @@ export default function SuperadminLoginPage() {
                 type="button"
                 disabled={verifying}
                 onClick={() => void onVerify()}
-                className={`${btnPrimary} w-full py-2.5 text-sm`}
+                className={`${btnPrimary} h-12 w-full rounded-[12px]`}
               >
                 {verifying ? 'Verificando…' : 'Verificar'}
               </button>
@@ -180,7 +181,7 @@ export default function SuperadminLoginPage() {
                   setTotp('');
                   setStep(1);
                 }}
-                className="flex w-full items-center justify-center gap-1 text-xs font-semibold text-app-muted hover:text-app"
+                className="flex w-full items-center justify-center gap-1 text-sm font-medium text-ink-500 hover:text-ink-800"
               >
                 <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
                 Voltar ao login
@@ -191,11 +192,12 @@ export default function SuperadminLoginPage() {
 
         <Link
           href="/"
-          className="mt-6 block text-center text-xs font-semibold text-app-muted hover:text-app"
+          className="mt-6 flex items-center justify-center gap-1 text-sm font-medium text-ink-500 hover:text-ink-800"
         >
-          ← Voltar ao início
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          Voltar ao início
         </Link>
-      </section>
-    </main>
+      </Card>
+    </AuthLayout>
   );
 }

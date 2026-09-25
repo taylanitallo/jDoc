@@ -38,7 +38,10 @@ export const MODULE_LABELS: Record<string, string> = {
 };
 
 export const SUBTYPE_OPTIONS = DOC_SUBTYPES;
-export const MODULES = DOC_MODULES;
+/** Acervo fica de fora: metadados dinamicos por tipo so existem no web por enquanto. */
+export const MODULES = ['receitas', 'despesas', 'balancete', 'extrato', 'outros'] as const satisfies ReadonlyArray<
+  (typeof DOC_MODULES)[number]
+>;
 
 export const MODULE_FIELDS: Record<string, FieldDesc[]> = {
   receitas: [subtype, documentDate, exercicio, budgetUnit],

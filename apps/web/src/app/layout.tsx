@@ -1,8 +1,12 @@
 import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
 import type { ReactNode } from 'react';
 import './globals.css';
 import { ThemeProvider } from '@/components/theme-provider';
 import { ToastProvider } from '@/components/toast';
+
+/** Fonte do Design System (variavel --font-inter, usada por --font-sans). */
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 
 export const metadata: Metadata = {
   title: 'jDoc — Sistema de Gestão Eletrônica de Documentos',
@@ -26,7 +30,7 @@ const noFlashScript = `
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning>
+    <html lang="pt-BR" className={inter.variable} suppressHydrationWarning>
       <head>
         {/* dangerouslySetInnerHTML necessario para script inline minimo anti-flash */}
         <script dangerouslySetInnerHTML={{ __html: noFlashScript }} />

@@ -21,6 +21,23 @@ export const MODULES = [
   'outros',
   'configuracoes',
   'prestacao_contas',
+  // Arquivo Municipal / gestao arquivistica
+  'acervo',
+  /** So a acao read importa: ver documentos com nivel de acesso restrito (RH/LGPD). */
+  'acervo_restrito',
+  'classificacao',
+  'temporalidade',
+  'arquivo_fisico',
+  /** Verificacao periodica de integridade dos arquivos (preservacao digital). */
+  'integridade',
+  /** Registro de atendimento/consultas ao acervo (LAI). */
+  'atendimento',
+  /** Classificacao de sigilo (LAI): termos de classificacao e desclassificacao. */
+  'sigilo',
+  /** Dossies e processos (juntada, encerramento, apensacao). */
+  'dossies',
+  /** Descricao arquivistica (NOBRADE) e instrumentos de pesquisa. */
+  'descricao',
 ] as const;
 export const moduleSchema = z.enum(MODULES);
 export type ModuleName = z.infer<typeof moduleSchema>;
@@ -64,3 +81,11 @@ export const JWT_AUDIENCE = {
   tenant: 'jdoc-tenant-api',
   superadmin: 'jdoc-superadmin-api',
 } as const;
+
+/** Fuso dos orgaos atendidos: "hoje" (prazos, datas padrao, nomes de arquivo) nunca em UTC. */
+export const FUSO_ORGAO = 'America/Sao_Paulo';
+
+/** Data de hoje (YYYY-MM-DD) no fuso do orgao. Em UTC, a partir das 21h ja seria o dia seguinte. */
+export function hojeIso(agora: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: FUSO_ORGAO, year: 'numeric', month: '2-digit', day: '2-digit' }).format(agora);
+}

@@ -164,7 +164,7 @@ async function main(): Promise<void> {
     ] as const) {
       await sql.unsafe(
         `INSERT INTO "${schemaName}".document_types (nome, cor)
-         VALUES ($1, $2) ON CONFLICT (nome) DO NOTHING`,
+         VALUES ($1, $2) ON CONFLICT (modulo, nome) DO NOTHING`,
         [nome, cor],
       );
     }

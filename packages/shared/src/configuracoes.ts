@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { camposMetadadosSchema } from './metadados.js';
+import type { Sistema } from './sistemas.js';
 
 /**
  * Permissoes proprias de configuracoes.
@@ -109,6 +111,13 @@ export const tipoDocumentoSchema = z.object({
   descricao: z.string().max(200).nullable(),
   cor: z.string().min(1).max(20).default('blue'),
   ativo: z.boolean().default(true),
+  /** Onde o tipo aparece: Outros Arquivos (financeiro) ou Acervo (Arquivo Municipal). */
+  modulo: z.enum(['outros', 'acervo']).default('outros'),
+  /** Campos de metadados do tipo (so usados no Acervo). */
+  campos: camposMetadadosSchema.default([]),
+  /** Classe padrao do Plano de Classificacao para documentos deste tipo. */
+  classificacaoId: z.string().uuid().nullable().default(null),
+  nivelAcessoPadrao: z.enum(['publico', 'restrito']).default('restrito'),
 });
 export type TipoDocumento = z.infer<typeof tipoDocumentoSchema>;
 
@@ -169,6 +178,8 @@ export interface TenantBranding {
   corDestaque: string | null;
   /** Signed URL ja resolvida (nao e o file_key) — pronta para <img src>. */
   brasaoUrl: string | null;
+  /** Modulos contratados pelo orgao — o menu so mostra o que esta ligado. */
+  modulos: Sistema[];
 }
 
 // ---- Query params ----

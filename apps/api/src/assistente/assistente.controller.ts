@@ -4,6 +4,7 @@ import { perguntarSchema, type AssistenteResposta, type TenantAccessClaims } fro
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { TenantJwtGuard } from '../auth/tenant-jwt.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
+import { SistemaGuard } from '../common/sistema.guard';
 import { CurrentUser, Permissions } from '../auth/decorators';
 import { AssistenteService } from './assistente.service';
 
@@ -13,7 +14,7 @@ import { AssistenteService } from './assistente.service';
  * pergunta pode cruzar varios modulos), por isso so exige autenticacao aqui.
  */
 @Controller('t/:slug/assistente')
-@UseGuards(TenantJwtGuard, PermissionsGuard)
+@UseGuards(TenantJwtGuard, PermissionsGuard, SistemaGuard)
 export class AssistenteController {
   constructor(private readonly assistente: AssistenteService) {}
 

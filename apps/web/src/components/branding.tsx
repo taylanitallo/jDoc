@@ -3,15 +3,21 @@
 import { createContext, useContext, type CSSProperties, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { TenantBranding } from '@jdoc/shared';
+import type { Sistema, TenantBranding } from '@jdoc/shared';
 
-const EMPTY_BRANDING: TenantBranding = { nomeExibido: null, corDestaque: null, brasaoUrl: null };
+// Enquanto carrega, nenhum modulo contratado: o menu so mostra o que e comum.
+const EMPTY_BRANDING: TenantBranding = { nomeExibido: null, corDestaque: null, brasaoUrl: null, modulos: [] };
 
 const BrandingContext = createContext<TenantBranding>(EMPTY_BRANDING);
 
 /** Identidade visual do tenant (nome exibido, cor de destaque, brasao) — usada no sidebar e nos relatorios. */
 export function useBranding(): TenantBranding {
   return useContext(BrandingContext);
+}
+
+/** O orgao contratou o modulo? (o menu/abas usam para esconder; quem barra e a API). */
+export function useModulo(sistema: Sistema): boolean {
+  return useContext(BrandingContext).modulos?.includes(sistema) ?? false;
 }
 
 /** Busca a identidade do tenant via React Query (mesma queryKey usada pela tela de

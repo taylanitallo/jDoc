@@ -127,6 +127,17 @@ export class StorageService {
     await rm(this.localPath(slug, key), { force: true });
   }
 
+  /** Como delete(), mas FALHA se o provedor recusar — usado pela eliminacao legal, onde "apagou" precisa ser verdade. */
+  async deleteStrict(slug: string, key: string): Promise<void> {
+    assertSafeFileKey(key);
+    if (this.supabase) {
+      const { error } = await this.supabase.storage.from(this.bucket(slug)).remove([key]);
+      if (error) throw new Error(`Falha ao remover ${key}: ${error.message}`);
+      return;
+    }
+    await rm(this.localPath(slug, key), { force: true });
+  }
+
   /** Signed URL de 60s. Chamador JA validou permissao + posse do arquivo pelo tenant.
    *  downloadName (opcional) e so cosmetico — nome do arquivo que o navegador salva. */
   async createSignedUrl(

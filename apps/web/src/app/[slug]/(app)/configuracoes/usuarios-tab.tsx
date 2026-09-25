@@ -5,10 +5,14 @@ import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import type { UnidadeOrcamentaria, UsuarioTenant } from '@jdoc/shared';
-import { MODULES, MODULE_ACTIONS } from '@jdoc/shared';
+import { MODULES, MODULE_ACTIONS, MODULOS_RBAC_POR_SISTEMA } from '@jdoc/shared';
+import { useBranding } from '@/components/branding';
 import { Pencil, Key, Plus, Users as UsersIcon } from 'lucide-react';
-import { Modal, btnGhost, btnPrimary, cardCls, inputCls, labelCls } from '@/components/ui';
 import { EmptyState } from '@/components/empty-state';
+import { Avatar, Badge, Modal, btnGhost, btnPrimary, cardCls, inputCls, labelCls, type Tone, SelectMenu } from '@/components/ui';
+
+const PERFIL_TOM: Record<string, Tone> = { admin: 'violet', operador: 'info', consulta: 'neutral' };
+const PERFIL_ROTULO: Record<string, string> = { admin: 'Administrador', operador: 'Operador', consulta: 'Consulta' };
 
 const MODULE_LABELS: Record<string, string> = {
   receitas: 'Receitas',
@@ -17,7 +21,17 @@ const MODULE_LABELS: Record<string, string> = {
   extrato: 'Extrato',
   outros: 'Outros',
   configuracoes: 'Configurações',
-  prestacao_contas: 'Prestação de Contas',
+  prestacao_contas: 'Prestação de contas',
+  acervo: 'Acervo',
+  acervo_restrito: 'Acervo — docs restritos (só Ler)',
+  classificacao: 'Plano de Classificação',
+  temporalidade: 'Temporalidade',
+  arquivo_fisico: 'Arquivo físico',
+  integridade: 'Integridade (preservação digital)',
+  atendimento: 'Atendimento e consultas',
+  sigilo: 'Sigilo (LAI)',
+  dossies: 'Dossiês e processos',
+  descricao: 'Descrição arquivística (NOBRADE)',
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -50,16 +64,16 @@ export function UsuariosTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-bold text-app">Usuários e Permissões</h2>
+        <h2 className="text-base font-bold text-ink-900">Usuários e permissões</h2>
         <button type="button" onClick={() => setEditing('new')} className={btnPrimary}>
           <span className="flex items-center gap-2">
-            <Plus className="h-4 w-4" aria-hidden /> Novo Usuário
+            <Plus className="h-4 w-4" aria-hidden /> Novo usuário
           </span>
         </button>
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-app-muted">Carregando...</p>
+        <p className="text-sm text-ink-500">Carregando...</p>
       ) : data && data.items.length === 0 ? (
         <EmptyState
           icon={UsersIcon}
@@ -68,66 +82,63 @@ export function UsuariosTab() {
         />
       ) : (
         <div className={`${cardCls} overflow-x-auto`}>
-          <table className="min-w-full divide-y divide-app-border text-sm">
-            <thead>
-              <tr className="bg-app-table-head">
-                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-app-muted">
+          <table className="min-w-full divide-y divide-ink-200 text-sm">
+            <thead className="bg-ink-50/60">
+              <tr>
+                <th className="px-4 py-3 text-left label-caps">
                   Nome
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-app-muted">
+                <th className="px-4 py-3 text-left label-caps">
                   E-mail
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-app-muted">
+                <th className="px-4 py-3 text-left label-caps">
                   Perfil
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-app-muted">
+                <th className="px-4 py-3 text-left label-caps">
                   Status
                 </th>
-                <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-app-muted">
+                <th className="px-4 py-3 text-right label-caps">
                   Ações
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-app-border">
+            <tbody className="divide-y divide-ink-100">
               {data?.items.map((u) => (
-                <tr key={u.id} className="hover:bg-app-hover">
-                  <td className="whitespace-nowrap px-4 py-2 font-medium text-app">{u.nome}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-app-muted">{u.email}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-app-muted">
-                    <span className="rounded-full bg-app-badge-gray-bg px-2 py-0.5 text-[10px] font-medium capitalize text-app-badge-gray-text">
-                      {u.role}
+                <tr key={u.id} className="transition-colors hover:bg-brand-50/40">
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <span className="flex items-center gap-3">
+                      <Avatar nome={u.nome} size="sm" />
+                      <span className="font-semibold text-ink-900">{u.nome}</span>
                     </span>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                        u.ativo
-                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-200'
-                          : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-200'
-                      }`}
-                    >
-                      {u.ativo ? 'Ativo' : 'Inativo'}
-                    </span>
+                  <td className="whitespace-nowrap px-4 py-3 text-ink-500">{u.email}</td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <Badge tone={PERFIL_TOM[u.role] ?? 'neutral'}>{PERFIL_ROTULO[u.role] ?? u.role}</Badge>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2 text-right">
-                    <button
-                      type="button"
-                      aria-label={`Editar usuário ${u.nome}`}
-                      title="Editar"
-                      onClick={() => setEditing(u)}
-                      className="mx-1 text-app-muted hover:text-accent"
-                    >
-                      <Pencil className="inline h-4 w-4" aria-hidden />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Resetar senha de ${u.nome}`}
-                      title="Resetar senha"
-                      onClick={() => setResetting(u)}
-                      className="mx-1 text-app-muted hover:text-yellow-600 dark:hover:text-yellow-300"
-                    >
-                      <Key className="inline h-4 w-4" aria-hidden />
-                    </button>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <Badge tone={u.ativo ? 'success' : 'danger'}>{u.ativo ? 'Ativo' : 'Inativo'}</Badge>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <div className="flex justify-end gap-1">
+                      <button
+                        type="button"
+                        aria-label={`Editar usuário ${u.nome}`}
+                        title="Editar"
+                        onClick={() => setEditing(u)}
+                        className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
+                      >
+                        <Pencil className="h-4 w-4" aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Resetar senha de ${u.nome}`}
+                        title="Resetar senha"
+                        onClick={() => setResetting(u)}
+                        className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-warning-50 hover:text-warning-600"
+                      >
+                        <Key className="h-4 w-4" aria-hidden />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -170,6 +181,12 @@ function UsuarioModal({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const { modulos } = useBranding();
+  // Modulos RBAC de sistema nao contratado nao aparecem (nao faz sentido conceder).
+  const doOutroSistema = new Set(
+    (['financeiro', 'arquivo'] as const).filter((s) => !modulos.includes(s)).flatMap((s) => MODULOS_RBAC_POR_SISTEMA[s]),
+  );
+  const modulosVisiveis = MODULES.filter((m) => !doOutroSistema.has(m));
   const [nome, setNome] = useState(usuario?.nome ?? '');
   const [email, setEmail] = useState(usuario?.email ?? '');
   const [role, setRole] = useState<'admin' | 'operador' | 'consulta'>(usuario?.role ?? 'operador');
@@ -210,9 +227,9 @@ function UsuarioModal({
   return (
     <Modal title={usuario ? 'Usuário — Edição' : 'Usuário — Inclusão'} open onClose={onClose}>
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className={labelCls} htmlFor="usuario-nome">Nome *</label>
+            <label className={labelCls} htmlFor="usuario-nome">Nome<span className="ml-0.5 text-danger-600">*</span></label>
             <input
               id="usuario-nome"
               className={inputCls}
@@ -222,7 +239,7 @@ function UsuarioModal({
             />
           </div>
           <div>
-            <label className={labelCls} htmlFor="usuario-email">E-mail *</label>
+            <label className={labelCls} htmlFor="usuario-email">E-mail<span className="ml-0.5 text-danger-600">*</span></label>
             <input
               id="usuario-email"
               type="email"
@@ -234,8 +251,8 @@ function UsuarioModal({
             />
           </div>
           <div>
-            <label className={labelCls} htmlFor="usuario-role">Perfil *</label>
-            <select
+            <label className={labelCls} htmlFor="usuario-role">Perfil<span className="ml-0.5 text-danger-600">*</span></label>
+            <SelectMenu
               id="usuario-role"
               className={inputCls}
               value={role}
@@ -244,11 +261,11 @@ function UsuarioModal({
               <option value="admin">Administrador</option>
               <option value="operador">Operador</option>
               <option value="consulta">Consulta</option>
-            </select>
+            </SelectMenu>
           </div>
           {!usuario && (
             <div>
-              <label className={labelCls} htmlFor="usuario-senha">Senha provisória *</label>
+              <label className={labelCls} htmlFor="usuario-senha">Senha provisória<span className="ml-0.5 text-danger-600">*</span></label>
               <input
                 id="usuario-senha"
                 type="password"
@@ -262,14 +279,14 @@ function UsuarioModal({
         </div>
 
         {usuario && (
-          <label className="flex items-center gap-2 text-sm text-app">
+          <label className="flex items-center gap-2 text-sm text-ink-800">
             <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} />
             Ativo
           </label>
         )}
 
         {role === 'admin' ? (
-          <p className="rounded-lg bg-app-input-bg px-3 py-2 text-xs text-app-muted">
+          <p className="rounded-[10px] bg-surface px-3 py-2 text-xs text-ink-500">
             Administradores têm acesso total ao tenant — não é preciso marcar permissões.
           </p>
         ) : (
@@ -277,8 +294,8 @@ function UsuarioModal({
             <p className={labelCls}>Permissões por módulo</p>
             <div className={`${cardCls} overflow-x-auto`}>
               <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-app-border text-app-muted">
+                <thead className="bg-ink-50/60">
+                  <tr className="border-b border-ink-200 text-ink-500">
                     <th className="px-3 py-2">Módulo</th>
                     {MODULE_ACTIONS.map((a) => (
                       <th key={a} className="px-2 py-2 text-center">{ACTION_LABELS[a] ?? a}</th>
@@ -286,9 +303,9 @@ function UsuarioModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {MODULES.map((m) => (
-                    <tr key={m} className="border-b border-app-border last:border-0">
-                      <td className="px-3 py-1.5 text-app">{MODULE_LABELS[m] ?? m}</td>
+                  {modulosVisiveis.map((m) => (
+                    <tr key={m} className="border-b border-ink-200 last:border-0">
+                      <td className="px-3 py-1.5 text-ink-800">{MODULE_LABELS[m] ?? m}</td>
                       {MODULE_ACTIONS.map((a) => {
                         const key = `${m}:${a}`;
                         return (
@@ -312,9 +329,9 @@ function UsuarioModal({
         {unidades.length > 0 && (
           <div>
             <p className={labelCls}>Unidades orçamentárias com acesso</p>
-            <div className="max-h-32 space-y-1 overflow-y-auto rounded-lg border border-app-border p-2">
+            <div className="max-h-32 space-y-1 overflow-y-auto rounded-[10px] border border-ink-200 p-2">
               {unidades.map((u) => (
-                <label key={u.id} className="flex items-center gap-2 text-sm text-app">
+                <label key={u.id} className="flex items-center gap-2 text-sm text-ink-800">
                   <input
                     type="checkbox"
                     checked={unidadesIds.includes(u.id!)}
@@ -328,7 +345,7 @@ function UsuarioModal({
         )}
 
         {error && (
-          <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">{error}</p>
+          <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">{error}</p>
         )}
 
         <div className="flex justify-end gap-2">
@@ -374,11 +391,11 @@ function ResetSenhaModal({
     <Modal title="Resetar senha" subtitle={usuario.nome} open onClose={onClose}>
       <div className="space-y-4">
         {done ? (
-          <p className="text-sm text-app">Senha redefinida. O usuário precisará trocá-la no próximo acesso.</p>
+          <p className="text-sm text-ink-800">Senha redefinida. O usuário precisará trocá-la no próximo acesso.</p>
         ) : (
           <>
             <div>
-              <label className={labelCls} htmlFor="nova-senha">Nova senha provisória *</label>
+              <label className={labelCls} htmlFor="nova-senha">Nova senha provisória<span className="ml-0.5 text-danger-600">*</span></label>
               <input
                 id="nova-senha"
                 type="password"
@@ -389,7 +406,7 @@ function ResetSenhaModal({
               />
             </div>
             {error && (
-              <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">{error}</p>
+              <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">{error}</p>
             )}
           </>
         )}

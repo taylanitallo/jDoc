@@ -103,31 +103,31 @@ export function AssistenteWidget() {
   return (
     <>
       {open && (
-        <div className="fixed bottom-24 right-4 z-50 flex h-[32rem] w-[calc(100vw-2rem)] max-w-sm flex-col overflow-hidden rounded-2xl border border-app-border bg-app-card shadow-2xl sm:right-6">
-          <div className="flex items-center gap-3 bg-gradient-modal px-4 py-3">
+        <div className="fixed bottom-24 right-4 z-50 flex h-[32rem] w-[calc(100vw-2rem)] max-w-sm flex-col overflow-hidden rounded-[16px] border border-ink-200 bg-surface shadow-xl sm:right-6">
+          <div className="flex items-center gap-3 bg-brand-600 px-4 py-3">
             <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-white/20">
               <img src="/ayla.png" alt="Ayla" className="h-full w-full object-cover" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold text-white">AYLA</p>
+              <p className="truncate text-sm font-bold text-white">Ayla</p>
               <p className="flex items-center gap-1 text-[11px] text-white/80">
-                <span className="h-1.5 w-1.5 rounded-full bg-green-400" aria-hidden /> Assistente Virtual • Online
+                <span className="h-1.5 w-1.5 rounded-full bg-success-500" aria-hidden /> Assistente Virtual • Online
               </p>
             </div>
             <button
               type="button"
               onClick={() => setOpen(false)}
               aria-label="Fechar assistente"
-              className="rounded p-1 text-white/80 hover:bg-white/10 hover:text-white"
+              className="rounded-[8px] p-1 text-white/80 hover:bg-white/10 hover:text-white"
             >
-              <X className="h-4.5 w-4.5" aria-hidden />
+              <X className="h-[18px] w-[18px]" aria-hidden />
             </button>
           </div>
 
           <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto p-3">
             {turnos.length === 0 && (
-              <div className="rounded-xl bg-app-input-bg p-3 text-xs text-app-muted">
-                <p className="mb-1 font-semibold text-app">Como posso ajudar?</p>
+              <div className="rounded-[12px] bg-ink-50 p-3 text-xs text-ink-500">
+                <p className="mb-1 font-semibold text-ink-800">Como posso ajudar?</p>
                 <p>Pergunte em português sobre os documentos, ex:</p>
                 <p className="mt-1 italic">"quanto foi gasto com saúde em 2026?"</p>
               </div>
@@ -135,21 +135,21 @@ export function AssistenteWidget() {
             {turnos.map((t) => (
               <div key={t.id} className="space-y-1.5">
                 <div className="flex justify-end">
-                  <p className="max-w-[85%] rounded-xl rounded-br-sm bg-gradient-primary px-3 py-1.5 text-xs text-white">
+                  <p className="max-w-[85%] rounded-[16px] rounded-br-[6px] bg-brand-600 px-3 py-1.5 text-xs text-white">
                     {t.pergunta}
                   </p>
                 </div>
                 {t.loading && (
-                  <p className="text-xs text-app-muted">Consultando os documentos…</p>
+                  <p className="text-xs text-ink-500">Consultando os documentos…</p>
                 )}
                 {t.erro && (
-                  <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-1.5 text-xs text-app-error-text">
+                  <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-1.5 text-xs text-danger-600">
                     {t.erro}
                   </p>
                 )}
                 {t.resposta && (
                   <div className="space-y-1.5">
-                    <p className="max-w-[90%] whitespace-pre-wrap rounded-xl rounded-bl-sm bg-app-input-bg px-3 py-1.5 text-xs text-app">
+                    <p className="max-w-[90%] whitespace-pre-wrap rounded-[16px] rounded-bl-[6px] bg-ink-100 px-3 py-1.5 text-xs text-ink-800">
                       {t.resposta.resposta}
                     </p>
                     {t.resposta.documentos.length > 0 && (
@@ -159,12 +159,12 @@ export function AssistenteWidget() {
                             key={doc.id}
                             type="button"
                             onClick={() => void abrirDocumento(doc)}
-                            className={`${cardCls} flex w-[90%] items-center justify-between gap-2 px-2.5 py-1.5 text-left text-[11px] transition hover:bg-app-hover`}
+                            className={`${cardCls} flex w-[90%] items-center justify-between gap-2 px-2.5 py-1.5 text-left text-[11px] transition hover:bg-ink-50`}
                           >
-                            <span className="min-w-0 truncate text-app">
+                            <span className="min-w-0 truncate text-ink-800">
                               {doc.docCaixa ? `Doc. Caixa ${doc.docCaixa}` : doc.descricao || doc.historico || doc.originalName}
                             </span>
-                            <span className="flex shrink-0 items-center gap-1 text-app-muted">
+                            <span className="flex shrink-0 items-center gap-1 text-ink-500">
                               {doc.value !== null &&
                                 doc.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                               <ExternalLink className="h-3 w-3" aria-hidden />
@@ -179,7 +179,7 @@ export function AssistenteWidget() {
             ))}
           </div>
 
-          <div className="flex gap-2 border-t border-app-border p-2.5">
+          <div className="flex gap-2 border-t border-ink-200 p-2.5">
             <input
               className={inputCls}
               placeholder="Pergunte algo…"
@@ -207,7 +207,7 @@ export function AssistenteWidget() {
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-label={open ? 'Fechar assistente Ayla' : 'Abrir assistente Ayla'}
-          className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-gradient-primary text-white shadow-2xl transition hover:opacity-90"
+          className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-brand-600 text-white shadow-xl transition hover:bg-brand-700"
         >
           {open ? (
             <X className="h-6 w-6" aria-hidden />
@@ -217,7 +217,7 @@ export function AssistenteWidget() {
         </button>
         {!open && (
           <span
-            className="pointer-events-none absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full border-2 border-app-card bg-green-400"
+            className="pointer-events-none absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full border-2 border-surface bg-success-500"
             aria-hidden
           />
         )}

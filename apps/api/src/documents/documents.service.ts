@@ -23,6 +23,14 @@ import {
   type DocumentView,
   type EtiquetaCandidate,
   type EtiquetasPendentesResult,
+  type FaseArquivistica,
+  type Metadados,
+  type OcrStatus,
+  sistemaDoModulo,
+  camposMetadadosSchema,
+  metadadosSchemaFor,
+  type NivelAcesso,
+  type GrauSigilo,
   type SearchDocumentsQuery,
   type TenantAccessClaims,
   type TrashQuery,
@@ -36,6 +44,9 @@ import { requireTenantContext } from '../tenancy/tenant-context';
 import { SignatureService } from '../signature/signature.service';
 import { hasSignature } from '../signature/pdf-signature';
 import { ConferenciaService } from '../conferencia/conferencia.service';
+import { ArquivisticaService } from '../arquivistica/arquivistica.service';
+import { OcrService } from '../ocr/ocr.service';
+import { assertSistema } from '../common/sistema.guard';
 
 const PDF_MAGIC = Buffer.from('%PDF');
 
@@ -93,6 +104,29 @@ interface DocRow {
   conferencia_resultado: ConferenciaResultado | string | null;
   conferencia_erro: string | null;
   conferencia_verificada_em: Date | null;
+  // Gestao arquivistica — opcionais porque nem toda query (ex.: relatorios) seleciona.
+  classificacao_id?: string | null;
+  classificacao_codigo?: string | null;
+  classificacao_descricao?: string | null;
+  fase?: FaseArquivistica;
+  nivel_acesso?: NivelAcesso;
+  grau_sigilo?: GrauSigilo | null;
+  data_inicio_contagem?: Date | null;
+  data_prevista_transferencia?: Date | null;
+  data_prevista_destinacao?: Date | null;
+  metadados?: Metadados | string | null;
+  digitalizado?: boolean;
+  responsavel_digitalizacao?: string | null;
+  data_digitalizacao?: Date | null;
+  local_digitalizacao?: string | null;
+  ocr_status?: OcrStatus | null;
+  possui_original_fisico?: boolean;
+  local_fisico_id?: string | null;
+  local_fisico_codigo?: string | null;
+}
+
+function isoDate(d: Date | null | undefined): string | null {
+  return d ? d.toISOString().slice(0, 10) : null;
 }
 
 interface DocumentFileRow {
@@ -176,6 +210,24 @@ function toView(r: DocRow, arquivosExtras: DocumentFileView[] = []): DocumentVie
     conferenciaErro: r.conferencia_erro,
     conferenciaVerificadaEm: r.conferencia_verificada_em ? r.conferencia_verificada_em.toISOString() : null,
     arquivosExtras,
+    classificacaoId: r.classificacao_id ?? null,
+    classificacaoCodigo: r.classificacao_codigo ?? null,
+    classificacaoDescricao: r.classificacao_descricao ?? null,
+    fase: r.fase ?? 'corrente',
+    nivelAcesso: r.nivel_acesso ?? 'publico',
+    grauSigilo: r.grau_sigilo ?? null,
+    dataInicioContagem: isoDate(r.data_inicio_contagem),
+    dataPrevistaTransferencia: isoDate(r.data_prevista_transferencia),
+    dataPrevistaDestinacao: isoDate(r.data_prevista_destinacao),
+    metadados: (typeof r.metadados === 'string' ? (JSON.parse(r.metadados) as Metadados) : r.metadados) ?? {},
+    digitalizado: r.digitalizado ?? false,
+    responsavelDigitalizacao: r.responsavel_digitalizacao ?? null,
+    dataDigitalizacao: isoDate(r.data_digitalizacao),
+    localDigitalizacao: r.local_digitalizacao ?? null,
+    ocrStatus: r.ocr_status ?? null,
+    possuiOriginalFisico: r.possui_original_fisico ?? false,
+    localFisicoId: r.local_fisico_id ?? null,
+    localFisicoCodigo: r.local_fisico_codigo ?? null,
   };
 }
 
@@ -187,13 +239,93 @@ export class DocumentsService {
     private readonly audit: AuditService,
     private readonly signature: SignatureService,
     private readonly conferencia: ConferenciaService,
+    private readonly arquivistica: ArquivisticaService,
+    private readonly ocr: OcrService,
   ) {}
+
+  /**
+   * Documento transferido/recolhido/eliminado e registro oficial da gestao
+   * arquivistica: sai do acervo so pelo fluxo legal de eliminacao, nunca pela lixeira.
+   */
+  private assertExcluivel(rows: Array<{ fase?: string }>): void {
+    if (rows.some((r) => r.fase && r.fase !== 'corrente')) {
+      throw new BadRequestException(
+        'Documento fora da fase corrente (transferido, recolhido ou eliminado) nao pode ser excluido. Use o fluxo de eliminacao da Temporalidade.',
+      );
+    }
+  }
+
+  /** Documento juntado a dossie/processo nao vai para a lixeira: primeiro o desentranhamento (com motivo). */
+  private async assertForaDeDossie(ids: string[]): Promise<void> {
+    const sql = this.db.tenant(requireTenantContext().schemaName);
+    const em = await sql<Array<{ numero: string }>>`
+      SELECT ds.numero FROM dossie_documentos dd JOIN dossies ds ON ds.id = dd.dossie_id WHERE dd.document_id = ANY(${ids}::uuid[]) LIMIT 1
+    `;
+    if (em[0]) {
+      throw new BadRequestException(`Documento juntado ao dossiê/processo ${em[0].numero}: faça o desentranhamento antes de excluir.`);
+    }
+  }
+
+  /** Documento eliminado (Termo de Eliminacao) e registro historico imutavel: so leitura dos metadados. */
+  private assertNaoEliminado(row: { fase?: string }): void {
+    if (row.fase === 'eliminado') {
+      throw new BadRequestException('Documento eliminado pelo fluxo de temporalidade: registro somente leitura');
+    }
+  }
+
+  /** Documento restrito (dados pessoais/sigilo): so admin ou quem tem acervo_restrito:read. */
+  private podeVerRestrito(user: TenantAccessClaims): boolean {
+    return user.role === 'admin' || user.permissions.includes('acervo_restrito:read');
+  }
+
+  /** getRow + nivel de acesso. Restrito sem permissao = 404 (nao revela que o documento existe). */
+  private async getRowFor(user: TenantAccessClaims, id: string, includeDeleted = false): Promise<DocRow> {
+    const row = await this.getRow(id, includeDeleted);
+    if (row.nivel_acesso === 'restrito' && !this.podeVerRestrito(user)) {
+      throw new NotFoundException('Documento nao encontrado');
+    }
+    return row;
+  }
+
+  /** Tipo documental do Acervo: valida tipo e metadados contra os campos definidos nele. */
+  private async validarTipoAcervo(
+    sql: Sql,
+    documentTypeId: string | null,
+    metadados: Metadados | undefined,
+  ): Promise<{ metadados: Metadados; classificacaoId: string | null; nivelAcessoPadrao: NivelAcesso }> {
+    const rows = documentTypeId
+      ? await sql<
+          Array<{
+            campos: unknown;
+            classificacao_id: string | null;
+            nivel_acesso_padrao: NivelAcesso;
+            modulo: string;
+            ativo: boolean;
+          }>
+        >`SELECT campos, classificacao_id, nivel_acesso_padrao, modulo, ativo FROM document_types WHERE id = ${documentTypeId}`
+      : [];
+    const t = rows[0];
+    if (!t || !t.ativo || t.modulo !== 'acervo') {
+      throw new BadRequestException('Tipo de documento invalido para o Acervo');
+    }
+    const campos = camposMetadadosSchema.parse(typeof t.campos === 'string' ? JSON.parse(t.campos) : t.campos);
+    const parsed = metadadosSchemaFor(campos).safeParse(metadados ?? {});
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.issues.map((i) => i.message).join('; '));
+    }
+    const limpos = Object.fromEntries(
+      Object.entries(parsed.data as Record<string, string | undefined>).filter(([, v]) => v !== undefined),
+    ) as Metadados;
+    return { metadados: limpos, classificacaoId: t.classificacao_id, nivelAcessoPadrao: t.nivel_acesso_padrao };
+  }
 
   /**
    * RBAC dinamico por modulo (rotas compartilham handler; permissao depende
    * do modulo do documento). admin passa; demais exigem `${module}:${action}`.
    */
   assertPermission(user: TenantAccessClaims, module: DocModule, action: string): void {
+    // Modulo do documento precisa estar contratado pelo orgao (vale ate para admin).
+    assertSistema(sistemaDoModulo(module));
     if (user.role === 'admin') return;
     if (!user.permissions.includes(`${module}:${action}`)) {
       throw new ForbiddenException('Acesso negado');
@@ -224,6 +356,11 @@ export class DocumentsService {
   ): Promise<DocumentView> {
     const ctx = requireTenantContext();
     this.assertPermission(user, fields.module, 'create');
+    // Acervo: valida tipo + metadados ANTES de gravar arquivo (erro nao deixa PDF orfao no storage).
+    const acervo =
+      fields.module === 'acervo'
+        ? await this.validarTipoAcervo(this.db.tenant(ctx.schemaName), fields.documentTypeId, fields.metadados)
+        : null;
 
     // PDF e opcional: sem arquivo, o documento nasce como etiqueta
     // 'aguardando_arquivo' (mesmo estado de uma etiqueta importada) — o PDF
@@ -265,7 +402,8 @@ export class DocumentsService {
         module, subtype, doc_caixa, empenho, credor, historico, descricao,
         budget_unit_id, orgao_id, document_type_id, document_date, value, competencia,
         exercicio, banco, agencia, conta,
-        original_name, file_key, file_size, file_hash, paginas, status, created_by
+        original_name, file_key, file_size, file_hash, paginas, status, created_by,
+        metadados, digitalizado, responsavel_digitalizacao, data_digitalizacao, local_digitalizacao
       ) VALUES (
         ${fields.module},
         ${(f.subtype as string) ?? null},
@@ -290,7 +428,12 @@ export class DocumentsService {
         ${fileHash},
         ${pageCount},
         ${file ? 'disponivel' : 'aguardando_arquivo'},
-        ${user.sub}
+        ${user.sub},
+        ${sql.json((acervo?.metadados ?? {}) as never)},
+        ${(f.digitalizado as boolean | undefined) ?? false},
+        ${(f.responsavelDigitalizacao as string | undefined) ?? null},
+        ${(f.dataDigitalizacao as Date | undefined) ?? null},
+        ${(f.localDigitalizacao as string | undefined) ?? null}
       )
       RETURNING id, module, subtype, doc_caixa, empenho, credor, historico, descricao,
                 budget_unit_id, NULL AS budget_unit_nome,
@@ -298,7 +441,11 @@ export class DocumentsService {
                 document_type_id, NULL AS document_type_nome,
                 document_date, value, competencia, exercicio, banco, agencia, conta,
                 original_name, file_key, file_size, file_hash, paginas, status, criado_em, deleted_at,
-                conferencia_status, conferencia_resultado, conferencia_erro, conferencia_verificada_em
+                conferencia_status, conferencia_resultado, conferencia_erro, conferencia_verificada_em,
+                classificacao_id, NULL AS classificacao_codigo, NULL AS classificacao_descricao,
+                fase, nivel_acesso, grau_sigilo, data_inicio_contagem, data_prevista_transferencia, data_prevista_destinacao,
+                metadados, digitalizado, responsavel_digitalizacao, data_digitalizacao, local_digitalizacao, ocr_status,
+                possui_original_fisico, local_fisico_id, NULL AS local_fisico_codigo
     `;
 
     await this.audit.logTenant({
@@ -322,7 +469,25 @@ export class DocumentsService {
         fileKey,
       });
     }
+    // Indexa o conteudo para a busca (assincrono; no-op sem poppler no ambiente).
+    if (documentId && fileKey) {
+      await this.ocr.enqueue({ schemaName: ctx.schemaName, slug: ctx.slug, documentId, documentFileId: null, fileKey });
+    }
 
+    if (documentId) {
+      await this.arquivistica.aplicarAoDocumento(documentId, {
+        module: fields.module,
+        classificacaoId: (f.classificacaoId as string | null | undefined) ?? acervo?.classificacaoId ?? undefined,
+        // Acervo nasce restrito por padrao (dados pessoais/sigilo ate alguem decidir publicar);
+        // os modulos financeiros seguem o default da coluna (publico).
+        nivelAcesso:
+          (f.nivelAcesso as NivelAcesso | undefined) ??
+          acervo?.nivelAcessoPadrao ??
+          (fields.module === 'acervo' ? 'restrito' : undefined),
+        dataInicioContagem: f.dataInicioContagem as Date | null | undefined,
+      });
+      return toView(await this.getRow(documentId));
+    }
     return toView(rows[0] as DocRow);
   }
 
@@ -713,7 +878,7 @@ export class DocumentsService {
           .fillColor('#e0e7ff')
           .fontSize(9)
           .font('Helvetica')
-          .text(`Gerado em ${new Date().toLocaleString('pt-BR')} — ${resumoPartes.join(' · ')}`, marginX, 48, {
+          .text(`Gerado em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} — ${resumoPartes.join(' · ')}`, marginX, 48, {
             align: 'center',
             width: contentWidth,
           });
@@ -830,7 +995,7 @@ export class DocumentsService {
     const ctx = requireTenantContext();
     this.assertPermission(user, q.module, 'read');
     const sql = this.db.tenant(ctx.schemaName);
-    const where = this.buildSearchWhere(sql, q);
+    const where = this.buildSearchWhere(sql, q, user);
     const orderBy = {
       data_desc: 'd.document_date DESC NULLS LAST, d.doc_caixa ASC NULLS LAST',
       data_asc: 'd.document_date ASC NULLS LAST, d.doc_caixa ASC NULLS LAST',
@@ -876,7 +1041,7 @@ export class DocumentsService {
         doc
           .fontSize(8)
           .font('Helvetica')
-          .text(`Gerado em ${new Date().toLocaleString('pt-BR')} — ${rows.length} documento(s)`, {
+          .text(`Gerado em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} — ${rows.length} documento(s)`, {
             align: 'center',
           });
         doc.moveDown(1);
@@ -901,7 +1066,7 @@ export class DocumentsService {
           header();
         }
         const y = doc.y;
-        const dataFmt = r.document_date ? new Date(r.document_date).toLocaleDateString('pt-BR') : '—';
+        const dataFmt = r.document_date ? new Date(r.document_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—';
         const valorFmt =
           r.value === null ? '—' : Number(r.value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         const statusLabel = r.status === 'disponivel' ? 'Com PDF' : 'Sem PDF';
@@ -932,8 +1097,9 @@ export class DocumentsService {
     ip: string,
   ): Promise<DocumentView> {
     const ctx = requireTenantContext();
-    const row = await this.getRow(id);
+    const row = await this.getRowFor(user, id);
     this.assertPermission(user, row.module, 'update');
+    this.assertNaoEliminado(row);
 
     if (file.size < 5 || !file.buffer.subarray(0, 4).equals(PDF_MAGIC)) {
       throw new BadRequestException('Arquivo invalido: apenas PDF e aceito');
@@ -980,7 +1146,11 @@ export class DocumentsService {
         conferencia_verificada_em = NULL
       WHERE id = ${id} AND deleted_at IS NULL
     `;
-    if (oldFileKey) await this.storage.delete(ctx.slug, oldFileKey);
+    if (oldFileKey) {
+      await this.storage.delete(ctx.slug, oldFileKey);
+      // Texto do PDF substituido sai da busca ja; o novo entra quando o job indexar.
+      await sql`DELETE FROM document_textos WHERE document_id = ${id} AND document_file_id IS NULL`;
+    }
 
     await this.audit.logTenant({
       actorId: user.sub,
@@ -1001,6 +1171,7 @@ export class DocumentsService {
         fileKey,
       });
     }
+    await this.ocr.enqueue({ schemaName: ctx.schemaName, slug: ctx.slug, documentId: id, documentFileId: null, fileKey });
 
     // Conferencia por IA e sob demanda (botao "Analisar Doc (IA)"), nao roda
     // automatico no anexo — controla o custo de tokens. Ver analisarConferencia().
@@ -1011,8 +1182,9 @@ export class DocumentsService {
   /** Remove o PDF anexado, voltando o documento para aguardando_arquivo (etiqueta). */
   async removeFile(user: TenantAccessClaims, id: string, ip: string): Promise<DocumentView> {
     const ctx = requireTenantContext();
-    const row = await this.getRow(id);
+    const row = await this.getRowFor(user, id);
     this.assertPermission(user, row.module, 'update');
+    this.assertNaoEliminado(row);
     if (!row.file_key) {
       throw new BadRequestException('Documento nao possui arquivo anexado');
     }
@@ -1032,9 +1204,13 @@ export class DocumentsService {
         conferencia_status = NULL,
         conferencia_resultado = NULL,
         conferencia_erro = NULL,
-        conferencia_verificada_em = NULL
+        conferencia_verificada_em = NULL,
+        ocr_status = NULL,
+        ocr_erro = NULL
       WHERE id = ${id} AND deleted_at IS NULL
     `;
+    // Texto do arquivo removido nao pode continuar achavel na busca.
+    await sql`DELETE FROM document_textos WHERE document_id = ${id} AND document_file_id IS NULL`;
     await this.storage.delete(ctx.slug, row.file_key);
 
     await this.audit.logTenant({
@@ -1057,8 +1233,9 @@ export class DocumentsService {
     ip: string,
   ): Promise<DocumentView> {
     const ctx = requireTenantContext();
-    const row = await this.getRow(id);
+    const row = await this.getRowFor(user, id);
     this.assertPermission(user, row.module, 'update');
+    this.assertNaoEliminado(row);
 
     if (file.size < 5 || !file.buffer.subarray(0, 4).equals(PDF_MAGIC)) {
       throw new BadRequestException('Arquivo invalido: apenas PDF e aceito');
@@ -1112,6 +1289,7 @@ export class DocumentsService {
         fileKey,
       });
     }
+    await this.ocr.enqueue({ schemaName: ctx.schemaName, slug: ctx.slug, documentId: id, documentFileId: extraId, fileKey });
 
     // Conferencia por IA e sob demanda (botao "Analisar Doc (IA)"), mesma
     // regra do arquivo principal — nao dispara sozinho ao anexar.
@@ -1122,8 +1300,9 @@ export class DocumentsService {
   /** Remove um arquivo extra especifico (nao o principal). */
   async removeExtraFile(user: TenantAccessClaims, id: string, extraId: string, ip: string): Promise<DocumentView> {
     const ctx = requireTenantContext();
-    const row = await this.getRow(id);
+    const row = await this.getRowFor(user, id);
     this.assertPermission(user, row.module, 'update');
+    this.assertNaoEliminado(row);
 
     const sql = this.db.tenant(ctx.schemaName);
     const extraRows = await sql<Array<{ file_key: string }>>`
@@ -1150,7 +1329,7 @@ export class DocumentsService {
   /** Signed URL 60s de um arquivo extra especifico — mesma checagem de posse do principal. */
   async extraFileSignedUrl(user: TenantAccessClaims, id: string, extraId: string, ip: string): Promise<{ url: string }> {
     const ctx = requireTenantContext();
-    const row = await this.getRow(id);
+    const row = await this.getRowFor(user, id);
     this.assertPermission(user, row.module, 'read');
 
     const sql = this.db.tenant(ctx.schemaName);
@@ -1170,6 +1349,37 @@ export class DocumentsService {
       metadata: { extraId },
     });
     return { url };
+  }
+
+  /**
+   * Arquivo (principal ou extra) para a copia autenticada — mesmas checagens do
+   * download (permissao de leitura do modulo + nivel de acesso + posse pelo tenant).
+   */
+  async arquivoParaCopia(
+    user: TenantAccessClaims,
+    id: string,
+    extraId: string | undefined,
+  ): Promise<{ buffer: Buffer; fileHash: string; originalName: string; documentFileId: string | null }> {
+    const ctx = requireTenantContext();
+    const row = await this.getRowFor(user, id);
+    this.assertPermission(user, row.module, 'read');
+    let file: { file_key: string; file_hash: string; original_name: string; id: string | null } | undefined;
+    if (extraId) {
+      const sql = this.db.tenant(ctx.schemaName);
+      const rows = await sql<Array<{ id: string; file_key: string; file_hash: string; original_name: string }>>`
+        SELECT id, file_key, file_hash, original_name FROM document_files WHERE id = ${extraId} AND document_id = ${id}
+      `;
+      file = rows[0];
+    } else if (row.file_key && row.file_hash) {
+      file = { id: null, file_key: row.file_key, file_hash: row.file_hash, original_name: row.original_name };
+    }
+    if (!file) throw new NotFoundException('Documento sem arquivo anexado');
+    return {
+      buffer: await this.storage.download(ctx.slug, file.file_key),
+      fileHash: file.file_hash,
+      originalName: file.original_name,
+      documentFileId: file.id,
+    };
   }
 
   /**
@@ -1196,18 +1406,20 @@ export class DocumentsService {
     return map;
   }
 
-  private buildSearchWhere(sql: Sql, q: SearchDocumentsQuery) {
+  private buildSearchWhere(sql: Sql, q: SearchDocumentsQuery, user: TenantAccessClaims) {
     const text = q.q ? `%${q.q}%` : null;
     const dateQuery = parseDateQuery(q.q);
     return sql`
       d.module = ${q.module} AND d.deleted_at IS NULL
       AND (${text}::text IS NULL OR d.credor ILIKE ${text} OR d.historico ILIKE ${text}
            OR d.descricao ILIKE ${text} OR d.empenho ILIKE ${text} OR d.doc_caixa ILIKE ${text}
-           OR d.original_name ILIKE ${text}
+           OR d.original_name ILIKE ${text} OR d.metadados::text ILIKE ${text}
            OR (${dateQuery?.day ?? null}::int IS NOT NULL
                AND EXTRACT(DAY FROM d.document_date) = ${dateQuery?.day ?? null}
                AND EXTRACT(MONTH FROM d.document_date) = ${dateQuery?.month ?? null}
                AND (${dateQuery?.year ?? null}::int IS NULL OR EXTRACT(YEAR FROM d.document_date) = ${dateQuery?.year ?? null})))
+      AND (${this.podeVerRestrito(user)} OR d.nivel_acesso = 'publico')
+      AND (${q.documentTypeId ?? null}::uuid IS NULL OR d.document_type_id = ${q.documentTypeId ?? null})
       AND (${q.subtype ?? null}::varchar IS NULL OR d.subtype = ${q.subtype ?? null})
       AND (${q.exercicio ?? null}::int IS NULL OR d.exercicio = ${q.exercicio ?? null})
       AND (${q.competencia ?? null}::varchar IS NULL OR d.competencia = ${q.competencia ?? null})
@@ -1245,7 +1457,7 @@ export class DocumentsService {
       criado_desc: 'd.criado_em DESC',
     }[q.sort];
 
-    const where = this.buildSearchWhere(sql, q);
+    const where = this.buildSearchWhere(sql, q, user);
 
     const items = await sql<DocRow[]>`
       SELECT d.id, d.module, d.subtype, d.doc_caixa, d.empenho, d.credor, d.historico, d.descricao,
@@ -1257,10 +1469,16 @@ export class DocumentsService {
              d.original_name, d.file_key, d.file_size, d.file_hash, d.paginas, d.status,
              d.criado_em, d.deleted_at,
              d.conferencia_status, d.conferencia_resultado, d.conferencia_erro, d.conferencia_verificada_em
+             , d.classificacao_id, cl.codigo AS classificacao_codigo, cl.descricao AS classificacao_descricao,
+             d.fase, d.nivel_acesso, d.grau_sigilo, d.data_inicio_contagem, d.data_prevista_transferencia, d.data_prevista_destinacao,
+             d.metadados, d.digitalizado, d.responsavel_digitalizacao, d.data_digitalizacao, d.local_digitalizacao, d.ocr_status,
+             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
       LEFT JOIN document_types dt ON dt.id = d.document_type_id
+      LEFT JOIN classificacoes cl ON cl.id = d.classificacao_id
+      LEFT JOIN locais_fisicos lf ON lf.id = d.local_fisico_id
       WHERE ${where}
       ORDER BY ${sql.unsafe(orderBy)}
       LIMIT ${q.pageSize} OFFSET ${offset}
@@ -1297,7 +1515,7 @@ export class DocumentsService {
     const sql = this.db.tenant(ctx.schemaName);
 
     const q: SearchDocumentsQuery = { module: modulo, sort: 'data_desc', page: 1, pageSize: limite, ...filtros };
-    const where = this.buildSearchWhere(sql, q);
+    const where = this.buildSearchWhere(sql, q, user);
 
     let agregado: number | null = null;
     if (agregacao !== 'nenhuma') {
@@ -1318,10 +1536,16 @@ export class DocumentsService {
              d.original_name, d.file_key, d.file_size, d.file_hash, d.paginas, d.status,
              d.criado_em, d.deleted_at,
              d.conferencia_status, d.conferencia_resultado, d.conferencia_erro, d.conferencia_verificada_em
+             , d.classificacao_id, cl.codigo AS classificacao_codigo, cl.descricao AS classificacao_descricao,
+             d.fase, d.nivel_acesso, d.grau_sigilo, d.data_inicio_contagem, d.data_prevista_transferencia, d.data_prevista_destinacao,
+             d.metadados, d.digitalizado, d.responsavel_digitalizacao, d.data_digitalizacao, d.local_digitalizacao, d.ocr_status,
+             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
       LEFT JOIN document_types dt ON dt.id = d.document_type_id
+      LEFT JOIN classificacoes cl ON cl.id = d.classificacao_id
+      LEFT JOIN locais_fisicos lf ON lf.id = d.local_fisico_id
       WHERE ${where}
       ORDER BY d.document_date DESC NULLS LAST, d.doc_caixa ASC NULLS LAST
       LIMIT ${limite}
@@ -1347,10 +1571,16 @@ export class DocumentsService {
              d.original_name, d.file_key, d.file_size, d.file_hash, d.paginas, d.status,
              d.criado_em, d.deleted_at,
              d.conferencia_status, d.conferencia_resultado, d.conferencia_erro, d.conferencia_verificada_em
+             , d.classificacao_id, cl.codigo AS classificacao_codigo, cl.descricao AS classificacao_descricao,
+             d.fase, d.nivel_acesso, d.grau_sigilo, d.data_inicio_contagem, d.data_prevista_transferencia, d.data_prevista_destinacao,
+             d.metadados, d.digitalizado, d.responsavel_digitalizacao, d.data_digitalizacao, d.local_digitalizacao, d.ocr_status,
+             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
       LEFT JOIN document_types dt ON dt.id = d.document_type_id
+      LEFT JOIN classificacoes cl ON cl.id = d.classificacao_id
+      LEFT JOIN locais_fisicos lf ON lf.id = d.local_fisico_id
       WHERE d.id = ${id}
       LIMIT 1
     `;
@@ -1362,7 +1592,7 @@ export class DocumentsService {
 
   async get(user: TenantAccessClaims, id: string): Promise<DocumentView> {
     const ctx = requireTenantContext();
-    const row = await this.getRow(id);
+    const row = await this.getRowFor(user, id);
     this.assertPermission(user, row.module, 'read');
     const sql = this.db.tenant(ctx.schemaName);
     const extras = await this.fetchExtrasMap(sql, [id]);
@@ -1372,7 +1602,7 @@ export class DocumentsService {
   /** Signed URL 60s — checagem de permissao + posse pelo tenant ANTES de assinar. */
   async signedUrl(user: TenantAccessClaims, id: string, ip: string): Promise<{ url: string }> {
     const ctx = requireTenantContext();
-    const row = await this.getRow(id);
+    const row = await this.getRowFor(user, id);
     this.assertPermission(user, row.module, 'read');
     if (!row.file_key) {
       throw new BadRequestException('Documento sem arquivo anexado (etiqueta aguardando PDF)');
@@ -1395,9 +1625,29 @@ export class DocumentsService {
     ip: string,
   ): Promise<DocumentView> {
     const ctx = requireTenantContext();
-    const row = await this.getRow(id);
+    const row = await this.getRowFor(user, id);
     this.assertPermission(user, row.module, 'update');
+    this.assertNaoEliminado(row);
+    // Documento com sigilo LAI vigente: o acesso so muda pelo termo (desclassificacao), nunca pela edicao.
+    if (row.grau_sigilo && input.nivelAcesso !== undefined && input.nivelAcesso !== 'restrito') {
+      throw new BadRequestException('Documento com classificação de sigilo vigente: para liberar o acesso, desclassifique pelo termo (Sigilo).');
+    }
     const sql = this.db.tenant(ctx.schemaName);
+
+    let metadadosNovo: Metadados | undefined;
+    if (input.metadados !== undefined || (row.module === 'acervo' && input.documentTypeId)) {
+      if (row.module !== 'acervo') throw new BadRequestException('Metadados so existem em documentos do Acervo');
+      const atuais = (typeof row.metadados === 'string' ? JSON.parse(row.metadados) : row.metadados) as Metadados | null;
+      metadadosNovo = (
+        await this.validarTipoAcervo(sql, input.documentTypeId ?? row.document_type_id, input.metadados ?? atuais ?? {})
+      ).metadados;
+    }
+    if (input.localFisicoId) {
+      const local = await sql`SELECT 1 FROM locais_fisicos WHERE id = ${input.localFisicoId} AND ativo`;
+      if (local.length === 0) throw new BadRequestException('Local fisico invalido ou inativo');
+    }
+    // Coluna sem alteracao = mantem o valor atual (identificador constante, nunca entrada do usuario).
+    const keep = (col: string) => sql.unsafe(col);
 
     await sql`
       UPDATE documents SET
@@ -1417,6 +1667,14 @@ export class DocumentsService {
         orgao_id = ${input.orgaoId === undefined ? row.orgao_id : input.orgaoId},
         document_type_id = ${input.documentTypeId ?? row.document_type_id},
         exercicio = ${input.exercicio ?? row.exercicio},
+        metadados = ${metadadosNovo === undefined ? keep('metadados') : sql.json(metadadosNovo as never)},
+        digitalizado = ${input.digitalizado ?? keep('digitalizado')},
+        responsavel_digitalizacao = ${input.responsavelDigitalizacao === undefined ? keep('responsavel_digitalizacao') : input.responsavelDigitalizacao},
+        data_digitalizacao = ${input.dataDigitalizacao === undefined ? keep('data_digitalizacao') : input.dataDigitalizacao},
+        local_digitalizacao = ${input.localDigitalizacao === undefined ? keep('local_digitalizacao') : input.localDigitalizacao},
+        local_fisico_id = ${input.localFisicoId === undefined ? keep('local_fisico_id') : input.localFisicoId},
+        -- Informar a caixa implica que existe original em papel.
+        possui_original_fisico = ${input.possuiOriginalFisico ?? (input.localFisicoId ? true : keep('possui_original_fisico'))},
         atualizado_em = now()
       WHERE id = ${id} AND deleted_at IS NULL
     `;
@@ -1429,14 +1687,31 @@ export class DocumentsService {
       ip,
       metadata: { changes: input as Record<string, unknown> },
     });
+    if (
+      input.classificacaoId !== undefined ||
+      input.nivelAcesso !== undefined ||
+      input.dataInicioContagem !== undefined
+    ) {
+      await this.arquivistica.aplicarAoDocumento(id, {
+        module: row.module,
+        // Sem classe explicita na edicao = mantem a atual (nao volta pro padrao do modulo).
+        classificacaoId: input.classificacaoId === undefined ? (row.classificacao_id ?? null) : input.classificacaoId,
+        nivelAcesso: input.nivelAcesso,
+        dataInicioContagem: input.dataInicioContagem,
+      });
+    } else if (input.documentDate !== undefined || input.exercicio !== undefined) {
+      await this.arquivistica.recalcularDocumento(id);
+    }
     return this.get(user, id);
   }
 
   /** Soft delete — documento vai pra lixeira (retencao 30 dias). Arquivo permanece. */
   async softDelete(user: TenantAccessClaims, id: string, ip: string): Promise<void> {
     const ctx = requireTenantContext();
-    const row = await this.getRow(id);
+    const row = await this.getRowFor(user, id);
     this.assertPermission(user, row.module, 'delete');
+    this.assertExcluivel([row]);
+    await this.assertForaDeDossie([id]);
     const sql = this.db.tenant(ctx.schemaName);
     await sql`
       UPDATE documents SET deleted_at = now(), deleted_by = ${user.sub}
@@ -1469,7 +1744,7 @@ export class DocumentsService {
     const sql = this.db.tenant(ctx.schemaName);
     const rows = await sql<Array<{ id: string }>>`
       UPDATE documents SET deleted_at = now(), deleted_by = ${user.sub}
-      WHERE module = ${module} AND deleted_at IS NULL
+      WHERE module = ${module} AND deleted_at IS NULL AND fase = 'corrente'
         AND (${apenasSemArquivo} = false OR status = 'aguardando_arquivo')
         AND (${orgaoId ?? null}::uuid IS NULL OR orgao_id = ${orgaoId ?? null})
         AND (${subtype ?? null}::varchar IS NULL OR subtype = ${subtype ?? null})
@@ -1500,13 +1775,16 @@ export class DocumentsService {
     const sql = this.db.tenant(ctx.schemaName);
     if (ids.length === 0) return 0;
 
-    const rows = await sql<Array<{ id: string; module: DocModule }>>`
-      SELECT id, module FROM documents WHERE id = ANY(${ids}) AND deleted_at IS NULL
+    const rows = await sql<Array<{ id: string; module: DocModule; fase: string }>>`
+      SELECT id, module, fase FROM documents WHERE id = ANY(${ids}) AND deleted_at IS NULL
+        AND (${this.podeVerRestrito(user)} OR nivel_acesso = 'publico')
     `;
     if (rows.length === 0) return 0;
     for (const module of new Set(rows.map((r) => r.module))) {
       this.assertPermission(user, module, 'delete');
     }
+    this.assertExcluivel(rows);
+    await this.assertForaDeDossie(ids);
 
     await sql`
       UPDATE documents SET deleted_at = now(), deleted_by = ${user.sub}
@@ -1533,6 +1811,7 @@ export class DocumentsService {
     >`
       SELECT id, module, file_key, original_name FROM documents
       WHERE id = ANY(${ids}) AND deleted_at IS NULL
+        AND (${this.podeVerRestrito(user)} OR nivel_acesso = 'publico')
     `;
     if (rows.length === 0) throw new NotFoundException('Nenhum documento encontrado para os IDs informados');
     for (const module of new Set(rows.map((r) => r.module))) {
@@ -1540,7 +1819,7 @@ export class DocumentsService {
     }
 
     const extraRows = await sql<Array<{ file_key: string; original_name: string }>>`
-      SELECT file_key, original_name FROM document_files WHERE document_id = ANY(${ids})
+      SELECT file_key, original_name FROM document_files WHERE document_id = ANY(${rows.map((r) => r.id)})
     `;
 
     const archive = archiver('zip', { zlib: { level: 9 } });
@@ -1600,9 +1879,10 @@ export class DocumentsService {
 
   async restore(user: TenantAccessClaims, id: string, ip: string): Promise<void> {
     const ctx = requireTenantContext();
-    const row = await this.getRow(id, true);
+    const row = await this.getRowFor(user, id, true);
     if (!row.deleted_at) throw new BadRequestException('Documento nao esta na lixeira');
     this.assertPermission(user, row.module, 'update');
+    this.assertNaoEliminado(row);
     const sql = this.db.tenant(ctx.schemaName);
     await sql`
       UPDATE documents SET deleted_at = NULL, deleted_by = NULL, atualizado_em = now()
@@ -1645,12 +1925,19 @@ export class DocumentsService {
              d.original_name, d.file_key, d.file_size, d.file_hash, d.paginas, d.status,
              d.criado_em, d.deleted_at,
              d.conferencia_status, d.conferencia_resultado, d.conferencia_erro, d.conferencia_verificada_em
+             , d.classificacao_id, cl.codigo AS classificacao_codigo, cl.descricao AS classificacao_descricao,
+             d.fase, d.nivel_acesso, d.grau_sigilo, d.data_inicio_contagem, d.data_prevista_transferencia, d.data_prevista_destinacao,
+             d.metadados, d.digitalizado, d.responsavel_digitalizacao, d.data_digitalizacao, d.local_digitalizacao, d.ocr_status,
+             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
       LEFT JOIN document_types dt ON dt.id = d.document_type_id
+      LEFT JOIN classificacoes cl ON cl.id = d.classificacao_id
+      LEFT JOIN locais_fisicos lf ON lf.id = d.local_fisico_id
       WHERE d.deleted_at IS NOT NULL
         AND (${q.module ?? null}::varchar IS NULL OR d.module = ${q.module ?? null})
+        AND (${this.podeVerRestrito(user)} OR d.nivel_acesso = 'publico')
       ORDER BY d.deleted_at DESC
       LIMIT ${q.pageSize} OFFSET ${offset}
     `;
@@ -1658,6 +1945,7 @@ export class DocumentsService {
       SELECT COUNT(*)::bigint AS total FROM documents d
       WHERE d.deleted_at IS NOT NULL
         AND (${q.module ?? null}::varchar IS NULL OR d.module = ${q.module ?? null})
+        AND (${this.podeVerRestrito(user)} OR d.nivel_acesso = 'publico')
     `;
     return {
       items: rows.map((r) => toView(r)),

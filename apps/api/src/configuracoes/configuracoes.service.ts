@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { BadRequestException, Injectable, PayloadTooLargeException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import type { Sql } from 'postgres';
 import * as argon2 from 'argon2';
 import {
@@ -15,6 +15,8 @@ import {
   type UsuarioUpdate,
   type TenantSettings,
   type TenantBranding,
+  MODELOS_TIPO_ACERVO,
+  camposMetadadosSchema,
 } from '@jdoc/shared';
 import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.module';
@@ -28,6 +30,33 @@ const BRASAO_MAX_BYTES = 2 * 1024 * 1024;
 interface ListResult<T> {
   items: T[];
   total: number;
+}
+
+interface TipoDocumentoRow {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  cor: string;
+  ativo: boolean;
+  modulo: 'outros' | 'acervo';
+  campos: unknown;
+  classificacao_id: string | null;
+  nivel_acesso_padrao: 'publico' | 'restrito';
+}
+
+function toTipoDocumento(r: TipoDocumentoRow): TipoDocumento {
+  const campos = typeof r.campos === 'string' ? (JSON.parse(r.campos) as unknown) : r.campos;
+  return {
+    id: r.id,
+    nome: r.nome,
+    descricao: r.descricao,
+    cor: r.cor,
+    ativo: r.ativo,
+    modulo: r.modulo,
+    campos: camposMetadadosSchema.catch([]).parse(campos),
+    classificacaoId: r.classificacao_id,
+    nivelAcessoPadrao: r.nivel_acesso_padrao,
+  };
 }
 
 @Injectable()
@@ -118,7 +147,7 @@ export class ConfiguracoesService {
     const sql = this.db.tenant(ctx.schemaName);
 
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: Array<string | number | boolean | null> = [];
     let idx = 1;
     if (data.codigo !== undefined) { fields.push(`codigo = $${idx++}`); values.push(data.codigo); }
     if (data.sigla !== undefined) { fields.push(`sigla = $${idx++}`); values.push(data.sigla); }
@@ -251,7 +280,7 @@ export class ConfiguracoesService {
     const sql = this.db.tenant(ctx.schemaName);
 
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: Array<string | number | boolean | null> = [];
     let idx = 1;
     if (data.orgaoId !== undefined) { fields.push(`orgao_id = $${idx++}`); values.push(data.orgaoId); }
     if (data.codigo !== undefined) { fields.push(`codigo = $${idx++}`); values.push(data.codigo); }
@@ -375,7 +404,7 @@ export class ConfiguracoesService {
     const sql = this.db.tenant(ctx.schemaName);
 
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: Array<string | number | boolean | null> = [];
     let idx = 1;
     if (data.codigo !== undefined) { fields.push(`codigo = $${idx++}`); values.push(data.codigo); }
     if (data.descricao !== undefined) { fields.push(`descricao = $${idx++}`); values.push(data.descricao); }
@@ -474,7 +503,7 @@ export class ConfiguracoesService {
     const sql = this.db.tenant(ctx.schemaName);
 
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: Array<string | number | boolean | null> = [];
     let idx = 1;
     if (data.exercicio !== undefined) { fields.push(`exercicio = $${idx++}`); values.push(data.exercicio); }
     if (data.valor !== undefined) { fields.push(`valor = $${idx++}`); values.push(data.valor); }
@@ -595,7 +624,7 @@ export class ConfiguracoesService {
     const sql = this.db.tenant(ctx.schemaName);
 
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: Array<string | number | boolean | null> = [];
     let idx = 1;
     if (data.codigo !== undefined) { fields.push(`codigo = $${idx++}`); values.push(data.codigo); }
     if (data.nome !== undefined) { fields.push(`nome = $${idx++}`); values.push(data.nome); }
@@ -698,7 +727,7 @@ export class ConfiguracoesService {
     const sql = this.db.tenant(ctx.schemaName);
 
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: Array<string | number | boolean | null> = [];
     let idx = 1;
     if (data.nome !== undefined) { fields.push(`nome = $${idx++}`); values.push(data.nome); }
     if (data.cpfMascarado !== undefined) { fields.push(`cpf_mascarado = $${idx++}`); values.push(data.cpfMascarado); }
@@ -747,33 +776,54 @@ export class ConfiguracoesService {
   async listTiposDocumento(
     page: number,
     pageSize: number,
+    modulo?: 'outros' | 'acervo',
   ): Promise<ListResult<TipoDocumento>> {
     const ctx = requireTenantContext();
     const sql = this.db.tenant(ctx.schemaName);
     const offset = (page - 1) * pageSize;
 
-    const rows = await sql<Array<{ id: string; nome: string; descricao: string | null; cor: string; ativo: boolean }>>`
-      SELECT id, nome, descricao, cor, ativo
+    const rows = await sql<TipoDocumentoRow[]>`
+      SELECT id, nome, descricao, cor, ativo, modulo, campos, classificacao_id, nivel_acesso_padrao
       FROM document_types
-      WHERE ativo = true
+      WHERE ativo = true AND (${modulo ?? null}::varchar IS NULL OR modulo = ${modulo ?? null})
       ORDER BY nome ASC
       LIMIT ${pageSize} OFFSET ${offset}
     `;
 
     const totalRows = await sql<Array<{ total: string }>>`
-      SELECT COUNT(*)::bigint AS total FROM document_types WHERE ativo = true
+      SELECT COUNT(*)::bigint AS total FROM document_types
+      WHERE ativo = true AND (${modulo ?? null}::varchar IS NULL OR modulo = ${modulo ?? null})
     `;
 
     return {
-      items: rows.map((r) => ({
-        id: r.id,
-        nome: r.nome,
-        descricao: r.descricao,
-        cor: r.cor,
-        ativo: r.ativo,
-      })),
+      items: rows.map(toTipoDocumento),
       total: Number(totalRows[0]?.total ?? 0),
     };
+  }
+
+  /** Nome de tipo repetido no mesmo modulo = 409 com mensagem (antes vazava como 500). */
+  private async tipoUnico<T>(q: () => Promise<T>): Promise<T> {
+    try {
+      return await q();
+    } catch (e) {
+      if ((e as { code?: string }).code === '23505') {
+        throw new ConflictException('Ja existe um tipo de documento com esse nome neste modulo');
+      }
+      throw e;
+    }
+  }
+
+  /** Classe padrao do tipo precisa existir e ter temporalidade (nao pode ser agrupadora). */
+  private async assertClasseDoTipo(sql: Sql, classificacaoId: string | null | undefined): Promise<void> {
+    if (!classificacaoId) return;
+    const rows = await sql<Array<{ ok: boolean }>>`
+      SELECT (ativo AND prazo_corrente_anos IS NOT NULL AND prazo_intermediario_anos IS NOT NULL
+              AND destinacao IS NOT NULL) AS ok
+      FROM classificacoes WHERE id = ${classificacaoId}
+    `;
+    if (!rows[0]?.ok) {
+      throw new BadRequestException('Classe padrao invalida: escolha uma classe ativa com temporalidade definida');
+    }
   }
 
   async createTipoDocumento(
@@ -783,12 +833,15 @@ export class ConfiguracoesService {
   ): Promise<{ id: string }> {
     const ctx = requireTenantContext();
     const sql = this.db.tenant(ctx.schemaName);
+    await this.assertClasseDoTipo(sql, data.classificacaoId);
 
-    const rows = await sql<Array<{ id: string }>>`
-      INSERT INTO document_types (nome, descricao, cor, ativo)
-      VALUES (${data.nome}, ${data.descricao}, ${data.cor}, ${data.ativo ?? true})
+    const rows = await this.tipoUnico(() => sql<Array<{ id: string }>>`
+      INSERT INTO document_types (nome, descricao, cor, ativo, modulo, campos, classificacao_id, nivel_acesso_padrao)
+      VALUES (${data.nome}, ${data.descricao}, ${data.cor}, ${data.ativo ?? true}, ${data.modulo ?? 'outros'},
+              ${sql.json((data.campos ?? []) as never)}, ${data.classificacaoId ?? null},
+              ${data.nivelAcessoPadrao ?? 'restrito'})
       RETURNING id
-    `;
+    `);
     const id = rows[0]?.id ?? '';
 
     await this.audit.logTenant({
@@ -797,7 +850,7 @@ export class ConfiguracoesService {
       resourceType: 'document_type',
       resourceId: id,
       ip,
-      metadata: { nome: data.nome },
+      metadata: { nome: data.nome, modulo: data.modulo ?? 'outros' },
     });
 
     return { id };
@@ -811,38 +864,100 @@ export class ConfiguracoesService {
   ): Promise<void> {
     const ctx = requireTenantContext();
     const sql = this.db.tenant(ctx.schemaName);
+    const atual = await sql<TipoDocumentoRow[]>`
+      SELECT id, nome, descricao, cor, ativo, modulo, campos, classificacao_id, nivel_acesso_padrao
+      FROM document_types WHERE id = ${id}
+    `;
+    const row = atual[0];
+    if (!row) throw new BadRequestException('Tipo de documento nao encontrado');
+    if (data.classificacaoId !== undefined) await this.assertClasseDoTipo(sql, data.classificacaoId);
+    // Tipo com documentos nao muda de modulo: os documentos ficariam orfaos na outra tela.
+    if (data.modulo !== undefined && data.modulo !== row.modulo) {
+      const uso = await sql`SELECT 1 FROM documents WHERE document_type_id = ${id} LIMIT 1`;
+      if (uso.length > 0) throw new BadRequestException('Tipo ja possui documentos: nao pode trocar de modulo');
+    }
+    const t = toTipoDocumento(row);
 
-    const fields: string[] = [];
-    const values: any[] = [];
-    let idx = 1;
-    if (data.nome !== undefined) { fields.push(`nome = $${idx++}`); values.push(data.nome); }
-    if (data.descricao !== undefined) { fields.push(`descricao = $${idx++}`); values.push(data.descricao); }
-    if (data.cor !== undefined) { fields.push(`cor = $${idx++}`); values.push(data.cor); }
-    if (data.ativo !== undefined) { fields.push(`ativo = $${idx++}`); values.push(data.ativo); }
+    await this.tipoUnico(() => sql`
+      UPDATE document_types SET
+        nome = ${data.nome ?? t.nome},
+        descricao = ${data.descricao === undefined ? t.descricao : data.descricao},
+        cor = ${data.cor ?? t.cor},
+        ativo = ${data.ativo ?? t.ativo},
+        modulo = ${data.modulo ?? t.modulo},
+        campos = ${sql.json((data.campos ?? t.campos) as never)},
+        classificacao_id = ${data.classificacaoId === undefined ? t.classificacaoId : data.classificacaoId},
+        nivel_acesso_padrao = ${data.nivelAcessoPadrao ?? t.nivelAcessoPadrao}
+      WHERE id = ${id}
+    `);
 
-    if (fields.length === 0) return;
-
-    values.push(id);
-    await sql.unsafe(
-      `UPDATE document_types SET ${fields.join(', ')} WHERE id = $${idx}`,
-      values,
-    );
-
+    // Campos alterados nao reescrevem metadados antigos: valores de chaves removidas
+    // ficam guardados no documento (historico), so deixam de aparecer no formulario.
     await this.audit.logTenant({
       actorId,
       action: 'tipo_documento_updated',
       resourceType: 'document_type',
       resourceId: id,
       ip,
+      metadata: { antes: t, depois: data as Record<string, unknown> },
     });
+  }
+
+  /**
+   * Cria os tipos documentais prontos do Acervo (Lei, Decreto, Portaria,
+   * Contrato, Licitacao, Ficha Funcional) que ainda nao existem pelo nome,
+   * ligando cada um a classe do Plano de Classificacao pelo codigo, se houver.
+   */
+  async criarModelosAcervo(actorId: string, ip: string): Promise<{ criados: number }> {
+    const ctx = requireTenantContext();
+    const sql = this.db.tenant(ctx.schemaName);
+    const existentes = await sql<Array<{ nome: string }>>`
+      SELECT lower(nome) AS nome FROM document_types WHERE modulo = 'acervo'
+    `;
+    const nomes = new Set(existentes.map((e) => e.nome));
+    const classes = await sql<Array<{ id: string; codigo: string }>>`
+      SELECT id, codigo FROM classificacoes
+      WHERE ativo AND prazo_corrente_anos IS NOT NULL AND prazo_intermediario_anos IS NOT NULL AND destinacao IS NOT NULL
+    `;
+    const porCodigo = new Map(classes.map((c) => [c.codigo, c.id]));
+    let criados = 0;
+    for (const m of MODELOS_TIPO_ACERVO) {
+      if (nomes.has(m.nome.toLowerCase())) continue;
+      await sql`
+        INSERT INTO document_types (nome, descricao, cor, ativo, modulo, campos, classificacao_id, nivel_acesso_padrao)
+        VALUES (${m.nome}, ${m.descricao}, 'blue', true, 'acervo', ${sql.json(m.campos as never)},
+                ${m.classificacaoCodigo ? (porCodigo.get(m.classificacaoCodigo) ?? null) : null}, ${m.nivelAcessoPadrao})
+      `;
+      criados++;
+    }
+    await this.audit.logTenant({
+      actorId,
+      action: 'tipo_documento_modelos_acervo',
+      resourceType: 'document_type',
+      ip,
+      metadata: { criados },
+    });
+    return { criados };
   }
 
   async deleteTipoDocumento(id: string, actorId: string, ip: string): Promise<void> {
     const ctx = requireTenantContext();
     const sql = this.db.tenant(ctx.schemaName);
 
-    // Soft delete: marca como inativo
-    await sql.unsafe(`UPDATE document_types SET ativo = false WHERE id = $1`, [id]);
+    // Exclusao definitiva (para corrigir tipo criado errado). Bloqueada se houver
+    // qualquer documento com o tipo — inclusive na lixeira — para nao perder a
+    // referencia (a FK tambem impediria). Documentos vinculados: inative o tipo.
+    const tipo = await sql<Array<{ nome: string }>>`SELECT nome FROM document_types WHERE id = ${id}`;
+    if (!tipo[0]) throw new NotFoundException('Tipo de documento nao encontrado');
+    const [uso] = await sql<Array<{ n: number }>>`
+      SELECT count(*)::int AS n FROM documents WHERE document_type_id = ${id}
+    `;
+    if ((uso?.n ?? 0) > 0) {
+      throw new ConflictException(
+        `Não é possível excluir "${tipo[0].nome}": há ${uso!.n} documento(s) vinculado(s) a este tipo (inclusive na lixeira).`,
+      );
+    }
+    await sql`DELETE FROM document_types WHERE id = ${id}`;
 
     await this.audit.logTenant({
       actorId,
@@ -1129,7 +1244,7 @@ export class ConfiguracoesService {
     const brasaoUrl =
       brasaoKey ? await this.storage.createSignedUrl(ctx.slug, brasaoKey, BRASAO_URL_TTL_S) : null;
 
-    return { nomeExibido, corDestaque, brasaoUrl };
+    return { nomeExibido, corDestaque, brasaoUrl, modulos: ctx.modulos };
   }
 
   /** Substitui o brasao do tenant (upload de PNG/JPEG, valida pelos magic bytes). */

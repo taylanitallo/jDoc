@@ -1,0 +1,28 @@
+# Dependencias e builds locais (o Dockerfile instala/compila dentro da imagem;
+# node_modules do Windows tem links que quebram no Linux)
+**/node_modules
+**/dist
+**/.next
+**/*.tsbuildinfo
+
+# Segredos e dados locais — nunca entram na imagem
+.env
+**/.env
+**/.env.*
+!.env.example
+**/.storage
+**/certs/*.pem
+**/certs/*.key
+
+# Desktop (Electron) nao faz parte da API
+apps/desktop/release
+apps/desktop/out
+
+# Diversos
+.git
+.github
+**/coverage
+**/*.log
+docs
+*.png
+*.PNG

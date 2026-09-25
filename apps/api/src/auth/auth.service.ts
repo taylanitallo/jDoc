@@ -7,6 +7,7 @@ import {
   type LoginInput,
   type TenantAccessClaims,
   type TenantRole,
+  type UsuarioAtual,
 } from '@jdoc/shared';
 import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.module';
@@ -166,6 +167,18 @@ export class AuthService {
   async logout(token: string, actorId: string | null, ip: string): Promise<void> {
     await this.refreshTokens.revoke('tenant', token);
     await this.audit.logTenant({ actorId, action: 'logout', ip });
+  }
+
+  /** Perfil minimo para o shell (nome no rodape do menu). Tenant vem do contexto validado. */
+  async me(userId: string): Promise<UsuarioAtual> {
+    const ctx = requireTenantContext();
+    const rows = await this.db.tenant(ctx.schemaName)<Array<{ nome: string; email: string; role: UsuarioAtual['role'] }>>`
+      SELECT nome, email, role FROM users WHERE id = ${userId} AND ativo = true
+    `;
+    const u = rows[0];
+    if (!u) throw new UnauthorizedException('Sessao invalida');
+    const podeVerRestrito = u.role === 'admin' || (await this.loadPermissions(ctx.schemaName, userId)).includes('acervo_restrito:read');
+    return { nome: u.nome, email: u.email, role: u.role, orgao: ctx.nome, podeVerRestrito };
   }
 
   async logoutAll(userId: string, ip: string): Promise<void> {

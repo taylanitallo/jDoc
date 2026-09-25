@@ -1,3 +1,4 @@
+import type { Sql } from 'postgres';
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { Worker, type Job } from 'bullmq';
 import Redis from 'ioredis';
@@ -96,10 +97,10 @@ export class ReportsWorker implements OnModuleInit, OnModuleDestroy {
 
     try {
       if (tipo === 'prestacao_contas') {
-        await this.processPrestacaoContas(sql, slug, jobId, params as any);
+        await this.processPrestacaoContas(sql, slug, jobId, params as Parameters<ReportsWorker['processPrestacaoContas']>[3]);
       } else if (tipo === 'midia_legislativa') {
         await this.processMidiaLegislativa(
-          sql, slug, jobId, params as any, tenantNome, corDestaque, nomeExibido, brasaoDataUri, actorId,
+          sql, slug, jobId, params as Parameters<ReportsWorker['processMidiaLegislativa']>[3], tenantNome, corDestaque, nomeExibido, brasaoDataUri, actorId,
         );
       }
 
@@ -147,7 +148,7 @@ export class ReportsWorker implements OnModuleInit, OnModuleDestroy {
   }
 
   private async processPrestacaoContas(
-    sql: any,
+    sql: Sql,
     slug: string,
     jobId: string,
     params: { periodoInicio: string; periodoFim: string; ordenacao: string; relatorio: string },
@@ -246,7 +247,7 @@ export class ReportsWorker implements OnModuleInit, OnModuleDestroy {
 
       doc.moveDown(2);
       doc.font('Helvetica-Oblique').fontSize(9).text(
-        `Data da emissão do documento: ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}`,
+        `Data da emissão do documento: ${new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })} ${new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
       );
 
       doc.end();
@@ -277,7 +278,7 @@ export class ReportsWorker implements OnModuleInit, OnModuleDestroy {
   }
 
   private async processMidiaLegislativa(
-    sql: any,
+    sql: Sql,
     slug: string,
     jobId: string,
     params: { exercicio: number; competencias: number[]; midias: string[] },
@@ -391,7 +392,7 @@ export class ReportsWorker implements OnModuleInit, OnModuleDestroy {
               documentTypeNome: row.document_type_nome,
             });
             totalRegistros++;
-          } catch (err) {
+          } catch {
             this.logger.warn(`Arquivo nao encontrado: ${row.file_key}`);
           }
         }

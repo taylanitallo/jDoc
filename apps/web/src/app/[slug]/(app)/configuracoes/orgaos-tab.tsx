@@ -39,16 +39,16 @@ export function OrgaosTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-bold text-app">Órgãos</h2>
+        <h2 className="text-base font-bold text-ink-900">Órgãos</h2>
         <button type="button" className={btnPrimary} onClick={() => setEditing('new')}>
           <span className="flex items-center gap-2">
-            <Plus className="h-4 w-4" aria-hidden /> Novo Órgão
+            <Plus className="h-4 w-4" aria-hidden /> Novo órgão
           </span>
         </button>
       </div>
 
       <div className="relative max-w-sm">
-        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-app-muted" aria-hidden />
+        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-ink-500" aria-hidden />
         <input
           aria-label="Pesquisar por descrição"
           className={inputCls + ' pl-9'}
@@ -59,14 +59,14 @@ export function OrgaosTab() {
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-app-muted">Carregando...</p>
+        <p className="text-sm text-ink-500">Carregando...</p>
       ) : data && data.items.length === 0 ? (
         <EmptyState icon={Search} title="Nenhum órgão encontrado" description="Cadastre órgãos para este exercício." />
       ) : (
         <div className={`${cardCls} overflow-x-auto`}>
           <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-app-border text-[11px] font-bold uppercase text-app-muted">
+            <thead className="bg-ink-50/60">
+              <tr className="border-b border-ink-200 label-caps">
                 <th className="px-4 py-3">Órgão</th>
                 <th className="px-4 py-3">Sigla</th>
                 <th className="px-4 py-3">Descrição</th>
@@ -78,13 +78,13 @@ export function OrgaosTab() {
             </thead>
             <tbody>
               {data?.items.map((o) => (
-                <tr key={o.id} className="border-b border-app-border hover:bg-app-hover">
-                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-app">{o.codigo}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-app-muted">{o.sigla ?? '—'}</td>
-                  <td className="px-4 py-3 text-app">{o.descricao}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-app-muted">{o.exercicio}</td>
-                  <td className="px-4 py-3 text-app-muted">{o.importa ? 'SIM' : 'NÃO'}</td>
-                  <td className="px-4 py-3 text-app-muted">{o.ativo ? 'SIM' : 'NÃO'}</td>
+                <tr key={o.id} className="border-b border-ink-200 hover:bg-ink-50">
+                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-ink-800">{o.codigo}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-ink-500">{o.sigla ?? '—'}</td>
+                  <td className="px-4 py-3 text-ink-800">{o.descricao}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-ink-500">{o.exercicio}</td>
+                  <td className="px-4 py-3 text-ink-500">{o.importa ? 'SIM' : 'NÃO'}</td>
+                  <td className="px-4 py-3 text-ink-500">{o.ativo ? 'SIM' : 'NÃO'}</td>
                   <td className="px-4 py-3">
                     <div className="flex w-fit gap-0.5">
                       <button
@@ -92,7 +92,7 @@ export function OrgaosTab() {
                         title="Vincular Unidade Orçamentária"
                         aria-label={`Vincular unidade ao órgão ${o.descricao}`}
                         onClick={() => setLinkingOrgao(o)}
-                        className="rounded p-1 text-app-muted hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20"
+                        className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
                       >
                         <Building2 className="h-4 w-4" aria-hidden />
                       </button>
@@ -101,7 +101,7 @@ export function OrgaosTab() {
                         title="Editar órgão"
                         aria-label={`Editar órgão ${o.descricao}`}
                         onClick={() => setEditing(o)}
-                        className="rounded p-1 text-app-muted hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20"
+                        className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
                       >
                         <Pencil className="h-4 w-4" aria-hidden />
                       </button>
@@ -110,7 +110,7 @@ export function OrgaosTab() {
                         title="Excluir órgão"
                         aria-label={`Excluir órgão ${o.descricao}`}
                         onClick={() => remove.mutate(o.id!)}
-                        className="rounded p-1 text-app-muted hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+                        className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-danger-50 hover:text-danger-500"
                       >
                         <Trash2 className="h-4 w-4" aria-hidden />
                       </button>
@@ -184,7 +184,7 @@ function OrgaoModal({
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className={labelCls} htmlFor="orgao-codigo">Código *</label>
+            <label className={labelCls} htmlFor="orgao-codigo">Código<span className="ml-0.5 text-danger-600">*</span></label>
             <input
               id="orgao-codigo"
               className={inputCls}
@@ -204,7 +204,7 @@ function OrgaoModal({
             />
           </div>
           <div>
-            <label className={labelCls} htmlFor="orgao-exercicio">Exercício *</label>
+            <label className={labelCls} htmlFor="orgao-exercicio">Exercício<span className="ml-0.5 text-danger-600">*</span></label>
             <input
               id="orgao-exercicio"
               type="number"
@@ -214,7 +214,7 @@ function OrgaoModal({
             />
           </div>
           <div className="col-span-3">
-            <label className={labelCls} htmlFor="orgao-descricao">Descrição *</label>
+            <label className={labelCls} htmlFor="orgao-descricao">Descrição<span className="ml-0.5 text-danger-600">*</span></label>
             <input
               id="orgao-descricao"
               className={inputCls}
@@ -226,18 +226,18 @@ function OrgaoModal({
         </div>
 
         <div className="flex gap-6">
-          <label className="flex items-center gap-2 text-sm text-app">
+          <label className="flex items-center gap-2 text-sm text-ink-800">
             <input type="checkbox" checked={importa} onChange={(e) => setImporta(e.target.checked)} />
             Importa dados
           </label>
-          <label className="flex items-center gap-2 text-sm text-app">
+          <label className="flex items-center gap-2 text-sm text-ink-800">
             <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} />
             Ativo
           </label>
         </div>
 
         {error && (
-          <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">{error}</p>
+          <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">{error}</p>
         )}
 
         <div className="flex justify-end gap-2">
@@ -292,7 +292,7 @@ function UnidadesDoOrgaoModal({
     >
       <div className="space-y-4">
         {isLoading ? (
-          <p className="text-sm text-app-muted">Carregando...</p>
+          <p className="text-sm text-ink-500">Carregando...</p>
         ) : data && data.length === 0 ? (
           <EmptyState
             icon={Building2}
@@ -304,15 +304,15 @@ function UnidadesDoOrgaoModal({
             {data?.map((u) => (
               <li
                 key={u.id}
-                className="flex items-center justify-between rounded-lg border border-app-border px-3 py-2 text-sm text-app"
+                className="flex items-center justify-between rounded-[10px] border border-ink-200 px-3 py-2 text-sm text-ink-800"
               >
                 <span>
                   {u.codigo ? `${u.codigo} — ` : ''}{u.nome}
                   <span
                     className={`ml-2 rounded-full px-1.5 py-0.5 text-[9px] ${
                       u.ativo
-                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-200'
-                        : 'bg-app-badge-gray-bg text-app-badge-gray-text'
+                        ? 'bg-success-50 text-success-600'
+                        : 'bg-ink-100 text-ink-600'
                     }`}
                   >
                     {u.ativo ? 'Ativo' : 'Inativo'}
@@ -324,7 +324,7 @@ function UnidadesDoOrgaoModal({
                     title="Editar unidade"
                     aria-label={`Editar unidade ${u.nome}`}
                     onClick={() => setForm({ mode: 'edit', unidade: u })}
-                    className="rounded p-1.5 text-app-muted hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20"
+                    className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
                   >
                     <Pencil className="h-4 w-4" aria-hidden />
                   </button>
@@ -333,7 +333,7 @@ function UnidadesDoOrgaoModal({
                     title="Excluir unidade"
                     aria-label={`Excluir unidade ${u.nome}`}
                     onClick={() => remove.mutate(u.id!)}
-                    className="rounded p-1.5 text-app-muted hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+                    className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-danger-50 hover:text-danger-500"
                   >
                     <Trash2 className="h-4 w-4" aria-hidden />
                   </button>
@@ -357,7 +357,7 @@ function UnidadesDoOrgaoModal({
         ) : (
           <button type="button" className={btnPrimary} onClick={() => setForm({ mode: 'create' })}>
             <span className="flex items-center gap-2">
-              <Plus className="h-4 w-4" aria-hidden /> Nova Unidade neste Órgão
+              <Plus className="h-4 w-4" aria-hidden /> Nova unidade neste órgão
             </span>
           </button>
         )}
@@ -396,8 +396,8 @@ function UnidadeInlineForm({
   });
 
   return (
-    <div className="space-y-3 rounded-lg border border-app-border p-3">
-      <div className="grid grid-cols-2 gap-3">
+    <div className="space-y-3 rounded-[10px] border border-ink-200 p-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className={labelCls} htmlFor="unidade-orgao-codigo">Código da unidade</label>
           <input
@@ -409,7 +409,7 @@ function UnidadeInlineForm({
           />
         </div>
         <div>
-          <label className={labelCls} htmlFor="unidade-orgao-nome">Descrição *</label>
+          <label className={labelCls} htmlFor="unidade-orgao-nome">Descrição<span className="ml-0.5 text-danger-600">*</span></label>
           <input
             id="unidade-orgao-nome"
             className={inputCls}
@@ -420,13 +420,13 @@ function UnidadeInlineForm({
         </div>
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-app">
+      <label className="flex items-center gap-2 text-sm text-ink-800">
         <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} />
         Ativo
       </label>
 
       {error && (
-        <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">{error}</p>
+        <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">{error}</p>
       )}
       <div className="flex justify-end gap-2">
         <button type="button" className={btnGhost} onClick={onCancel}>Cancelar</button>

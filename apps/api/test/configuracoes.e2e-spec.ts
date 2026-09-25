@@ -120,14 +120,21 @@ describe('Configuracoes — Fase 5/6', () => {
   // (1) CRUD Unidade Orcamentaria + sub-entidades
   // =====================================================
   describe('Unidade Orcamentaria + Sub-entidades', () => {
+    let orgaoId: string;
     let unidadeId: string;
 
-    it('cria unidade orcamentaria (admin)', async () => {
+    it('cria unidade orcamentaria (admin) vinculada a um orgao', async () => {
       const { token } = await login(SLUG_A, ADMIN_EMAIL);
+      const orgao = await request(app.getHttpServer())
+        .post(`/t/${SLUG_A}/configuracoes/orgaos`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ codigo: '02', descricao: 'Secretaria de Educacao', exercicio: 2025, importa: true, ativo: true })
+        .expect(201);
+      orgaoId = orgao.body.id as string;
       const res = await request(app.getHttpServer())
         .post(`/t/${SLUG_A}/configuracoes/unidades`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ codigo: 'UO-001', nome: 'Secretaria de Educacao', ativo: true })
+        .send({ orgaoId, codigo: 'UO-001', nome: 'Secretaria de Educacao', ativo: true })
         .expect(201);
       expect(res.body.id).toMatch(/^[0-9a-f-]{36}$/);
       unidadeId = res.body.id as string;
@@ -143,12 +150,12 @@ describe('Configuracoes — Fase 5/6', () => {
       expect(res.body.items[0].nome).toBe('Secretaria de Educacao');
     });
 
-    it('cria projeto vinculado a unidade', async () => {
+    it('cria projeto/atividade do exercicio', async () => {
       const { token } = await login(SLUG_A, ADMIN_EMAIL);
       const res = await request(app.getHttpServer())
-        .post(`/t/${SLUG_A}/configuracoes/unidades/${unidadeId}/projetos`)
+        .post(`/t/${SLUG_A}/configuracoes/projetos`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ tipo: 'projeto', codigo: 'PRJ-001', descricao: 'Construcao de escola', ativo: true })
+        .send({ codigo: 'PRJ-001', descricao: 'Construcao de escola', exercicio: 2025, ativo: true })
         .expect(201);
       expect(res.body.id).toMatch(/^[0-9a-f-]{36}$/);
     });
@@ -163,12 +170,12 @@ describe('Configuracoes — Fase 5/6', () => {
       expect(res.body.id).toMatch(/^[0-9a-f-]{36}$/);
     });
 
-    it('cria elemento despesa vinculado a unidade', async () => {
+    it('cria elemento de despesa do exercicio', async () => {
       const { token } = await login(SLUG_A, ADMIN_EMAIL);
       const res = await request(app.getHttpServer())
-        .post(`/t/${SLUG_A}/configuracoes/unidades/${unidadeId}/elementos`)
+        .post(`/t/${SLUG_A}/configuracoes/elementos`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ codigo: '3.3.90.30', nome: 'Material de consumo', descricao: null, ativo: true })
+        .send({ codigo: '3.3.90.30', nome: 'Material de consumo', descricao: null, exercicio: 2025, ativo: true })
         .expect(201);
       expect(res.body.id).toMatch(/^[0-9a-f-]{36}$/);
     });
@@ -190,15 +197,27 @@ describe('Configuracoes — Fase 5/6', () => {
       expect(res.body.id).toMatch(/^[0-9a-f-]{36}$/);
     });
 
-    it('GET sub-entidades da unidade retorna registros (FK)', async () => {
+    it('GET sub-entidades retorna registros (FK da unidade + listas por exercicio)', async () => {
       const { token } = await login(SLUG_A, ADMIN_EMAIL);
-      for (const ep of ['projetos', 'dotacoes', 'elementos', 'ordenadores']) {
+      for (const ep of ['dotacoes', 'ordenadores']) {
         const res = await request(app.getHttpServer())
           .get(`/t/${SLUG_A}/configuracoes/unidades/${unidadeId}/${ep}`)
           .set('Authorization', `Bearer ${token}`)
           .expect(200);
         expect(res.body.length).toBeGreaterThanOrEqual(1);
       }
+      for (const ep of ['projetos', 'elementos']) {
+        const res = await request(app.getHttpServer())
+          .get(`/t/${SLUG_A}/configuracoes/${ep}?exercicio=2025`)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        expect(res.body.items.length).toBeGreaterThanOrEqual(1);
+      }
+      const porOrgao = await request(app.getHttpServer())
+        .get(`/t/${SLUG_A}/configuracoes/orgaos/${orgaoId}/unidades`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(porOrgao.body.map((u: { id: string }) => u.id)).toContain(unidadeId);
     });
 
     it('auditoria registra criacoes com actor correto', async () => {
@@ -251,7 +270,7 @@ describe('Configuracoes — Fase 5/6', () => {
         .patch(`/t/${SLUG_A}/configuracoes/tipos-documento/${tipoId}`)
         .set('Authorization', `Bearer ${token}`)
         .send({ descricao: 'NF-e atualizada' })
-        .expect(200);
+        .expect(204);
     });
 
     it('deleta tipo de documento', async () => {
@@ -307,7 +326,7 @@ describe('Configuracoes — Fase 5/6', () => {
           permissions: ['unidades_orcamentarias:read', 'unidades_orcamentarias:create'],
           unidadesIds: [],
         })
-        .expect(200);
+        .expect(204);
     });
 
     it('auditoria registra criacao de usuario', async () => {
@@ -442,7 +461,7 @@ describe('Configuracoes — Fase 5/6', () => {
           corDestaque: '#FF5733',
           textoRodape: 'Desenvolvido por JEOS',
         })
-        .expect(200);
+        .expect(204);
 
       const res = await request(app.getHttpServer())
         .get(`/t/${SLUG_A}/configuracoes/settings`)

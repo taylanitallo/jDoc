@@ -11,6 +11,7 @@ import {
   type WheelEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -25,6 +26,7 @@ import {
   Plus,
   Printer,
   RotateCcw,
+  ShieldCheck,
   Search,
   Sparkles,
   SlidersHorizontal,
@@ -32,9 +34,24 @@ import {
   Trash2,
   TriangleAlert,
   X,
+  CheckSquare,
+  Layers,
+  ChevronDown,
+  FilePlus2,
+  FolderOpen,
+  Landmark,
+  Library,
+  MoreHorizontal,
+  Scale,
+  SearchX,
+  TrendingDown,
+  TrendingUp,
+  type LucideIcon,
+  Lock,
 } from 'lucide-react';
 import {
   documentFieldsSchema,
+  metadadosSchemaFor,
   DOC_SUBTYPES,
   TRASH_RETENTION_DAYS,
   type AnalisarConferenciaResult,
@@ -45,21 +62,39 @@ import {
   type DocumentFileView,
   type DocumentPage,
   type DocumentView,
+  type DocumentTypeLookup,
+  type LocalFisicoView,
+  type Metadados,
   type Orgao,
+  caminhoLocal,
 } from '@jdoc/shared';
-import { api, ApiError, getAccessToken } from '@/lib/api';
+import { api, apiBlobUrl, ApiError, getAccessToken } from '@/lib/api';
 import { addExtraDocumentFile, attachDocumentFile, uploadDocument } from '@/lib/upload';
 import { useExercicio } from '@/components/topbar';
 import { LabelsImportModal } from '@/components/documents/labels-import-modal';
-import { Modal, btnGhost, btnPrimary, cardCls, formatBytes, inputCls, labelCls } from '@/components/ui';
+import { ClassificacaoFields } from '@/components/documents/classificacao-fields';
+import { DigitalizacaoFields, MetadadosFields } from '@/components/documents/metadados-fields';
+import { GRAU_TOM, SigiloDocumento } from '@/components/documents/sigilo-documento';
+import { FASE_LABEL, GRAU_SIGILO_LABEL } from '@jdoc/shared';
+import { useModulo } from '@/components/branding';
+import { Badge, Button, DropdownMenu, buttonClasses, Modal, btnGhost, btnPrimary, cardCls, formatBytes, inputCls, labelCls, Pagination, TONE_VIVID, type Tone, SelectMenu } from '@/components/ui';
+import { cn } from '@/lib/cn';
 import { useToast } from '@/components/toast';
 
-const MODULE_TITLES: Record<DocModule, { title: string; singular: string }> = {
-  receitas: { title: 'Receitas', singular: 'Receita' },
-  despesas: { title: 'Despesas', singular: 'Despesa' },
-  balancete: { title: 'Balancete Orçamentário', singular: 'Balancete' },
-  extrato: { title: 'Extrato de Contas', singular: 'Extrato' },
-  outros: { title: 'Outros Arquivos', singular: 'Documento' },
+const MODULE_TITLES: Record<DocModule, { title: string; singular: string; description: string; icon: LucideIcon; tone: Tone }> = {
+  receitas: { title: 'Receitas', singular: 'Receita', description: 'Receitas orçamentárias e extraorçamentárias do exercício', icon: TrendingUp, tone: 'success' },
+  despesas: { title: 'Despesas', singular: 'Despesa', description: 'Empenhos, liquidações e pagamentos com o documento de caixa', icon: TrendingDown, tone: 'orange' },
+  balancete: { title: 'Balancete orçamentário', singular: 'Balancete', description: 'Balancetes mensais do exercício', icon: Scale, tone: 'violet' },
+  extrato: { title: 'Extrato de contas', singular: 'Extrato', description: 'Extratos bancários por conta e competência', icon: Landmark, tone: 'info' },
+  outros: { title: 'Outros arquivos', singular: 'Documento', description: 'Documentos diversos organizados por tipo', icon: FolderOpen, tone: 'teal' },
+  acervo: { title: 'Acervo', singular: 'Documento', description: 'Leis, decretos, portarias, contratos e demais documentos do Arquivo Municipal', icon: Library, tone: 'orange' },
+};
+
+/** Borda do card no celular, na cor do modulo. */
+const BORDA_MODULO: Record<Tone, string> = {
+  brand: 'border-l-brand-500', success: 'border-l-success-500', warning: 'border-l-warning-500', danger: 'border-l-danger-500',
+  info: 'border-l-info-500', orange: 'border-l-orange-500', violet: 'border-l-violet-500', teal: 'border-l-teal-500',
+  pink: 'border-l-pink-500', neutral: 'border-l-ink-400',
 };
 
 interface Lookup {
@@ -67,6 +102,16 @@ interface Lookup {
   nome: string;
   codigo?: string | null;
   cor?: string;
+  /** Tipos do Acervo: campos de metadados + padroes (vem de /document-types?modulo=acervo). */
+  campos?: DocumentTypeLookup['campos'];
+  classificacaoId?: string | null;
+  nivelAcessoPadrao?: DocumentTypeLookup['nivelAcessoPadrao'];
+}
+
+/** Titulo curto de um documento do Acervo: "Lei Municipal nº 1.234" quando o tipo tem campo numero. */
+function acervoTitulo(d: DocumentView): string {
+  const numero = d.metadados?.numero;
+  return numero ? `${d.documentTypeNome ?? 'Documento'} nº ${numero}` : (d.documentTypeNome ?? '—');
 }
 
 const SUBTYPE_SHORT: Record<string, string> = {
@@ -189,7 +234,7 @@ function HoverTooltip({ children, content }: { children: ReactNode; content: Rea
         createPortal(
           <div
             ref={boxRef}
-            className="pointer-events-none fixed z-[100] max-h-[80vh] overflow-y-auto rounded-lg border border-app-border bg-app-card p-3 text-left text-xs text-app shadow-2xl"
+            className="pointer-events-none fixed z-[100] max-h-[80vh] overflow-y-auto rounded-[10px] border border-ink-200 bg-surface p-3 text-left text-xs text-ink-800 shadow-2xl"
             style={{
               top: coords?.top ?? -9999,
               left: coords?.left ?? -9999,
@@ -234,7 +279,7 @@ function worstConferencia(documento: DocumentView): {
  * Selo da conferência por IA: cruza o(s) PDF(s) anexado(s) com os dados da
  * etiqueta. Verde = conforme. Laranja = divergência. Sem veredito ainda (nunca
  * analisado, falhou, ou está rodando agora) e com arquivo anexado = ícone de
- * "carregando", convidando a usar o botão "Analisar Doc (IA)". Sem arquivo
+ * "carregando", convidando a usar o botão "Analisar documento (IA)". Sem arquivo
  * anexado (etiqueta aguardando PDF) não mostra nada — não há o que analisar.
  * Quando o documento tem mais de um PDF, mostra o pior veredito entre eles.
  */
@@ -245,7 +290,7 @@ function ConferenciaBadge({ documento }: { documento: DocumentView }) {
   if (status === 'divergente' || status === 'falha') {
     const totalArquivos = 1 + documento.arquivosExtras.length;
     const Icon = status === 'divergente' ? TriangleAlert : CircleAlert;
-    const iconColor = status === 'divergente' ? 'text-orange-500' : 'text-red-500';
+    const iconColor = status === 'divergente' ? 'text-orange-500' : 'text-danger-500';
     const ariaLabel = status === 'divergente' ? 'Conferência por IA: divergência encontrada' : 'Conferência por IA: falhou';
 
     let tooltip: ReactNode;
@@ -256,24 +301,24 @@ function ConferenciaBadge({ documento }: { documento: DocumentView }) {
       tooltip = (
         <p>
           Mais de um arquivo anexado com problema.{' '}
-          <span className="font-semibold text-blue-500 dark:text-blue-400">Clique para ver detalhado.</span>
+          <span className="font-semibold text-brand-500">Clique para ver detalhado.</span>
         </p>
       );
     } else if (status === 'divergente') {
       const divergencias = resultado?.divergencias ?? [];
       tooltip = (
         <div className="space-y-1">
-          {resultado?.resumo && <p className="text-app-muted">{resultado.resumo}</p>}
+          {resultado?.resumo && <p className="text-ink-500">{resultado.resumo}</p>}
           {divergencias.map((d, i) => (
             <p key={i}>
-              <span className="font-semibold text-blue-500 dark:text-blue-400">{d.campo}</span>: esperado &quot;
+              <span className="font-semibold text-brand-500">{d.campo}</span>: esperado &quot;
               {d.esperado ?? '—'}&quot;, encontrado &quot;{d.encontrado ?? '—'}&quot;
             </p>
           ))}
         </div>
       );
     } else {
-      tooltip = <p>{erro ?? 'Falha ao analisar — clique em "Analisar Doc (IA)" para tentar de novo'}</p>;
+      tooltip = <p>{erro ?? 'Falha ao analisar — clique em "Analisar documento (IA)" para tentar de novo'}</p>;
     }
 
     return (
@@ -286,7 +331,7 @@ function ConferenciaBadge({ documento }: { documento: DocumentView }) {
     return (
       <span title="Conferência automática: dados conferem com o PDF">
         <CircleCheck
-          className="mx-auto h-4 w-4 text-green-600 dark:text-green-400"
+          className="mx-auto h-4 w-4 text-success-600"
           aria-label="Conferência por IA: conforme"
         />
       </span>
@@ -298,11 +343,11 @@ function ConferenciaBadge({ documento }: { documento: DocumentView }) {
         title={
           status === 'pendente'
             ? 'Analisando por IA…'
-            : 'Ainda não analisado — selecione e clique em "Analisar Doc (IA)"'
+            : 'Ainda não analisado — selecione e clique em "Analisar documento (IA)"'
         }
       >
         <Loader2
-          className="mx-auto h-4 w-4 animate-spin text-app-muted"
+          className="mx-auto h-4 w-4 animate-spin text-ink-500"
           aria-label="Conferência por IA: aguardando análise"
         />
       </span>
@@ -323,15 +368,15 @@ function FileConferenciaBadge({
 }) {
   if (status === 'divergente' || status === 'falha') {
     const Icon = status === 'divergente' ? TriangleAlert : CircleAlert;
-    const iconColor = status === 'divergente' ? 'text-orange-500' : 'text-red-500';
+    const iconColor = status === 'divergente' ? 'text-orange-500' : 'text-danger-500';
     const divergencias = resultado?.divergencias ?? [];
     const tooltip =
       status === 'divergente' ? (
         <div className="space-y-1">
-          {resultado?.resumo && <p className="text-app-muted">{resultado.resumo}</p>}
+          {resultado?.resumo && <p className="text-ink-500">{resultado.resumo}</p>}
           {divergencias.map((d, i) => (
             <p key={i}>
-              <span className="font-semibold text-blue-500 dark:text-blue-400">{d.campo}</span>: esperado &quot;
+              <span className="font-semibold text-brand-500">{d.campo}</span>: esperado &quot;
               {d.esperado ?? '—'}&quot;, encontrado &quot;{d.encontrado ?? '—'}&quot;
             </p>
           ))}
@@ -348,14 +393,14 @@ function FileConferenciaBadge({
   if (status === 'conforme') {
     return (
       <span title="Conferência automática: dados conferem com o PDF">
-        <CircleCheck className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" aria-hidden />
+        <CircleCheck className="h-3.5 w-3.5 shrink-0 text-success-600" aria-hidden />
       </span>
     );
   }
   if (status === 'pendente') {
     return (
       <span title="Analisando por IA…">
-        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-app-muted" aria-hidden />
+        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-ink-500" aria-hidden />
       </span>
     );
   }
@@ -368,9 +413,17 @@ function FileConferenciaBadge({
  *  explicita pra absorver o espaço restante. Os demais modulos usam larguras
  *  percentuais proporcionais entre si, senao uma unica coluna sem limite
  *  acaba engolindo todo o espaço vazio sozinha quando o conteudo e curto. */
+const FASE_TOM_DOC: Partial<Record<DocumentView['fase'], 'info' | 'warning' | 'violet' | 'neutral'>> = {
+  corrente: 'info',
+  intermediaria: 'warning',
+  permanente: 'violet',
+  eliminado: 'neutral',
+};
+
 const DETAIL_COLUMNS: Record<
   DocModule,
-  Array<{ header: string; render: (d: DocumentView) => string; className?: string }>
+  // render: texto (tambem vira o title da celula); cell: conteudo visual opcional (badges).
+  Array<{ header: string; render: (d: DocumentView) => string; cell?: (d: DocumentView) => ReactNode; className?: string }>
 > = {
   despesas: [
     { header: 'Doc. Caixa', render: (d) => d.docCaixa ?? '—', className: 'w-20' },
@@ -403,6 +456,46 @@ const DETAIL_COLUMNS: Record<
     { header: 'Órgão', render: orgaoLabel, className: 'w-[25%]' },
     { header: 'Tipo', render: (d) => d.documentTypeNome ?? '—', className: 'w-[18%]' },
   ],
+  acervo: [
+    {
+      header: 'Documento',
+      render: acervoTitulo,
+      cell: (d) => <span className="block truncate font-semibold text-ink-900">{acervoTitulo(d)}</span>,
+      className: 'w-[16%]',
+    },
+    { header: 'Título/Descrição', render: (d) => d.descricao ?? '—', className: 'w-[19%]' },
+    {
+      header: 'Classe',
+      render: (d) => (d.classificacaoCodigo ? `${d.classificacaoCodigo} — ${d.classificacaoDescricao ?? ''}` : 'Sem classe'),
+      cell: (d) =>
+        d.classificacaoCodigo ? (
+          <span className="rounded-[6px] bg-ink-100 px-1.5 py-0.5 font-mono text-xs font-semibold text-ink-700">{d.classificacaoCodigo}</span>
+        ) : (
+          <span className="text-xs text-ink-400">—</span>
+        ),
+      className: 'w-[7%]',
+    },
+    {
+      header: 'Fase',
+      render: (d) => FASE_LABEL[d.fase] ?? d.fase,
+      cell: (d) => <Badge tone={FASE_TOM_DOC[d.fase] ?? 'neutral'}>{FASE_LABEL[d.fase] ?? d.fase}</Badge>,
+      className: 'w-[12%]',
+    },
+    {
+      header: 'Acesso',
+      render: (d) => (d.nivelAcesso === 'restrito' ? 'Restrito' : 'Público'),
+      cell: (d) =>
+        d.nivelAcesso === 'restrito' ? (
+          <Badge tone="danger">
+            <Lock className="mr-1 inline h-3 w-3" aria-hidden />
+            Restrito
+          </Badge>
+        ) : (
+          <Badge tone="success">Público</Badge>
+        ),
+      className: 'w-[11%]',
+    },
+  ],
 };
 
 /**
@@ -419,6 +512,7 @@ const MIN_TABLE_WIDTH: Record<DocModule, number> = {
   balancete: 680,
   extrato: 820,
   outros: 620,
+  acervo: 1040,
 };
 
 export function DocumentsModule({ module }: { module: DocModule }) {
@@ -466,6 +560,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
     divergente: number;
     falha: number;
   } | null>(null);
+  const [exercicioAcervo, setExercicioAcervo] = useState('');
   const [gerandoRelatorio, setGerandoRelatorio] = useState(false);
   const [imprimindo, setImprimindo] = useState(false);
   // Lock sincrono (nao sujeito ao atraso de re-render do useState) contra
@@ -476,8 +571,11 @@ export function DocumentsModule({ module }: { module: DocModule }) {
   const cancelarRef = useRef(false);
 
   const params = new URLSearchParams({ module, page: String(page), pageSize: '20' });
+  // Acervo e historico (leis de 1950, fichas antigas): nao segue o ano do topo; filtro de exercicio proprio e opcional.
+  const ehAcervo = module === 'acervo';
   if (!showTrash) {
-    params.set('exercicio', String(exercicio));
+    if (!ehAcervo) params.set('exercicio', String(exercicio));
+    else if (exercicioAcervo) params.set('exercicio', exercicioAcervo);
     if (q) params.set('q', q);
     if (subtype) params.set('subtype', subtype);
     if (orgaoId) params.set('orgaoId', orgaoId);
@@ -487,7 +585,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
     if (dataInicio || dataFim) {
       if (dataInicio) params.set('de', dataInicio);
       if (dataFim) params.set('ate', dataFim);
-    } else if (module !== 'extrato' && module !== 'balancete' && mes) {
+    } else if (!ehAcervo && module !== 'extrato' && module !== 'balancete' && mes) {
       const lastDay = new Date(exercicio, Number(mes), 0).getDate();
       params.set('de', `${exercicio}-${mes}-01`);
       params.set('ate', `${exercicio}-${mes}-${String(lastDay).padStart(2, '0')}`);
@@ -515,7 +613,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
       comArquivo,
       critica,
       page,
-      exercicio,
+      ehAcervo ? exercicioAcervo : exercicio,
     ],
     queryFn: () =>
       api<DocumentPage>(
@@ -531,9 +629,9 @@ export function DocumentsModule({ module }: { module: DocModule }) {
   });
   const orgaos = orgaosData?.items ?? [];
   const { data: docTypes } = useQuery({
-    queryKey: ['document-types', slug],
-    queryFn: () => api<Lookup[]>(`/t/${slug}/document-types`),
-    enabled: module === 'outros',
+    queryKey: ['document-types', slug, module],
+    queryFn: () => api<Lookup[]>(`/t/${slug}/document-types?modulo=${module === 'acervo' ? 'acervo' : 'outros'}`),
+    enabled: module === 'outros' || module === 'acervo',
   });
 
   const invalidate = useCallback(
@@ -813,91 +911,127 @@ export function DocumentsModule({ module }: { module: DocModule }) {
     setViewPicker(doc);
   };
 
-  const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
   const hasValor = module === 'despesas' || module === 'receitas';
+  const filtrosAtivos = [subtype, orgaoId, mes, dataInicio, dataFim, valorMin, valorMax, comArquivo, critica, exercicioAcervo].filter(Boolean).length;
+  const limparFiltros = () => {
+    setSubtype('');
+    setOrgaoId('');
+    setMes('');
+    setDataInicio('');
+    setDataFim('');
+    setValorMin('');
+    setValorMax('');
+    setComArquivo('');
+    setCritica('');
+    setExercicioAcervo('');
+    setPage(1);
+  };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-lg font-bold text-app">
-          {meta.title} {showTrash && `— Lixeira (retenção ${TRASH_RETENTION_DAYS} dias)`}
-        </h1>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className={btnGhost}
-            onClick={() => {
-              setShowTrash((v) => !v);
-              setPage(1);
-            }}
-          >
-            <span className="flex items-center gap-2">
-              {showTrash ? <X className="h-4 w-4" aria-hidden /> : <Trash2 className="h-4 w-4" aria-hidden />}
-              {showTrash ? 'Fechar lixeira' : 'Lixeira'}
-            </span>
-          </button>
-          {showTrash && (
-            <button type="button" className={btnGhost} onClick={() => setConfirmEmptyTrash(true)}>
-              <span className="flex items-center gap-2">
-                <Trash2 className="h-4 w-4" aria-hidden /> Esvaziar Lixeira
-              </span>
-            </button>
-          )}
-          {!showTrash && (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex min-w-0 items-start gap-4">
+          <span className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] text-white shadow-md', TONE_VIVID[meta.tone].chip)}>
+            <meta.icon className="h-6 w-6" aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <h1 className="text-xl font-extrabold tracking-tight text-ink-900 sm:text-2xl">{meta.title}</h1>
+            <p className="mt-0.5 text-sm text-ink-500">
+              {showTrash ? `Documentos excluídos ficam aqui por ${TRASH_RETENTION_DAYS} dias antes de sumirem de vez.` : meta.description}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {showTrash ? (
+            <Button variant="danger" leftIcon={<Trash2 aria-hidden />} onClick={() => setConfirmEmptyTrash(true)}>
+              Esvaziar lixeira
+            </Button>
+          ) : (
             <>
-              <button type="button" className={btnGhost} onClick={() => setConfirmDeleteAll(true)}>
-                <span className="flex items-center gap-2">
-                  <Trash2 className="h-4 w-4" aria-hidden /> Apagar Etiquetas
-                </span>
-              </button>
-              <button type="button" className={btnGhost} onClick={() => setLabelsOpen(true)}>
-                <span className="flex items-center gap-2">
-                  <Tags className="h-4 w-4" aria-hidden /> Importar Etiquetas
-                </span>
-              </button>
-              <button
-                type="button"
-                className={btnGhost}
-                onClick={() => void imprimirEtiquetas()}
-                disabled={imprimindo}
-                title="Gera um PDF com as etiquetas que aparecem na tela — respeita os filtros ativos"
-              >
-                <span className="flex items-center gap-2">
-                  <Printer className="h-4 w-4" aria-hidden />
-                  {imprimindo ? 'Gerando…' : 'Imprimir Etiquetas'}
-                </span>
-              </button>
-              {module === 'despesas' && (
-                <button
-                  type="button"
-                  className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-gradient-primary px-4 py-2 text-xs font-bold uppercase text-white transition hover:opacity-90 disabled:opacity-60"
-                  onClick={() => void analisarConferencia()}
-                  disabled={analisando !== null}
-                  title="Usa a IA pra conferir se o PDF anexado bate com os dados cadastrados (consome tokens) — selecione os documentos na tabela antes de clicar"
-                >
-                  <Sparkles className="h-4 w-4" aria-hidden />
-                  {analisando ? 'Analisando…' : 'Analisar Doc (IA)'}
-                </button>
+              {module !== 'acervo' && (
+              <DropdownMenu
+                trigger={({ aberto, alternar }) => (
+                  <Button variant="outline" onClick={alternar} aria-expanded={aberto} aria-haspopup="menu">
+                    <MoreHorizontal aria-hidden />
+                    Mais ações
+                    <ChevronDown className={cn('transition-transform', aberto && 'rotate-180')} aria-hidden />
+                  </Button>
+                )}
+                items={[
+                  { label: 'Importar etiquetas', icon: Tags, hint: 'Planilha do SS, ASPEC ou JBS', onSelect: () => setLabelsOpen(true) },
+                  {
+                    label: imprimindo ? 'Gerando etiquetas…' : 'Imprimir etiquetas',
+                    icon: Printer,
+                    hint: 'PDF com o que está na tela (respeita os filtros)',
+                    disabled: imprimindo,
+                    onSelect: () => void imprimirEtiquetas(),
+                  },
+                  { label: 'Apagar etiquetas', icon: Trash2, hint: 'Remove as etiquetas ainda sem PDF', danger: true, onSelect: () => setConfirmDeleteAll(true) },
+                ]}
+              />
               )}
-              <button type="button" className={btnPrimary} onClick={() => setIncludeOpen(true)}>
-                <span className="flex items-center gap-2">
-                  <Plus className="h-4 w-4" aria-hidden /> Incluir
-                </span>
-              </button>
+              {module === 'despesas' && (
+                <Button
+                  variant="outline"
+                  className="border-violet-500/40 text-violet-600 hover:bg-violet-50 hover:text-violet-600"
+                  onClick={() => void analisarConferencia()}
+                  loading={analisando !== null}
+                  leftIcon={<Sparkles aria-hidden />}
+                  title="A IA confere se o PDF anexado bate com os dados cadastrados (consome tokens). Selecione os documentos na tabela antes."
+                >
+                  {analisando ? 'Analisando…' : 'Analisar com IA'}
+                </Button>
+              )}
+              {module === 'acervo' && (
+                <Link href={`/${slug}/acervo/lote`} className={buttonClasses('outline', 'md')}>
+                  <Layers aria-hidden />
+                  Enviar em lote
+                </Link>
+              )}
+              <Button onClick={() => setIncludeOpen(true)} leftIcon={<Plus aria-hidden />}>
+                Incluir {meta.singular.toLowerCase()}
+              </Button>
             </>
           )}
         </div>
       </div>
 
+      <div role="tablist" aria-label="Visão" className="inline-flex rounded-[12px] bg-ink-100 p-1">
+        {[
+          { id: false, label: 'Documentos', icon: FileText },
+          { id: true, label: 'Lixeira', icon: Trash2 },
+        ].map(({ id, label, icon: Icon }) => (
+          <button
+            key={label}
+            type="button"
+            role="tab"
+            aria-selected={showTrash === id}
+            onClick={() => {
+              setShowTrash(id);
+              setSelected(new Set());
+              setPage(1);
+            }}
+            className={cn(
+              'flex h-9 items-center gap-2 rounded-[8px] px-4 text-sm font-semibold transition-colors',
+              showTrash === id ? 'bg-surface text-ink-900 shadow-xs' : 'text-ink-500 hover:text-ink-800',
+            )}
+          >
+            <Icon className="h-4 w-4" aria-hidden />
+            {label}
+          </button>
+        ))}
+      </div>
+
       {!showTrash && (
-        <div className={`${cardCls} p-4 card-accent-blue`}>
-          <div className="flex flex-wrap gap-3">
-            <div className="relative min-w-64 flex-1">
-              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-app-muted" aria-hidden />
+        <div className={`${cardCls} p-4`}>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" aria-hidden />
               <input
                 aria-label="Buscar"
-                className={inputCls + ' pl-9'}
-                placeholder="Buscar por credor, histórico, empenho…"
+                type="search"
+                className={cn(inputCls, 'h-10 py-0 pl-9')}
+                placeholder={module === 'despesas' ? 'Buscar por credor, histórico, empenho, doc. caixa…' : 'Buscar por descrição, histórico, número…'}
                 value={q}
                 onChange={(e) => {
                   setQ(e.target.value);
@@ -905,146 +1039,107 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                 }}
               />
             </div>
-            <button
-              type="button"
-              className={btnGhost}
-              aria-expanded={filtersOpen}
-              onClick={() => setFiltersOpen((v) => !v)}
-            >
-              <span className="flex items-center gap-2">
-                <SlidersHorizontal className="h-4 w-4" aria-hidden />
-                {filtersOpen ? 'Ocultar filtros' : 'Mais filtros'}
-              </span>
-            </button>
+            <div className="flex gap-2">
+              <Button
+                variant={filtersOpen || filtrosAtivos > 0 ? 'secondary' : 'outline'}
+                aria-expanded={filtersOpen}
+                onClick={() => setFiltersOpen((v) => !v)}
+                leftIcon={<SlidersHorizontal aria-hidden />}
+                className="flex-1 sm:flex-none"
+              >
+                Filtros
+                {filtrosAtivos > 0 && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 text-[11px] font-bold text-white">
+                    {filtrosAtivos}
+                  </span>
+                )}
+              </Button>
+              {filtrosAtivos > 0 && (
+                <Button variant="ghost" onClick={limparFiltros} leftIcon={<X aria-hidden />}>
+                  Limpar
+                </Button>
+              )}
+            </div>
           </div>
 
           {filtersOpen && (
-            <div className="mt-3 flex flex-wrap gap-3">
+            <div className="mt-4 grid grid-cols-1 gap-3 border-t border-ink-100 pt-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
               {(module === 'receitas' || module === 'despesas') && (
-                <select
-                  aria-label="Tipo"
-                  className={inputCls + ' w-52'}
-                  value={subtype}
-                  onChange={(e) => {
-                    setSubtype(e.target.value);
-                    setPage(1);
-                  }}
-                >
-                  <option value="">Todos os tipos</option>
-                  {subtypesFor(module).map((s) => (
-                    <option key={s} value={s}>
-                      {SUBTYPE_LABEL[s] ?? s}
-                    </option>
-                  ))}
-                </select>
+                <FiltroCampo label="Tipo" id="f-tipo">
+                  <SelectMenu id="f-tipo" className={inputCls} value={subtype} onChange={(e) => { setSubtype(e.target.value); setPage(1); }}>
+                    <option value="">Todos os tipos</option>
+                    {subtypesFor(module).map((st) => (
+                      <option key={st} value={st}>{SUBTYPE_LABEL[st] ?? st}</option>
+                    ))}
+                  </SelectMenu>
+                </FiltroCampo>
               )}
-              <select
-                aria-label="Órgão"
-                className={inputCls + ' w-64'}
-                value={orgaoId}
-                onChange={(e) => {
-                  setOrgaoId(e.target.value);
-                  setPage(1);
-                }}
-              >
-                <option value="">Todos os órgãos</option>
-                {orgaos.map((o) => (
-                  <option key={o.id} value={o.id}>{o.codigo} — {o.descricao}</option>
-                ))}
-              </select>
-              <select
-                aria-label="Mês"
-                className={inputCls + ' w-44'}
-                value={mes}
-                onChange={(e) => {
-                  setMes(e.target.value);
-                  setPage(1);
-                }}
-              >
-                <option value="">Todos os meses</option>
-                {MESES.map((m) => (
-                  <option key={m.value} value={m.value}>{m.label}</option>
-                ))}
-              </select>
-              <input
-                aria-label="Data início"
-                type="date"
-                className={inputCls + ' w-40'}
-                value={dataInicio}
-                onChange={(e) => {
-                  setDataInicio(e.target.value);
-                  setPage(1);
-                }}
-              />
-              <input
-                aria-label="Data fim"
-                type="date"
-                className={inputCls + ' w-40'}
-                value={dataFim}
-                onChange={(e) => {
-                  setDataFim(e.target.value);
-                  setPage(1);
-                }}
-              />
+              <FiltroCampo label="Órgão" id="f-orgao">
+                <SelectMenu id="f-orgao" className={inputCls} value={orgaoId} onChange={(e) => { setOrgaoId(e.target.value); setPage(1); }}>
+                  <option value="">Todos os órgãos</option>
+                  {orgaos.map((o) => (
+                    <option key={o.id} value={o.id}>{o.codigo} — {o.descricao}</option>
+                  ))}
+                </SelectMenu>
+              </FiltroCampo>
+              {module === 'acervo' ? (
+                <FiltroCampo label="Exercício" id="f-exercicio">
+                  <input
+                    id="f-exercicio"
+                    type="number"
+                    inputMode="numeric"
+                    min={1800}
+                    max={2100}
+                    placeholder="Todos os anos"
+                    className={inputCls}
+                    value={exercicioAcervo}
+                    onChange={(e) => {
+                      setExercicioAcervo(e.target.value);
+                      setPage(1);
+                    }}
+                  />
+                </FiltroCampo>
+              ) : (
+              <FiltroCampo label="Mês" id="f-mes">
+                <SelectMenu id="f-mes" className={inputCls} value={mes} onChange={(e) => { setMes(e.target.value); setPage(1); }}>
+                  <option value="">Todos os meses</option>
+                  {MESES.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </SelectMenu>
+              </FiltroCampo>
+              )}
+              <FiltroCampo label="Arquivo PDF" id="f-pdf">
+                <SelectMenu id="f-pdf" className={inputCls} value={comArquivo} onChange={(e) => { setComArquivo(e.target.value); setPage(1); }}>
+                  <option value="">Com e sem PDF</option>
+                  <option value="sim">Com PDF</option>
+                  <option value="nao">Sem PDF (aguardando)</option>
+                </SelectMenu>
+              </FiltroCampo>
+              <FiltroCampo label="Data inicial" id="f-ini">
+                <input id="f-ini" type="date" className={inputCls} value={dataInicio} onChange={(e) => { setDataInicio(e.target.value); setPage(1); }} />
+              </FiltroCampo>
+              <FiltroCampo label="Data final" id="f-fim">
+                <input id="f-fim" type="date" className={inputCls} value={dataFim} onChange={(e) => { setDataFim(e.target.value); setPage(1); }} />
+              </FiltroCampo>
               {(module === 'despesas' || module === 'receitas') && (
                 <>
-                  <input
-                    aria-label="Valor mínimo"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="Valor mín."
-                    className={inputCls + ' w-32'}
-                    value={valorMin}
-                    onWheel={blurOnWheel}
-                    onChange={(e) => {
-                      setValorMin(e.target.value);
-                      setPage(1);
-                    }}
-                  />
-                  <input
-                    aria-label="Valor máximo"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="Valor máx."
-                    className={inputCls + ' w-32'}
-                    value={valorMax}
-                    onWheel={blurOnWheel}
-                    onChange={(e) => {
-                      setValorMax(e.target.value);
-                      setPage(1);
-                    }}
-                  />
+                  <FiltroCampo label="Valor mínimo (R$)" id="f-vmin">
+                    <input id="f-vmin" type="number" step="0.01" min="0" placeholder="0,00" className={inputCls} value={valorMin} onWheel={blurOnWheel} onChange={(e) => { setValorMin(e.target.value); setPage(1); }} />
+                  </FiltroCampo>
+                  <FiltroCampo label="Valor máximo (R$)" id="f-vmax">
+                    <input id="f-vmax" type="number" step="0.01" min="0" placeholder="0,00" className={inputCls} value={valorMax} onWheel={blurOnWheel} onChange={(e) => { setValorMax(e.target.value); setPage(1); }} />
+                  </FiltroCampo>
                 </>
               )}
-              <select
-                aria-label="Com/sem PDF"
-                className={inputCls + ' w-40'}
-                value={comArquivo}
-                onChange={(e) => {
-                  setComArquivo(e.target.value);
-                  setPage(1);
-                }}
-              >
-                <option value="">Com/sem PDF</option>
-                <option value="sim">Com PDF</option>
-                <option value="nao">Sem PDF</option>
-              </select>
               {module === 'despesas' && (
-                <select
-                  aria-label="Com/sem crítica"
-                  className={inputCls + ' w-44'}
-                  value={critica}
-                  onChange={(e) => {
-                    setCritica(e.target.value);
-                    setPage(1);
-                  }}
-                >
-                  <option value="">Com/sem crítica</option>
-                  <option value="sim">Com crítica</option>
-                  <option value="nao">Sem crítica</option>
-                </select>
+                <FiltroCampo label="Crítica" id="f-critica">
+                  <SelectMenu id="f-critica" className={inputCls} value={critica} onChange={(e) => { setCritica(e.target.value); setPage(1); }}>
+                    <option value="">Com e sem crítica</option>
+                    <option value="sim">Com crítica</option>
+                    <option value="nao">Sem crítica</option>
+                  </SelectMenu>
+                </FiltroCampo>
               )}
             </div>
           )}
@@ -1052,8 +1147,11 @@ export function DocumentsModule({ module }: { module: DocModule }) {
       )}
 
       {!showTrash && selected.size > 0 && (
-        <div className={`${cardCls} flex flex-wrap items-center justify-between gap-3 p-3`}>
-          <p className="text-sm font-semibold text-app">{selected.size} selecionada(s)</p>
+        <div className="flex animate-fade-in flex-wrap items-center justify-between gap-3 rounded-[12px] border border-brand-500/30 bg-brand-50 px-4 py-3">
+          <p className="flex items-center gap-2 text-sm font-semibold text-brand-600">
+            <CheckSquare className="h-4 w-4" aria-hidden />
+            {selected.size} {selected.size === 1 ? 'documento selecionado' : 'documentos selecionados'}
+          </p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -1068,7 +1166,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
             </button>
             <button
               type="button"
-              className="shrink-0 whitespace-nowrap rounded-lg border border-red-300 bg-app-input-bg px-4 py-2 text-xs font-bold uppercase text-red-500 transition hover:bg-red-50 dark:hover:bg-red-900/20"
+              className="shrink-0 whitespace-nowrap rounded-[10px] border border-danger-500/30 bg-surface px-4 py-2 text-[13px] font-semibold text-danger-500 transition hover:bg-danger-50"
               onClick={() => setConfirmBulkDelete(true)}
             >
               <span className="flex items-center gap-2">
@@ -1080,18 +1178,18 @@ export function DocumentsModule({ module }: { module: DocModule }) {
       )}
 
       {error && (
-        <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">
+        <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">
           {error}
         </p>
       )}
 
       {/* Tablet/desktop: tabela completa com scroll horizontal. */}
-      <div className={`${cardCls} hidden overflow-x-auto card-accent-purple md:block`}>
-        <table className="w-full table-fixed text-left text-xs" style={{ minWidth: MIN_TABLE_WIDTH[module] }}>
-          <thead>
-            <tr className="border-b border-app-border text-[10px] font-bold uppercase text-app-muted">
+      <div className={`${cardCls} hidden overflow-x-auto md:block`}>
+        <table className="w-full table-fixed text-left text-sm" style={{ minWidth: MIN_TABLE_WIDTH[module] }}>
+          <thead className="bg-ink-50/60">
+            <tr className="label-caps border-b border-ink-200">
               {!showTrash && (
-                <th className="w-8 px-2 py-2">
+                <th className="w-8 px-3 py-3">
                   <input
                     type="checkbox"
                     aria-label="Selecionar todas"
@@ -1103,21 +1201,25 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                   />
                 </th>
               )}
-              <th className="w-20 whitespace-nowrap px-2 py-2">Data</th>
+              <th className="w-24 whitespace-nowrap px-3 py-3">Data</th>
               {DETAIL_COLUMNS[module].map((col) => (
-                <th key={col.header} className={`whitespace-nowrap px-2 py-2 ${col.className ?? ''}`}>{col.header}</th>
+                <th key={col.header} className={`whitespace-nowrap px-3 py-3 ${col.className ?? ''}`}>{col.header}</th>
               ))}
-              {hasValor && <th className="w-24 whitespace-nowrap px-2 py-2 text-right">Valor</th>}
-              <th className="w-16 whitespace-nowrap px-3 py-2 text-right">Páginas</th>
-              <th className="w-8 px-1 py-2" title="Conferência por IA" aria-label="Conferência por IA" />
-              <th className="w-24 whitespace-nowrap py-2 pl-4 pr-2 text-right">Ações</th>
+              {hasValor && <th className="w-24 whitespace-nowrap px-3 py-3 text-right">Valor</th>}
+              <th className="w-24 whitespace-nowrap px-3 py-3 text-right">Páginas</th>
+              <th className="w-8 px-1 py-3" title="Conferência por IA" aria-label="Conferência por IA" />
+              <th className="w-32 whitespace-nowrap py-3 pl-4 pr-3 text-right">Ações</th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={4 + DETAIL_COLUMNS[module].length + (showTrash ? 0 : 1) + (hasValor ? 1 : 0)} className="px-2 py-2">
-                  <div className="h-5 animate-pulse rounded bg-app-skeleton" />
+                <td colSpan={4 + DETAIL_COLUMNS[module].length + (showTrash ? 0 : 1) + (hasValor ? 1 : 0)} className="px-3 py-3">
+                  <div className="space-y-3 py-2">
+                    {[0, 1, 2, 3, 4].map((k) => (
+                      <div key={k} className="h-5 animate-pulse rounded-[6px] bg-ink-100" />
+                    ))}
+                  </div>
                 </td>
               </tr>
             )}
@@ -1129,10 +1231,10 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                 key={d.id}
                 onClick={clickable ? () => setAttaching(d) : undefined}
                 title={clickable ? (semArquivo ? 'Clique para anexar o PDF' : 'Clique para substituir o PDF') : undefined}
-                className={`border-b border-app-border hover:bg-app-hover ${clickable ? 'cursor-pointer' : ''}`}
+                className={`border-b border-ink-100 transition-colors last:border-0 hover:bg-brand-50/50 ${clickable ? 'cursor-pointer' : ''}`}
               >
                 {!showTrash && (
-                  <td className="w-8 px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
+                  <td className="w-8 px-3 py-3" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       aria-label={`Selecionar documento ${d.originalName}`}
@@ -1148,41 +1250,46 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                     />
                   </td>
                 )}
-                <td className="w-20 whitespace-nowrap px-2 py-1.5 text-app">
+                <td className="w-24 whitespace-nowrap px-3 py-3 tabular-nums text-ink-800">
                   {d.documentDate ? new Date(d.documentDate + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
+                  {d.grauSigilo && (
+                    <Badge tone={GRAU_TOM[d.grauSigilo]} className="mt-1 flex w-fit">
+                      {GRAU_SIGILO_LABEL[d.grauSigilo]}
+                    </Badge>
+                  )}
                 </td>
                 {DETAIL_COLUMNS[module].map((col) => (
                   <td
                     key={col.header}
                     title={col.render(d)}
-                    className={`truncate px-2 py-1.5 text-app ${col.className ?? ''}`}
+                    className={`${col.cell ? 'overflow-hidden whitespace-nowrap' : 'truncate'} px-3 py-3 text-ink-800 ${col.className ?? ''}`}
                   >
-                    {col.render(d)}
+                    {col.cell ? col.cell(d) : col.render(d)}
                   </td>
                 ))}
                 {hasValor && (
-                  <td className="w-24 whitespace-nowrap px-2 py-1.5 text-right text-app">
+                  <td className="w-24 whitespace-nowrap px-3 py-3 text-right text-ink-800">
                     {d.value !== null
                       ? d.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                       : '—'}
                   </td>
                 )}
-                <td className="w-16 whitespace-nowrap px-3 py-1.5 text-right text-app">
-                  {d.pageCount ?? '—'}
+                <td className="w-24 whitespace-nowrap px-3 py-3 text-right text-ink-800 tabular-nums">
+                  {semArquivo ? <Badge tone="warning">Sem PDF</Badge> : (d.pageCount ?? '—')}
                 </td>
-                <td className="w-8 px-1 py-1.5 text-center">
+                <td className="w-8 px-1 py-3 text-center">
                   <ConferenciaBadge documento={d} />
                 </td>
-                <td className="w-24 py-1.5 pl-4 pr-2" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex justify-end gap-0.5">
+                <td className="w-32 py-2 pl-4 pr-3" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex justify-end gap-1">
                     {showTrash ? (
                       <button
                         type="button"
                         title="Restaurar"
                         onClick={() => restore.mutate(d.id)}
-                        className="rounded p-1 text-app-muted hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20"
+                        className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-success-50 hover:text-success-600"
                       >
-                        <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                        <RotateCcw className="h-4 w-4" aria-hidden />
                       </button>
                     ) : (
                       <>
@@ -1191,26 +1298,26 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                             type="button"
                             title="Visualizar PDF (nova guia)"
                             onClick={() => openPdf(d)}
-                            className="rounded p-1 text-app-muted hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20"
+                            className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
                           >
-                            <Eye className="h-3.5 w-3.5" aria-hidden />
+                            <Eye className="h-4 w-4" aria-hidden />
                           </button>
                         )}
                         <button
                           type="button"
                           title="Editar"
                           onClick={() => setEditing(d)}
-                          className="rounded p-1 text-app-muted hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20"
+                          className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
                         >
-                          <Pencil className="h-3.5 w-3.5" aria-hidden />
+                          <Pencil className="h-4 w-4" aria-hidden />
                         </button>
                         <button
                           type="button"
                           title="Excluir (lixeira)"
                           onClick={() => del.mutate(d.id)}
-                          className="rounded p-1 text-app-muted hover:bg-red-50 hover:text-red-400 dark:hover:bg-red-900/20"
+                          className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-danger-50 hover:text-danger-600"
                         >
-                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                          <Trash2 className="h-4 w-4" aria-hidden />
                         </button>
                       </>
                     )}
@@ -1221,8 +1328,8 @@ export function DocumentsModule({ module }: { module: DocModule }) {
             })}
             {data?.items.length === 0 && (
               <tr>
-                <td colSpan={4 + DETAIL_COLUMNS[module].length + (showTrash ? 0 : 1) + (hasValor ? 1 : 0)} className="px-2 py-6 text-center text-app-muted">
-                  {showTrash ? 'Lixeira vazia.' : 'Nenhum documento encontrado.'}
+                <td colSpan={4 + DETAIL_COLUMNS[module].length + (showTrash ? 0 : 1) + (hasValor ? 1 : 0)} className="px-3 py-12 text-center">
+                  <ListaVazia lixeira={showTrash} filtrando={filtrosAtivos > 0 || q !== ''} onIncluir={() => setIncludeOpen(true)} singular={meta.singular} arquivo={module === 'acervo'} />
                 </td>
               </tr>
             )}
@@ -1232,7 +1339,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
 
       {/* Celular: lista de cards (sem scroll horizontal, nada de informacao cortada). */}
       <div className="space-y-3 md:hidden">
-        {isLoading && <div className="h-24 animate-pulse rounded-xl bg-app-skeleton" />}
+        {isLoading && <div className="h-24 animate-pulse rounded-[16px] bg-ink-100" />}
         {data?.items.map((d) => {
           const semArquivo = d.status === 'aguardando_arquivo';
           const clickable = !showTrash;
@@ -1245,7 +1352,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
             <div
               key={d.id}
               onClick={clickable ? () => setAttaching(d) : undefined}
-              className={`${cardCls} flex gap-3 border-l-4 border-l-blue-500 p-3 ${clickable ? 'cursor-pointer active:bg-app-hover' : ''}`}
+              className={`${cardCls} flex gap-3 border-l-4 ${BORDA_MODULO[meta.tone]} p-4 ${clickable ? 'cursor-pointer active:bg-ink-50' : ''}`}
             >
               {!showTrash && (
                 <div className="shrink-0 pt-0.5" onClick={(e) => e.stopPropagation()}>
@@ -1266,7 +1373,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
               )}
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-2">
-                  <p className="truncate text-sm font-bold text-app">{titulo}</p>
+                  <p className="truncate text-sm font-bold text-ink-800">{titulo}</p>
                   <ConferenciaBadge documento={d} />
                 </div>
                 <dl className="mt-1.5 space-y-1 text-xs">
@@ -1279,14 +1386,14 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                     )
                     .map((col) => (
                       <div key={col.header} className="flex gap-1.5">
-                        <dt className="shrink-0 font-semibold text-app-muted">{col.header}:</dt>
-                        <dd className="truncate text-app">{col.render(d)}</dd>
+                        <dt className="shrink-0 font-semibold text-ink-500">{col.header}:</dt>
+                        <dd className="truncate text-ink-800">{col.render(d)}</dd>
                       </div>
                     ))}
                   {hasValor && (
                     <div className="flex gap-1.5">
-                      <dt className="shrink-0 font-semibold text-app-muted">Valor:</dt>
-                      <dd className="text-app">
+                      <dt className="shrink-0 font-semibold text-ink-500">Valor:</dt>
+                      <dd className="text-ink-800">
                         {d.value !== null
                           ? d.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                           : '—'}
@@ -1294,13 +1401,14 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                     </div>
                   )}
                 </dl>
-                <div className="mt-2 flex items-center justify-between border-t border-app-border pt-2">
-                  <span className="flex items-center gap-1 text-[11px] text-app-muted">
+                {semArquivo && !showTrash && <Badge tone="warning" className="mt-2">Sem PDF — toque para anexar</Badge>}
+                <div className="mt-2 flex items-center justify-between border-t border-ink-100 pt-2">
+                  <span className="flex items-center gap-1 text-[11px] text-ink-500">
                     <CalendarDays className="h-3.5 w-3.5 shrink-0" aria-hidden />
                     {d.documentDate ? new Date(d.documentDate + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
                   </span>
                   <div className="flex items-center gap-3">
-                    <span className="flex items-center gap-1 text-[11px] text-app-muted">
+                    <span className="flex items-center gap-1 text-[11px] text-ink-500">
                       <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden />
                       {d.pageCount ?? '—'}
                     </span>
@@ -1310,7 +1418,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                           type="button"
                           title="Restaurar"
                           onClick={() => restore.mutate(d.id)}
-                          className="rounded p-1 text-app-muted hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20"
+                          className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-success-50 hover:text-success-600"
                         >
                           <RotateCcw className="h-4 w-4" aria-hidden />
                         </button>
@@ -1321,7 +1429,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                               type="button"
                               title="Visualizar PDF (nova guia)"
                               onClick={() => openPdf(d)}
-                              className="rounded p-1 text-app-muted hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20"
+                              className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
                             >
                               <Eye className="h-4 w-4" aria-hidden />
                             </button>
@@ -1330,7 +1438,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                             type="button"
                             title="Editar"
                             onClick={() => setEditing(d)}
-                            className="rounded p-1 text-app-muted hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20"
+                            className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
                           >
                             <Pencil className="h-4 w-4" aria-hidden />
                           </button>
@@ -1338,7 +1446,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                             type="button"
                             title="Excluir (lixeira)"
                             onClick={() => del.mutate(d.id)}
-                            className="rounded p-1 text-app-muted hover:bg-red-50 hover:text-red-400 dark:hover:bg-red-900/20"
+                            className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-danger-50 hover:text-danger-600"
                           >
                             <Trash2 className="h-4 w-4" aria-hidden />
                           </button>
@@ -1352,32 +1460,13 @@ export function DocumentsModule({ module }: { module: DocModule }) {
           );
         })}
         {data?.items.length === 0 && (
-          <p className="rounded-xl bg-app-card px-3 py-6 text-center text-sm text-app-muted">
-            {showTrash ? 'Lixeira vazia.' : 'Nenhum documento encontrado.'}
-          </p>
+          <div className={`${cardCls} px-4 py-10`}>
+            <ListaVazia lixeira={showTrash} filtrando={filtrosAtivos > 0 || q !== ''} onIncluir={() => setIncludeOpen(true)} singular={meta.singular} arquivo={module === 'acervo'} />
+          </div>
         )}
       </div>
 
-      {data && data.total > 0 && (
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-app-muted">
-            {data.total} documento(s) — página {data.page} de {totalPages}
-          </p>
-          <div className="flex gap-2">
-            <button type="button" className={btnGhost} disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              Anterior
-            </button>
-            <button
-              type="button"
-              className={btnGhost}
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Próxima
-            </button>
-          </div>
-        </div>
-      )}
+      {data && <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPageChange={setPage} />}
 
       {includeOpen && (
         <IncludeModal
@@ -1411,7 +1500,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
           }}
         >
           <div className="space-y-4">
-            <div className="flex items-start gap-3 rounded-lg bg-app-error-bg px-3 py-3 text-sm text-app-error-text">
+            <div className="flex items-start gap-3 rounded-[10px] bg-danger-50 px-3 py-3 text-sm text-danger-600">
               <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
               <p>
                 Isso vai enviar para a lixeira as etiquetas de {meta.title.toLowerCase()}{' '}
@@ -1425,7 +1514,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
               </p>
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-app">
+            <label className="flex items-center gap-2 text-sm text-ink-800">
               <input
                 type="checkbox"
                 checked={deleteApenasSemArquivo}
@@ -1436,7 +1525,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
 
             <div>
               <label className={labelCls} htmlFor="delete-etiquetas-orgao">Restringir a um órgão (opcional)</label>
-              <select
+              <SelectMenu
                 id="delete-etiquetas-orgao"
                 className={inputCls}
                 value={deleteOrgaoId}
@@ -1446,13 +1535,13 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                 {orgaos.map((o) => (
                   <option key={o.id} value={o.id}>{o.codigo} — {o.descricao}</option>
                 ))}
-              </select>
+              </SelectMenu>
             </div>
 
             {(module === 'despesas' || module === 'receitas') && (
               <div>
                 <label className={labelCls} htmlFor="delete-etiquetas-tipo">Restringir a um tipo (opcional)</label>
-                <select
+                <SelectMenu
                   id="delete-etiquetas-tipo"
                   className={inputCls}
                   value={deleteSubtype}
@@ -1462,12 +1551,12 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                   {subtypesFor(module).map((s) => (
                     <option key={s} value={s}>{SUBTYPE_LABEL[s] ?? s}</option>
                   ))}
-                </select>
+                </SelectMenu>
               </div>
             )}
 
             {error && (
-              <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">
+              <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">
                 {error}
               </p>
             )}
@@ -1486,7 +1575,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
               </button>
               <button
                 type="button"
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                className="rounded-[10px] bg-danger-600 px-4 py-2 text-sm font-semibold text-white hover:bg-danger-600 disabled:opacity-60"
                 onClick={() => deleteAllEtiquetas.mutate()}
                 disabled={deleteAllEtiquetas.isPending}
               >
@@ -1504,7 +1593,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
           onClose={() => setConfirmEmptyTrash(false)}
         >
           <div className="space-y-4">
-            <div className="flex items-start gap-3 rounded-lg bg-app-error-bg px-3 py-3 text-sm text-app-error-text">
+            <div className="flex items-start gap-3 rounded-[10px] bg-danger-50 px-3 py-3 text-sm text-danger-600">
               <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
               <p>
                 Isso vai excluir <strong>permanentemente</strong> todos os documentos de {meta.title.toLowerCase()}{' '}
@@ -1512,7 +1601,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
               </p>
             </div>
             {error && (
-              <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">
+              <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">
                 {error}
               </p>
             )}
@@ -1522,7 +1611,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
               </button>
               <button
                 type="button"
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                className="rounded-[10px] bg-danger-600 px-4 py-2 text-sm font-semibold text-white hover:bg-danger-600 disabled:opacity-60"
                 onClick={() => emptyTrash.mutate()}
                 disabled={emptyTrash.isPending}
               >
@@ -1540,14 +1629,14 @@ export function DocumentsModule({ module }: { module: DocModule }) {
           onClose={() => setConfirmBulkDelete(false)}
         >
           <div className="space-y-4">
-            <div className="flex items-start gap-3 rounded-lg bg-app-error-bg px-3 py-3 text-sm text-app-error-text">
+            <div className="flex items-start gap-3 rounded-[10px] bg-danger-50 px-3 py-3 text-sm text-danger-600">
               <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
               <p>
                 Isso vai enviar <strong>{selected.size}</strong> documento(s) selecionado(s) para a lixeira. Deseja continuar?
               </p>
             </div>
             {error && (
-              <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">
+              <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">
                 {error}
               </p>
             )}
@@ -1557,7 +1646,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
               </button>
               <button
                 type="button"
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                className="rounded-[10px] bg-danger-600 px-4 py-2 text-sm font-semibold text-white hover:bg-danger-600 disabled:opacity-60"
                 onClick={() => bulkDelete.mutate()}
                 disabled={bulkDelete.isPending}
               >
@@ -1584,7 +1673,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                 void openFile(viewPicker);
                 setViewPicker(null);
               }}
-              className="flex w-full items-center justify-between gap-2 rounded-lg border border-app-border bg-app-input-bg px-3 py-2 text-left text-sm text-app transition hover:bg-app-hover"
+              className="flex w-full items-center justify-between gap-2 rounded-[10px] border border-ink-200 bg-surface px-3 py-2 text-left text-sm text-ink-800 transition hover:bg-ink-50"
             >
               <span className="flex min-w-0 items-center gap-2">
                 <FileConferenciaBadge
@@ -1594,7 +1683,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                 />
                 <span className="truncate">{viewPicker.originalName}</span>
               </span>
-              <Eye className="h-3.5 w-3.5 shrink-0 text-app-muted" aria-hidden />
+              <Eye className="h-3.5 w-3.5 shrink-0 text-ink-500" aria-hidden />
             </button>
             {viewPicker.arquivosExtras.map((extra) => (
               <button
@@ -1604,7 +1693,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                   void openFile(viewPicker, extra.id);
                   setViewPicker(null);
                 }}
-                className="flex w-full items-center justify-between gap-2 rounded-lg border border-app-border bg-app-input-bg px-3 py-2 text-left text-sm text-app transition hover:bg-app-hover"
+                className="flex w-full items-center justify-between gap-2 rounded-[10px] border border-ink-200 bg-surface px-3 py-2 text-left text-sm text-ink-800 transition hover:bg-ink-50"
               >
                 <span className="flex min-w-0 items-center gap-2">
                   <FileConferenciaBadge
@@ -1614,7 +1703,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                   />
                   <span className="truncate">{extra.originalName}</span>
                 </span>
-                <Eye className="h-3.5 w-3.5 shrink-0 text-app-muted" aria-hidden />
+                <Eye className="h-3.5 w-3.5 shrink-0 text-ink-500" aria-hidden />
               </button>
             ))}
           </div>
@@ -1625,6 +1714,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
           slug={String(slug)}
           doc={editing}
           orgaos={orgaos}
+          docTypes={docTypes ?? []}
           onClose={() => setEditing(null)}
           onDone={invalidate}
         />
@@ -1638,13 +1728,13 @@ export function DocumentsModule({ module }: { module: DocModule }) {
         >
           <div className="space-y-4 text-center">
             <Loader2 className="mx-auto h-12 w-12 animate-spin text-accent" aria-hidden />
-            <div className="h-2.5 w-full overflow-hidden rounded-full bg-app-skeleton">
+            <div className="h-2.5 w-full overflow-hidden rounded-full bg-ink-100">
               <div
-                className="h-full rounded-full bg-gradient-primary transition-all"
+                className="h-full rounded-full bg-brand-600 transition-all"
                 style={{ width: `${analisando.total > 0 ? (analisando.done / analisando.total) * 100 : 0}%` }}
               />
             </div>
-            <p className="text-sm text-app-muted">
+            <p className="text-sm text-ink-500">
               {analisando.done === 0
                 ? 'Calculando tempo estimado…'
                 : `~${formatDuration(
@@ -1666,17 +1756,17 @@ export function DocumentsModule({ module }: { module: DocModule }) {
         >
           <div className="space-y-4 text-center">
             <TriangleAlert className="mx-auto h-12 w-12 text-orange-500" aria-hidden />
-            <p className="text-2xl font-bold text-app">
+            <p className="text-2xl font-bold text-ink-800">
               {resultadoProblemas.divergente + resultadoProblemas.falha} documento(s) com problema
             </p>
-            <p className="text-sm text-app-muted">
+            <p className="text-sm text-ink-500">
               {resultadoProblemas.divergente > 0 && <>{resultadoProblemas.divergente} divergente(s)</>}
               {resultadoProblemas.divergente > 0 && resultadoProblemas.falha > 0 && ' · '}
               {resultadoProblemas.falha > 0 && <>{resultadoProblemas.falha} falharam na análise</>}
             </p>
             <button
               type="button"
-              className="mx-auto flex items-center gap-2 rounded-lg bg-gradient-primary px-5 py-2.5 text-sm font-bold uppercase text-white transition hover:opacity-90 disabled:opacity-60"
+              className="mx-auto flex items-center gap-2 rounded-[10px] bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
               onClick={() => void abrirCriticas()}
               disabled={gerandoRelatorio}
             >
@@ -1710,13 +1800,21 @@ function IncludeModal({
 }) {
   const meta = MODULE_TITLES[module];
   const [fields, setFields] = useState<Record<string, string>>({ module, exercicio: String(exercicio) });
+  const [metadados, setMetadados] = useState<Metadados>({});
+  const tipoAcervo = module === 'acervo' ? docTypes.find((t) => t.id === fields.documentTypeId) : undefined;
   const [file, setFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const set = (k: string) => (e: { target: { value: string } }) =>
-    setFields((f) => ({ ...f, [k]: e.target.value }));
+    setFields((f) => {
+      const v = e.target.value;
+      const next = { ...f, [k]: v };
+      // Acervo e historico: o exercicio acompanha o ano da data do documento.
+      if (k === 'documentDate' && module === 'acervo' && /^\d{4}-/.test(v)) next.exercicio = v.slice(0, 4);
+      return next;
+    });
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
@@ -1740,20 +1838,28 @@ function IncludeModal({
     if (!candidate.orgaoId) delete candidate.orgaoId;
     if (!candidate.historico) delete candidate.historico;
     if (!candidate.conta && module !== 'extrato') delete candidate.conta;
+    for (const k of ['classificacaoId', 'nivelAcesso', 'dataInicioContagem']) if (!candidate[k]) delete candidate[k];
+    if (module === 'acervo') {
+      for (const k of ['responsavelDigitalizacao', 'dataDigitalizacao', 'localDigitalizacao']) if (!candidate[k]) delete candidate[k];
+      const md = metadadosSchemaFor(tipoAcervo?.campos ?? []).safeParse(metadados);
+      if (!md.success) return md;
+      candidate.metadados = md.data;
+    }
     return documentFieldsSchema.safeParse(candidate);
-  }, [fields, module]);
+  }, [fields, module, metadados, tipoAcervo]);
 
   const submit = async () => {
     setError(null);
     if (!validation.success) {
       const first = validation.error.issues[0];
-      setError(`${first?.path.join('.')}: ${first?.message}`);
+      setError(first?.path.length ? `${first.path.join('.')}: ${first.message}` : (first?.message ?? 'Dados invalidos'));
       return;
     }
     // PDF e opcional: sem arquivo, o documento fica "aguardando arquivo" e o
     // PDF pode ser anexado depois (upload normal ou Pasta Monitorada).
     setProgress(0);
-    const result = await uploadDocument(slug, fields, file, setProgress);
+    const payload = module === 'acervo' ? { ...fields, metadados: JSON.stringify(metadados) } : fields;
+    const result = await uploadDocument(slug, payload, file, setProgress);
     if (result.ok) {
       onDone();
       onClose();
@@ -1764,9 +1870,9 @@ function IncludeModal({
   };
 
   return (
-    <Modal title={`Incluir ${meta.singular}`} subtitle={`Exercício ${exercicio}`} open onClose={onClose}>
+    <Modal title={`Incluir ${meta.singular.toLowerCase()}`} subtitle={module === 'acervo' ? undefined : `Exercício ${exercicio}`} open onClose={onClose}>
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {module === 'despesas' && (
             <>
               <Field label="Doc. Caixa *" id="docCaixa">
@@ -1775,7 +1881,7 @@ function IncludeModal({
               <Field label="Empenho *" id="empenho">
                 <input id="empenho" className={inputCls} placeholder="ex.: 2026NE00045" onChange={set('empenho')} />
               </Field>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Field label="Credor *" id="credor">
                   <input id="credor" className={inputCls} placeholder="Razão social do credor" onChange={set('credor')} />
                 </Field>
@@ -1785,28 +1891,62 @@ function IncludeModal({
 
           {(module === 'despesas' || module === 'receitas') && (
             <Field label="Tipo *" id="subtype">
-              <select id="subtype" className={inputCls} onChange={set('subtype')} defaultValue="">
+              <SelectMenu id="subtype" className={inputCls} onChange={set('subtype')} defaultValue="">
                 <option value="" disabled>Selecione…</option>
                 {subtypesFor(module).map((s) => (
                   <option key={s} value={s}>{SUBTYPE_LABEL[s] ?? s}</option>
                 ))}
-              </select>
+              </SelectMenu>
             </Field>
           )}
 
           {module === 'outros' && (
             <>
-              <Field label="Tipo de Documento *" id="documentTypeId">
-                <select id="documentTypeId" className={inputCls} onChange={set('documentTypeId')} defaultValue="">
+              <Field label="Tipo de documento *" id="documentTypeId">
+                <SelectMenu id="documentTypeId" className={inputCls} onChange={set('documentTypeId')} defaultValue="">
                   <option value="" disabled>Selecione…</option>
                   {docTypes.map((t) => (
                     <option key={t.id} value={t.id}>{t.nome}</option>
                   ))}
-                </select>
+                </SelectMenu>
               </Field>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Field label="Título/Descrição *" id="descricao">
                   <input id="descricao" className={inputCls} placeholder="Título ou descrição do documento" onChange={set('descricao')} />
+                </Field>
+              </div>
+            </>
+          )}
+
+          {module === 'acervo' && (
+            <>
+              <div className="sm:col-span-2">
+                <Field label="Tipo de documento *" id="documentTypeId">
+                  <SelectMenu
+                    id="documentTypeId"
+                    className={inputCls}
+                    defaultValue=""
+                    onChange={(e) => {
+                      set('documentTypeId')(e);
+                      setMetadados({});
+                    }}
+                  >
+                    <option value="" disabled>Selecione…</option>
+                    {docTypes.map((t) => (
+                      <option key={t.id} value={t.id}>{t.nome}</option>
+                    ))}
+                  </SelectMenu>
+                </Field>
+                {docTypes.length === 0 && (
+                  <p className="mt-1 text-xs text-ink-500">
+                    Nenhum tipo do Acervo cadastrado. Crie em Configurações → Tipos de Documento.
+                  </p>
+                )}
+              </div>
+              <MetadadosFields campos={tipoAcervo?.campos ?? []} values={metadados} onChange={setMetadados} idPrefix="inc-md" />
+              <div className="sm:col-span-2">
+                <Field label="Título/Descrição *" id="descricao">
+                  <input id="descricao" className={inputCls} placeholder="ex.: Dispõe sobre o plano diretor do município" onChange={set('descricao')} />
                 </Field>
               </div>
             </>
@@ -1833,16 +1973,16 @@ function IncludeModal({
           )}
 
           <Field label="Órgão" id="orgaoId">
-            <select id="orgaoId" className={inputCls} onChange={set('orgaoId')} defaultValue="">
+            <SelectMenu id="orgaoId" className={inputCls} onChange={set('orgaoId')} defaultValue="">
               <option value="">— Sem vínculo —</option>
               {orgaos.map((o) => (
                 <option key={o.id} value={o.id}>{o.codigo} — {o.descricao}</option>
               ))}
-            </select>
+            </SelectMenu>
           </Field>
 
-          {(module === 'despesas' || module === 'receitas' || module === 'outros' || module === 'extrato' || module === 'balancete') && (
-            <Field label="Data do Documento *" id="documentDate">
+          {(module === 'despesas' || module === 'receitas' || module === 'outros' || module === 'extrato' || module === 'balancete' || module === 'acervo') && (
+            <Field label="Data do documento *" id="documentDate">
               <input id="documentDate" type="date" className={inputCls} onChange={set('documentDate')} />
             </Field>
           )}
@@ -1860,7 +2000,7 @@ function IncludeModal({
           )}
 
           {(module === 'despesas' || module === 'receitas') && (
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Field label="Histórico" id="historico">
                 <textarea id="historico" rows={2} className={inputCls} placeholder="Descrição/histórico (opcional)" onChange={set('historico')} />
               </Field>
@@ -1868,12 +2008,30 @@ function IncludeModal({
           )}
 
           {(module === 'balancete' || module === 'extrato') && (
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Field label="Título/Descrição" id="descricao">
                 <textarea id="descricao" rows={2} className={inputCls} placeholder="Título ou descrição do documento (opcional)" onChange={set('descricao')} />
               </Field>
             </div>
           )}
+
+          {module === 'acervo' && (
+            <DigitalizacaoFields values={fields} onChange={(k, v) => setFields((f) => ({ ...f, [k]: v }))} idPrefix="inc-dg" />
+          )}
+
+          <ClassificacaoFields
+            slug={slug}
+            module={module}
+            values={fields}
+            onChange={(k, v) => setFields((f) => ({ ...f, [k]: v }))}
+            documentDate={fields.documentDate || null}
+            exercicio={Number(fields.exercicio) || null}
+            padrao={
+              tipoAcervo
+                ? { classificacaoId: tipoAcervo.classificacaoId ?? null, nivelAcesso: tipoAcervo.nivelAcessoPadrao ?? 'restrito', origem: 'tipo' }
+                : undefined
+            }
+          />
         </div>
 
         {/* Drag-and-drop PDF */}
@@ -1889,19 +2047,19 @@ function IncludeModal({
           onDrop={onDrop}
           onClick={() => document.getElementById('doc-file-input')?.click()}
           onKeyDown={(e) => e.key === 'Enter' && document.getElementById('doc-file-input')?.click()}
-          className={`flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed p-6 text-center transition ${
-            dragOver ? 'border-accent bg-purple-50 dark:bg-purple-900/10' : 'border-app-border hover:border-app-muted'
+          className={`flex cursor-pointer flex-col items-center gap-2 rounded-[16px] border-2 border-dashed p-6 text-center transition ${
+            dragOver ? 'border-accent bg-brand-50' : 'border-ink-200 hover:border-ink-400'
           }`}
         >
-          <FileUp className="h-8 w-8 text-app-muted" aria-hidden />
+          <FileUp className="h-8 w-8 text-ink-500" aria-hidden />
           {file ? (
-            <p className="text-sm font-semibold text-app">
-              {file.name} <span className="text-app-muted">({formatBytes(file.size)})</span>
+            <p className="text-sm font-semibold text-ink-800">
+              {file.name} <span className="text-ink-500">({formatBytes(file.size)})</span>
             </p>
           ) : (
-            <p className="text-sm text-app-muted">
+            <p className="text-sm text-ink-500">
               Arraste o PDF aqui ou <span className="font-semibold text-accent">clique para selecionar</span>{' '}
-              <span className="text-app-muted">(opcional — pode anexar depois)</span>
+              <span className="text-ink-500">(opcional — pode anexar depois)</span>
             </p>
           )}
           <input
@@ -1918,15 +2076,15 @@ function IncludeModal({
 
         {progress !== null && (
           <div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-app-skeleton">
-              <div className="h-full rounded-full bg-gradient-primary transition-all" style={{ width: `${progress}%` }} />
+            <div className="h-2 w-full overflow-hidden rounded-full bg-ink-100">
+              <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${progress}%` }} />
             </div>
-            <p className="mt-1 text-center text-[10px] text-app-muted">{progress}% enviado</p>
+            <p className="mt-1 text-center text-[10px] text-ink-500">{progress}% enviado</p>
           </div>
         )}
 
         {error && (
-          <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">{error}</p>
+          <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">{error}</p>
         )}
 
         <div className="flex justify-end gap-2">
@@ -1940,11 +2098,53 @@ function IncludeModal({
   );
 }
 
+/** Rotulo terminado em " *" vira obrigatorio (asterisco em danger). */
 function Field({ label, id, children }: { label: string; id: string; children: React.ReactNode }) {
+  const obrigatorio = label.endsWith(' *');
   return (
     <div>
-      <label className={labelCls} htmlFor={id}>{label}</label>
+      <label className={labelCls} htmlFor={id}>
+        {obrigatorio ? label.slice(0, -2) : label}
+        {obrigatorio && <span className="ml-0.5 text-danger-600">*</span>}
+      </label>
       {children}
+    </div>
+  );
+}
+
+function FiltroCampo({ label, id, children }: { label: string; id: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label htmlFor={id} className={labelCls}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function ListaVazia({ lixeira, filtrando, onIncluir, singular, arquivo }: { lixeira: boolean; filtrando: boolean; onIncluir: () => void; singular: string; arquivo: boolean }) {
+  const Icone = lixeira ? Trash2 : filtrando ? SearchX : FilePlus2;
+  return (
+    <div className="mx-auto flex max-w-sm flex-col items-center text-center">
+      <span className="flex h-12 w-12 items-center justify-center rounded-[12px] bg-ink-100 text-ink-500">
+        <Icone className="h-6 w-6" aria-hidden />
+      </span>
+      <p className="mt-3 text-sm font-bold text-ink-900">
+        {lixeira ? 'Lixeira vazia' : filtrando ? 'Nada encontrado com esses filtros' : 'Nenhum documento ainda'}
+      </p>
+      <p className="mt-1 text-sm text-ink-500">
+        {lixeira
+          ? 'Os documentos excluídos aparecem aqui.'
+          : filtrando
+            ? 'Tente outra palavra ou limpe os filtros.'
+            : arquivo
+              ? 'Inclua a primeira lei, decreto, portaria ou contrato do acervo.'
+              : 'Inclua o primeiro documento ou importe as etiquetas do sistema contábil.'}
+      </p>
+      {!lixeira && !filtrando && (
+        <Button className="mt-4" leftIcon={<Plus aria-hidden />} onClick={onIncluir}>
+          Incluir {singular.toLowerCase()}
+        </Button>
+      )}
     </div>
   );
 }
@@ -1971,6 +2171,25 @@ function AttachPdfModal({
   const [extraProgress, setExtraProgress] = useState<number | null>(null);
   const [extraError, setExtraError] = useState<string | null>(null);
   const [removingExtraId, setRemovingExtraId] = useState<string | null>(null);
+
+  /** Baixa a copia autenticada (carimbo + QR de verificacao publica) do arquivo principal ou de um extra. */
+  const [emitindoCopia, setEmitindoCopia] = useState<string | null>(null);
+  const baixarCopia = async (extraId?: string) => {
+    setEmitindoCopia(extraId ?? 'principal');
+    try {
+      const qs = extraId ? `?arquivo=${extraId}` : '';
+      const url = await apiBlobUrl(`/t/${slug}/documents/${doc.id}/copia-autenticada${qs}`);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(extraId ? extras.find((e) => e.id === extraId)?.originalName : doc.originalName)?.replace(/\.pdf$/i, '') ?? 'documento'}-autenticada.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Erro ao gerar a cópia autenticada');
+    } finally {
+      setEmitindoCopia(null);
+    }
+  };
 
   /** Abre um arquivo especifico (principal se extraId for undefined) em nova guia. */
   const viewFile = async (extraId?: string) => {
@@ -2071,8 +2290,8 @@ function AttachPdfModal({
       <div className="space-y-4">
         {temArquivo && (
           <div className="space-y-1.5">
-            <p className="text-xs font-semibold uppercase text-app-muted">Arquivos anexados</p>
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-app-border bg-app-input-bg px-3 py-2">
+            <p className="label-caps">Arquivos anexados</p>
+            <div className="flex items-center justify-between gap-2 rounded-[10px] border border-ink-200 bg-surface px-3 py-2">
               <span className="flex min-w-0 items-center gap-2">
                 {doc.module === 'despesas' && (
                   <FileConferenciaBadge
@@ -2081,23 +2300,36 @@ function AttachPdfModal({
                     erro={doc.conferenciaErro}
                   />
                 )}
-                <span className="truncate text-xs text-app">{doc.originalName}</span>
+                <span className="truncate text-xs text-ink-800">{doc.originalName}</span>
               </span>
               <span className="flex shrink-0 gap-1">
                 <button
                   type="button"
                   title="Visualizar"
                   onClick={() => void viewFile()}
-                  className="rounded p-1 text-app-muted hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20"
+                  className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
                 >
                   <Eye className="h-3.5 w-3.5" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  title="Cópia autenticada (carimbo + QR de verificação)"
+                  disabled={emitindoCopia !== null}
+                  onClick={() => void baixarCopia()}
+                  className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-success-50 hover:text-success-600 disabled:opacity-60"
+                >
+                  {emitindoCopia === 'principal' ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  ) : (
+                    <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+                  )}
                 </button>
                 <button
                   type="button"
                   title="Excluir PDF"
                   disabled={removing}
                   onClick={removeCurrent}
-                  className="rounded p-1 text-app-muted hover:bg-red-50 hover:text-red-500 disabled:opacity-60 dark:hover:bg-red-900/20"
+                  className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-danger-50 hover:text-danger-500 disabled:opacity-60"
                 >
                   {removing ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
@@ -2110,7 +2342,7 @@ function AttachPdfModal({
             {extras.map((extra) => (
               <div
                 key={extra.id}
-                className="flex items-center justify-between gap-2 rounded-lg border border-app-border bg-app-input-bg px-3 py-2"
+                className="flex items-center justify-between gap-2 rounded-[10px] border border-ink-200 bg-surface px-3 py-2"
               >
                 <span className="flex min-w-0 items-center gap-2">
                   {doc.module === 'despesas' && (
@@ -2120,23 +2352,36 @@ function AttachPdfModal({
                       erro={extra.conferenciaErro}
                     />
                   )}
-                  <span className="truncate text-xs text-app">{extra.originalName}</span>
+                  <span className="truncate text-xs text-ink-800">{extra.originalName}</span>
                 </span>
                 <span className="flex shrink-0 gap-1">
                   <button
                     type="button"
                     title="Visualizar"
                     onClick={() => void viewFile(extra.id)}
-                    className="rounded p-1 text-app-muted hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20"
+                    className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
                   >
                     <Eye className="h-3.5 w-3.5" aria-hidden />
                   </button>
+                <button
+                  type="button"
+                  title="Cópia autenticada (carimbo + QR de verificação)"
+                  disabled={emitindoCopia !== null}
+                  onClick={() => void baixarCopia(extra.id)}
+                  className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-success-50 hover:text-success-600 disabled:opacity-60"
+                >
+                  {emitindoCopia === extra.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  ) : (
+                    <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+                  )}
+                </button>
                   <button
                     type="button"
                     title="Excluir"
                     disabled={removingExtraId === extra.id}
                     onClick={() => void removeExtra(extra.id)}
-                    className="rounded p-1 text-app-muted hover:bg-red-50 hover:text-red-500 disabled:opacity-60 dark:hover:bg-red-900/20"
+                    className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-danger-50 hover:text-danger-500 disabled:opacity-60"
                   >
                     {removingExtraId === extra.id ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
@@ -2147,7 +2392,7 @@ function AttachPdfModal({
                 </span>
               </div>
             ))}
-            <p className="text-xs text-app-muted">Selecionar um novo arquivo abaixo vai substituir o PDF principal.</p>
+            <p className="text-xs text-ink-500">Selecionar um novo arquivo abaixo vai substituir o PDF principal.</p>
           </div>
         )}
 
@@ -2157,7 +2402,7 @@ function AttachPdfModal({
               type="button"
               onClick={() => document.getElementById('add-extra-file-input')?.click()}
               disabled={extraProgress !== null}
-              className="flex items-center gap-1.5 rounded-lg border border-dashed border-app-border px-3 py-1.5 text-xs font-bold uppercase text-app-muted transition hover:border-accent hover:text-accent disabled:opacity-60"
+              className="flex items-center gap-1.5 rounded-[10px] border border-dashed border-ink-200 px-3 py-1.5 text-[13px] font-semibold text-ink-500 transition hover:border-accent hover:text-accent disabled:opacity-60"
             >
               <Plus className="h-3.5 w-3.5" aria-hidden />{' '}
               {extraProgress !== null ? `Enviando… ${extraProgress}%` : 'Adicionar outro PDF'}
@@ -2174,7 +2419,7 @@ function AttachPdfModal({
               }}
             />
             {extraError && (
-              <p role="alert" className="mt-2 rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">
+              <p role="alert" className="mt-2 rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">
                 {extraError}
               </p>
             )}
@@ -2193,17 +2438,17 @@ function AttachPdfModal({
           onDrop={onDrop}
           onClick={() => document.getElementById('attach-file-input')?.click()}
           onKeyDown={(e) => e.key === 'Enter' && document.getElementById('attach-file-input')?.click()}
-          className={`flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed p-6 text-center transition ${
-            dragOver ? 'border-accent bg-purple-50 dark:bg-purple-900/10' : 'border-app-border hover:border-app-muted'
+          className={`flex cursor-pointer flex-col items-center gap-2 rounded-[16px] border-2 border-dashed p-6 text-center transition ${
+            dragOver ? 'border-accent bg-brand-50' : 'border-ink-200 hover:border-ink-400'
           }`}
         >
-          <FileUp className="h-8 w-8 text-app-muted" aria-hidden />
+          <FileUp className="h-8 w-8 text-ink-500" aria-hidden />
           {file ? (
-            <p className="text-sm font-semibold text-app">
-              {file.name} <span className="text-app-muted">({formatBytes(file.size)})</span>
+            <p className="text-sm font-semibold text-ink-800">
+              {file.name} <span className="text-ink-500">({formatBytes(file.size)})</span>
             </p>
           ) : (
-            <p className="text-sm text-app-muted">
+            <p className="text-sm text-ink-500">
               Arraste o PDF aqui ou <span className="font-semibold text-accent">clique para selecionar</span>
             </p>
           )}
@@ -2221,15 +2466,15 @@ function AttachPdfModal({
 
         {progress !== null && (
           <div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-app-skeleton">
-              <div className="h-full rounded-full bg-gradient-primary transition-all" style={{ width: `${progress}%` }} />
+            <div className="h-2 w-full overflow-hidden rounded-full bg-ink-100">
+              <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${progress}%` }} />
             </div>
-            <p className="mt-1 text-center text-[10px] text-app-muted">{progress}% enviado</p>
+            <p className="mt-1 text-center text-[10px] text-ink-500">{progress}% enviado</p>
           </div>
         )}
 
         {error && (
-          <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">{error}</p>
+          <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">{error}</p>
         )}
 
         <div className="flex justify-end gap-2">
@@ -2248,28 +2493,55 @@ function EditModal({
   slug,
   doc,
   orgaos,
+  docTypes,
   onClose,
   onDone,
 }: {
   slug: string;
   doc: DocumentView;
   orgaos: Orgao[];
+  docTypes: Lookup[];
   onClose: () => void;
   onDone: () => void;
 }) {
   const [fields, setFields] = useState<Record<string, string>>({});
+  const [metadados, setMetadados] = useState<Metadados>(doc.metadados ?? {});
+  const [metadadosAlterados, setMetadadosAlterados] = useState(false);
+  const tipoAcervo = doc.module === 'acervo' ? docTypes.find((t) => t.id === doc.documentTypeId) : undefined;
+  const temArquivo = useModulo('arquivo');
+  const { data: locaisFisicos = [] } = useQuery<LocalFisicoView[]>({
+    queryKey: ['arquivo-fisico', 'locais', slug],
+    queryFn: () => api<LocalFisicoView[]>(`/t/${slug}/arquivo-fisico/locais`),
+    staleTime: 60_000,
+  });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const set = (k: string) => (e: { target: { value: string } }) =>
-    setFields((f) => ({ ...f, [k]: e.target.value }));
+    setFields((f) => {
+      const v = e.target.value;
+      const next = { ...f, [k]: v };
+      // Acervo e historico: o exercicio acompanha o ano da data do documento.
+      if (k === 'documentDate' && doc.module === 'acervo' && /^\d{4}-/.test(v)) next.exercicio = v.slice(0, 4);
+      return next;
+    });
 
   const save = async () => {
     setError(null);
     setSaving(true);
     const body: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(fields)) {
-      if (v !== '') body[k] = k === 'value' || k === 'exercicio' ? Number(v) : v;
+      if (k === 'localFisicoId') body[k] = v || null; // vazio = remover da caixa
+      else if (v !== '') body[k] = k === 'value' || k === 'exercicio' ? Number(v) : k === 'digitalizado' ? v === 'true' : v;
+    }
+    if (doc.module === 'acervo' && metadadosAlterados) {
+      const md = metadadosSchemaFor(tipoAcervo?.campos ?? []).safeParse(metadados);
+      if (!md.success) {
+        setError(md.error.issues[0]?.message ?? 'Metadados invalidos');
+        setSaving(false);
+        return;
+      }
+      body.metadados = md.data;
     }
     try {
       await api(`/t/${slug}/documents/${doc.id}`, { method: 'PATCH', body });
@@ -2285,7 +2557,7 @@ function EditModal({
   return (
     <Modal title="Editar documento" subtitle={doc.originalName} open onClose={onClose}>
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {doc.module === 'despesas' && (
             <>
               <Field label="Doc. Caixa" id="e-docCaixa">
@@ -2294,7 +2566,7 @@ function EditModal({
               <Field label="Empenho" id="e-empenho">
                 <input id="e-empenho" className={inputCls} defaultValue={doc.empenho ?? ''} onChange={set('empenho')} />
               </Field>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Field label="Credor" id="e-credor">
                   <input id="e-credor" className={inputCls} defaultValue={doc.credor ?? ''} onChange={set('credor')} />
                 </Field>
@@ -2309,15 +2581,42 @@ function EditModal({
               <Field label="Data do Documento" id="e-date">
                 <input id="e-date" type="date" className={inputCls} defaultValue={doc.documentDate ?? ''} onChange={set('documentDate')} />
               </Field>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Field label="Histórico" id="e-hist">
                   <textarea id="e-hist" rows={2} className={inputCls} defaultValue={doc.historico ?? ''} onChange={set('historico')} />
                 </Field>
               </div>
             </>
           )}
-          {doc.module === 'outros' && (
-            <div className="col-span-2">
+          {doc.module === 'acervo' && (
+            <>
+              <MetadadosFields
+                campos={tipoAcervo?.campos ?? []}
+                values={metadados}
+                onChange={(m) => {
+                  setMetadados(m);
+                  setMetadadosAlterados(true);
+                }}
+                idPrefix="ed-md"
+              />
+              <Field label="Data do Documento" id="e-date-acervo">
+                <input id="e-date-acervo" type="date" className={inputCls} defaultValue={doc.documentDate ?? ''} onChange={set('documentDate')} />
+              </Field>
+              <DigitalizacaoFields
+                values={{
+                  digitalizado: String(doc.digitalizado),
+                  responsavelDigitalizacao: doc.responsavelDigitalizacao ?? '',
+                  dataDigitalizacao: doc.dataDigitalizacao ?? '',
+                  localDigitalizacao: doc.localDigitalizacao ?? '',
+                  ...fields,
+                }}
+                onChange={(k, v) => setFields((f) => ({ ...f, [k]: v }))}
+                idPrefix="ed-dg"
+              />
+            </>
+          )}
+          {(doc.module === 'outros' || doc.module === 'acervo') && (
+            <div className="sm:col-span-2">
               <Field label="Título/Descrição" id="e-desc">
                 <input id="e-desc" className={inputCls} defaultValue={doc.descricao ?? ''} onChange={set('descricao')} />
               </Field>
@@ -2334,24 +2633,56 @@ function EditModal({
             </Field>
           )}
           {(doc.module === 'balancete' || doc.module === 'extrato') && (
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Field label="Título/Descrição" id="e-desc-be">
                 <textarea id="e-desc-be" rows={2} className={inputCls} defaultValue={doc.descricao ?? ''} onChange={set('descricao')} />
               </Field>
             </div>
           )}
           <Field label="Órgão" id="e-orgao">
-            <select id="e-orgao" className={inputCls} defaultValue={doc.orgaoId ?? ''} onChange={set('orgaoId')}>
+            <SelectMenu id="e-orgao" className={inputCls} defaultValue={doc.orgaoId ?? ''} onChange={set('orgaoId')}>
               <option value="">— Sem vínculo —</option>
               {orgaos.map((o) => (
                 <option key={o.id} value={o.id}>{o.codigo} — {o.descricao}</option>
               ))}
-            </select>
+            </SelectMenu>
           </Field>
+
+          {locaisFisicos.length > 0 && (
+            <div className="sm:col-span-2">
+              <Field label="Localização física do original" id="e-local">
+                <SelectMenu
+                  id="e-local"
+                  className={inputCls}
+                  defaultValue={doc.localFisicoId ?? ''}
+                  onChange={set('localFisicoId')}
+                >
+                  <option value="">— Sem original em papel / não localizado —</option>
+                  {locaisFisicos
+                    .filter((l) => l.ativo || l.id === doc.localFisicoId)
+                    .map((l) => (
+                      <option key={l.id} value={l.id}>{caminhoLocal(l.id, locaisFisicos)}</option>
+                    ))}
+                </SelectMenu>
+              </Field>
+            </div>
+          )}
+
+          <ClassificacaoFields
+            slug={slug}
+            module={doc.module}
+            values={fields}
+            onChange={(k, v) => setFields((f) => ({ ...f, [k]: v }))}
+            documentDate={fields.documentDate || doc.documentDate}
+            exercicio={doc.exercicio}
+            atual={{ classificacaoId: doc.classificacaoId, nivelAcesso: doc.nivelAcesso, dataInicioContagem: doc.dataInicioContagem }}
+            sigiloVigente={doc.grauSigilo !== null}
+          />
+          {temArquivo && <SigiloDocumento slug={slug} documentId={doc.id} dataDocumento={doc.documentDate} />}
         </div>
 
         {error && (
-          <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">{error}</p>
+          <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">{error}</p>
         )}
 
         <div className="flex justify-end gap-2">

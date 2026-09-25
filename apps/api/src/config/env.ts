@@ -34,6 +34,11 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().url().default('http://localhost:3000'),
   /** Diretorio do storage local (fallback dev quando Supabase ausente). */
   STORAGE_DIR: z.string().default('.storage'),
+  /** '1'/'true' desliga a indexacao de conteudo (OCR) mesmo com poppler/tesseract instalados. */
+  OCR_DISABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === '1' || v === 'true'),
   /** Base publica da API (para montar signed URLs locais). */
   API_PUBLIC_URL: z.string().url().default('http://localhost:3333'),
 });

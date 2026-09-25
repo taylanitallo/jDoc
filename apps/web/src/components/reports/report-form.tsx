@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { CalendarDays, CalendarRange, FileText, Loader2, Tags } from 'lucide-react';
-import { btnPrimary, inputCls, labelCls } from '@/components/ui';
+import { btnPrimary, inputCls, labelCls, SelectMenu } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { useToast } from '@/components/toast';
 
@@ -26,33 +26,33 @@ const MIDIA_KEYS: MidiaKey[] = ['balancete', 'extrato', 'receita', 'despesa', 'o
 const MIDIA_META: Record<MidiaKey, { label: string; active: string; inactive: string }> = {
   balancete: {
     label: 'Balancete',
-    active: 'border-transparent bg-violet-600 text-white shadow-sm',
+    active: 'border-transparent bg-brand-600 text-white shadow-xs',
     inactive:
-      'border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 dark:border-violet-800/40 dark:bg-violet-900/20 dark:text-violet-300 dark:hover:bg-violet-900/40',
+      'border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100',
   },
   extrato: {
     label: 'Extrato',
-    active: 'border-transparent bg-blue-600 text-white shadow-sm',
+    active: 'border-transparent bg-brand-600 text-white shadow-xs',
     inactive:
-      'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-800/40 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/40',
+      'border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100',
   },
   receita: {
     label: 'Receita',
-    active: 'border-transparent bg-green-600 text-white shadow-sm',
+    active: 'border-transparent bg-success-600 text-white shadow-xs',
     inactive:
-      'border-green-200 bg-green-50 text-green-700 hover:bg-green-100 dark:border-green-800/40 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/40',
+      'border-success-500/30 bg-success-50 text-success-600 hover:bg-success-50',
   },
   despesa: {
     label: 'Despesa',
-    active: 'border-transparent bg-orange-600 text-white shadow-sm',
+    active: 'border-transparent bg-orange-600 text-white shadow-xs',
     inactive:
-      'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-800/40 dark:bg-orange-900/20 dark:text-orange-300 dark:hover:bg-orange-900/40',
+      'border-orange-500/30 bg-orange-50 text-orange-600 hover:bg-orange-50',
   },
   outros: {
     label: 'Outros',
-    active: 'border-transparent bg-slate-600 text-white shadow-sm',
+    active: 'border-transparent bg-ink-600 text-white shadow-xs',
     inactive:
-      'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-700/40 dark:bg-slate-800/40 dark:text-slate-300 dark:hover:bg-slate-800/60',
+      'border-ink-200 bg-ink-50 text-ink-700 hover:bg-ink-100',
   },
 };
 
@@ -117,10 +117,10 @@ export function ReportForm({ slug, tipo, onSubmit }: PrestacaoContasFormProps) {
   }
 
   const chipCls = (active: boolean) =>
-    `rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
+    `rounded-[10px] border px-2.5 py-1.5 text-xs font-medium transition ${
       active
-        ? 'border-transparent bg-gradient-primary text-white shadow-sm'
-        : 'border-purple-100 bg-purple-50/60 text-app-muted hover:bg-purple-100/60 hover:text-app dark:border-purple-900/30 dark:bg-purple-900/10 dark:hover:bg-purple-900/25'
+        ? 'border-transparent bg-brand-600 text-white shadow-xs'
+        : 'border-brand-100 bg-brand-50/60 text-ink-500 hover:bg-brand-100/60 hover:text-ink-800'
     }`;
 
   const iconLabelCls = `${labelCls} flex items-center gap-1.5`;
@@ -129,11 +129,11 @@ export function ReportForm({ slug, tipo, onSubmit }: PrestacaoContasFormProps) {
     <form onSubmit={handleSubmit} className="space-y-4">
       {tipo === 'prestacao_contas' ? (
         <>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={iconLabelCls}>
                 <CalendarDays className="h-3.5 w-3.5" aria-hidden />
-                Período Início
+                Período — início
               </label>
               <input
                 type="date"
@@ -146,7 +146,7 @@ export function ReportForm({ slug, tipo, onSubmit }: PrestacaoContasFormProps) {
             <div>
               <label className={iconLabelCls}>
                 <CalendarDays className="h-3.5 w-3.5" aria-hidden />
-                Período Fim
+                Período — fim
               </label>
               <input
                 type="date"
@@ -159,14 +159,14 @@ export function ReportForm({ slug, tipo, onSubmit }: PrestacaoContasFormProps) {
           </div>
           <div>
             <label className={labelCls}>Ordenação</label>
-            <select
+            <SelectMenu
               value={ordenacao}
               onChange={e => setOrdenacao(e.target.value as 'alfabetica' | 'data')}
               className={inputCls}
             >
               <option value="alfabetica">Alfabética</option>
               <option value="data">Data</option>
-            </select>
+            </SelectMenu>
           </div>
         </>
       ) : (
@@ -193,7 +193,7 @@ export function ReportForm({ slug, tipo, onSubmit }: PrestacaoContasFormProps) {
                 Competências (Meses)
               </label>
               {competencias.length > 0 && (
-                <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-semibold text-brand-700">
                   {competencias.length} selecionado{competencias.length > 1 ? 's' : ''}
                 </span>
               )}
@@ -229,7 +229,7 @@ export function ReportForm({ slug, tipo, onSubmit }: PrestacaoContasFormProps) {
                     type="button"
                     onClick={() => toggleMidia(midia)}
                     aria-pressed={active}
-                    className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
+                    className={`rounded-[10px] border px-2.5 py-1.5 text-xs font-medium transition ${
                       active ? meta.active : meta.inactive
                     }`}
                   >
@@ -243,7 +243,7 @@ export function ReportForm({ slug, tipo, onSubmit }: PrestacaoContasFormProps) {
       )}
 
       {error && (
-        <p role="alert" className="text-sm text-app-error-text">
+        <p role="alert" className="text-sm text-danger-600">
           {error}
         </p>
       )}
@@ -254,7 +254,7 @@ export function ReportForm({ slug, tipo, onSubmit }: PrestacaoContasFormProps) {
         ) : (
           <>
             <FileText className="h-4 w-4" aria-hidden />
-            Gerar Relatório
+            Gerar relatório
           </>
         )}
       </button>

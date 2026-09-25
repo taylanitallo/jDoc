@@ -38,16 +38,16 @@ export function ProjetoAtividadeTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-bold text-app">Projeto Atividade</h2>
+        <h2 className="text-base font-bold text-ink-900">Projeto/atividade</h2>
         <button type="button" className={btnPrimary} onClick={() => setEditing('new')}>
           <span className="flex items-center gap-2">
-            <Plus className="h-4 w-4" aria-hidden /> Novo Projeto/Atividade
+            <Plus className="h-4 w-4" aria-hidden /> Novo projeto/atividade
           </span>
         </button>
       </div>
 
       <div className="relative max-w-sm">
-        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-app-muted" aria-hidden />
+        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-ink-500" aria-hidden />
         <input
           aria-label="Pesquisar pela descrição"
           className={inputCls + ' pl-9'}
@@ -58,14 +58,14 @@ export function ProjetoAtividadeTab() {
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-app-muted">Carregando...</p>
+        <p className="text-sm text-ink-500">Carregando...</p>
       ) : data && data.items.length === 0 ? (
         <EmptyState icon={Search} title="Nenhum projeto/atividade encontrado" description="Cadastre projetos/atividades para este exercício." />
       ) : (
         <div className={`${cardCls} overflow-x-auto`}>
           <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-app-border text-[11px] font-bold uppercase text-app-muted">
+            <thead className="bg-ink-50/60">
+              <tr className="border-b border-ink-200 label-caps">
                 <th className="px-4 py-3">Projeto</th>
                 <th className="px-4 py-3">Descrição do projeto atividade</th>
                 <th className="px-4 py-3">Exercício</th>
@@ -75,11 +75,11 @@ export function ProjetoAtividadeTab() {
             </thead>
             <tbody>
               {data?.items.map((p) => (
-                <tr key={p.id} className="border-b border-app-border hover:bg-app-hover">
-                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-app">{p.codigo}</td>
-                  <td className="px-4 py-3 text-app">{p.descricao}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-app-muted">{p.exercicio}</td>
-                  <td className="px-4 py-3 text-app-muted">{p.ativo ? 'SIM' : 'NÃO'}</td>
+                <tr key={p.id} className="border-b border-ink-200 hover:bg-ink-50">
+                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-ink-800">{p.codigo}</td>
+                  <td className="px-4 py-3 text-ink-800">{p.descricao}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-ink-500">{p.exercicio}</td>
+                  <td className="px-4 py-3 text-ink-500">{p.ativo ? 'SIM' : 'NÃO'}</td>
                   <td className="px-4 py-3">
                     <div className="flex w-fit gap-0.5">
                       <button
@@ -87,7 +87,7 @@ export function ProjetoAtividadeTab() {
                         title="Editar"
                         aria-label={`Editar projeto/atividade ${p.descricao}`}
                         onClick={() => setEditing(p)}
-                        className="rounded p-1 text-app-muted hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20"
+                        className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
                       >
                         <Pencil className="h-4 w-4" aria-hidden />
                       </button>
@@ -96,7 +96,7 @@ export function ProjetoAtividadeTab() {
                         title="Excluir"
                         aria-label={`Excluir projeto/atividade ${p.descricao}`}
                         onClick={() => remove.mutate(p.id!)}
-                        className="rounded p-1 text-app-muted hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+                        className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-danger-50 hover:text-danger-500"
                       >
                         <Trash2 className="h-4 w-4" aria-hidden />
                       </button>
@@ -156,10 +156,10 @@ function ProjetoModal({
   });
 
   return (
-    <Modal title="Projeto Atividade — Edição/Inclusão" open onClose={onClose}>
+    <Modal title="Projeto/atividade" open onClose={onClose}>
       <div className="space-y-4">
         <div>
-          <label className={labelCls} htmlFor="projeto-codigo">Projeto *</label>
+          <label className={labelCls} htmlFor="projeto-codigo">Projeto<span className="ml-0.5 text-danger-600">*</span></label>
           <input
             id="projeto-codigo"
             className={inputCls}
@@ -169,7 +169,7 @@ function ProjetoModal({
           />
         </div>
         <div>
-          <label className={labelCls} htmlFor="projeto-descricao">Descrição *</label>
+          <label className={labelCls} htmlFor="projeto-descricao">Descrição<span className="ml-0.5 text-danger-600">*</span></label>
           <input
             id="projeto-descricao"
             className={inputCls}
@@ -179,7 +179,7 @@ function ProjetoModal({
           />
         </div>
         <div>
-          <label className={labelCls} htmlFor="projeto-exercicio">Exercício *</label>
+          <label className={labelCls} htmlFor="projeto-exercicio">Exercício<span className="ml-0.5 text-danger-600">*</span></label>
           <input
             id="projeto-exercicio"
             type="number"
@@ -189,13 +189,13 @@ function ProjetoModal({
           />
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-app">
+        <label className="flex items-center gap-2 text-sm text-ink-800">
           <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} />
           Ativo
         </label>
 
         {error && (
-          <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">{error}</p>
+          <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">{error}</p>
         )}
 
         <div className="flex justify-end gap-2">

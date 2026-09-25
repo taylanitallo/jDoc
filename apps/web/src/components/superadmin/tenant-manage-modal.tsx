@@ -22,7 +22,7 @@ import type {
 } from '@jdoc/shared';
 import { api, ApiError } from '@/lib/api';
 import { restoreTenantBackup } from '@/lib/upload';
-import { Badge, Modal, btnGhost, btnPrimary, cardCls, formatBytes, inputCls, labelCls } from '@/components/ui';
+import { Badge, Modal, btnGhost, btnPrimary, cardCls, formatBytes, inputCls, labelCls, SelectMenu } from '@/components/ui';
 import { useToast } from '@/components/toast';
 
 const TABS = [
@@ -44,14 +44,14 @@ export function TenantManageModal({
 
   return (
     <Modal title={tenant.nome} subtitle={`/${tenant.slug}`} open onClose={onClose}>
-      <div className="mb-4 flex gap-1 rounded-lg bg-app-input-bg p-1">
+      <div className="mb-4 flex gap-1 rounded-[10px] bg-surface p-1">
         {TABS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             type="button"
             onClick={() => setTab(key)}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-bold uppercase transition ${
-              tab === key ? 'bg-app-card text-app shadow' : 'text-app-muted hover:text-app'
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-[8px] px-2 py-2 text-[13px] font-semibold transition ${
+              tab === key ? 'bg-surface text-ink-800 shadow-sm' : 'text-ink-500 hover:text-ink-800'
             }`}
           >
             <Icon className="h-3.5 w-3.5" aria-hidden />
@@ -132,29 +132,29 @@ function BackupTab({ tenant }: { tenant: TenantOverview }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:grid-cols-4">
         <div className={`${cardCls} p-3 text-center`}>
-          <p className="text-xl font-extrabold text-app">{concluidos}</p>
-          <p className="text-[10px] uppercase text-app-muted">Concluídos</p>
+          <p className="text-xl font-extrabold text-ink-800">{concluidos}</p>
+          <p className="label-caps">Concluídos</p>
         </div>
         <div className={`${cardCls} p-3 text-center`}>
-          <p className={`text-xl font-extrabold ${falhas > 0 ? 'text-app-error-text' : 'text-app'}`}>{falhas}</p>
-          <p className="text-[10px] uppercase text-app-muted">Falhas</p>
+          <p className={`text-xl font-extrabold ${falhas > 0 ? 'text-danger-600' : 'text-ink-800'}`}>{falhas}</p>
+          <p className="label-caps">Falhas</p>
         </div>
         <div className={`${cardCls} p-3 text-center`}>
-          <p className="text-xl font-extrabold text-app">{formatBytes(storageTotal)}</p>
-          <p className="text-[10px] uppercase text-app-muted">Storage</p>
+          <p className="text-xl font-extrabold text-ink-800">{formatBytes(storageTotal)}</p>
+          <p className="label-caps">Storage</p>
         </div>
         <div className={`${cardCls} p-3 text-center`}>
-          <p className="text-sm font-bold text-app">
+          <p className="text-sm font-bold text-ink-800">
             {ultimo ? new Date(ultimo.concluidoEm ?? ultimo.criadoEm).toLocaleString('pt-BR') : '—'}
           </p>
-          <p className="text-[10px] uppercase text-app-muted">Último backup</p>
+          <p className="label-caps">Último backup</p>
         </div>
       </div>
 
       <div className="flex items-center justify-between">
-        <p className="text-xs font-bold uppercase text-app-muted">{items.length} registro(s)</p>
+        <p className="label-caps">{items.length} registro(s)</p>
         <div className="flex gap-2">
           <button
             type="button"
@@ -176,24 +176,24 @@ function BackupTab({ tenant }: { tenant: TenantOverview }) {
         </div>
       </div>
 
-      {error && <p className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">{error}</p>}
+      {error && <p className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">{error}</p>}
 
       <div className={`${cardCls} max-h-72 overflow-y-auto`}>
-        {isLoading && <p className="p-4 text-sm text-app-muted">Carregando…</p>}
+        {isLoading && <p className="p-4 text-sm text-ink-500">Carregando…</p>}
         {!isLoading && items.length === 0 && (
-          <p className="p-6 text-center text-sm text-app-muted">Nenhum backup ainda.</p>
+          <p className="p-6 text-center text-sm text-ink-500">Nenhum backup ainda.</p>
         )}
         {items.map((b: BackupView) => (
-          <div key={b.id} className="flex items-center justify-between gap-2 border-b border-app-border px-3 py-2 last:border-0">
+          <div key={b.id} className="flex items-center justify-between gap-2 border-b border-ink-200 px-3 py-2 last:border-0">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <Badge color={statusColor(b.status)}>{b.status.toUpperCase()}</Badge>
                 {b.isSafetyBackup && <Badge color="gray">SEGURANÇA</Badge>}
-                <span className="text-xs text-app-muted">
+                <span className="text-xs text-ink-500">
                   {b.sizeBytes ? formatBytes(b.sizeBytes) : '—'}
                 </span>
               </div>
-              <p className="mt-0.5 text-[11px] text-app-muted">
+              <p className="mt-0.5 text-[11px] text-ink-500">
                 {new Date(b.criadoEm).toLocaleString('pt-BR')}
               </p>
             </div>
@@ -203,7 +203,7 @@ function BackupTab({ tenant }: { tenant: TenantOverview }) {
                 title="Baixar"
                 disabled={b.status !== 'concluido'}
                 onClick={() => baixar.mutate(b.id)}
-                className="rounded p-1.5 text-app-muted hover:bg-green-50 hover:text-green-600 disabled:opacity-30 dark:hover:bg-green-900/30"
+                className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-success-50 hover:text-success-600 disabled:opacity-30"
               >
                 <Download className="h-4 w-4" aria-hidden />
               </button>
@@ -211,7 +211,7 @@ function BackupTab({ tenant }: { tenant: TenantOverview }) {
                 type="button"
                 title="Excluir"
                 onClick={() => confirm('Excluir este backup?') && remover.mutate(b.id)}
-                className="rounded p-1.5 text-app-muted hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/30"
+                className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-danger-50 hover:text-danger-500"
               >
                 <Trash2 className="h-4 w-4" aria-hidden />
               </button>
@@ -256,15 +256,15 @@ function AgendamentoTab({ tenant }: { tenant: TenantOverview }) {
   });
 
   if (isLoading || !form) {
-    return <p className="p-4 text-sm text-app-muted">Carregando…</p>;
+    return <p className="p-4 text-sm text-ink-500">Carregando…</p>;
   }
 
   return (
     <div className="space-y-4">
       <div className={`${cardCls} flex items-center justify-between p-4`}>
-        <div className="space-y-1 text-xs text-app-muted">
+        <div className="space-y-1 text-xs text-ink-500">
           <p>
-            <span className="font-bold text-app">Próximo backup: </span>
+            <span className="font-bold text-ink-800">Próximo backup: </span>
             {data?.proximoBackup ? new Date(data.proximoBackup).toLocaleString('pt-BR') : '—'}
           </p>
         </div>
@@ -276,8 +276,8 @@ function AgendamentoTab({ tenant }: { tenant: TenantOverview }) {
 
       <label className={`${cardCls} flex items-center justify-between p-4`}>
         <div>
-          <p className="text-sm font-bold text-app">Ativar backup automático</p>
-          <p className="text-xs text-app-muted">Executa sozinho no horário configurado</p>
+          <p className="text-sm font-bold text-ink-800">Ativar backup automático</p>
+          <p className="text-xs text-ink-500">Executa sozinho no horário configurado</p>
         </div>
         <input
           type="checkbox"
@@ -287,21 +287,21 @@ function AgendamentoTab({ tenant }: { tenant: TenantOverview }) {
         />
       </label>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className={labelCls}>Frequência</label>
-          <select
+          <SelectMenu
             className={inputCls}
             value={form.frequencia}
             onChange={(e) => setForm({ ...form, frequencia: e.target.value as UpdateBackupSettingsInput['frequencia'] })}
           >
             <option value="diario">Diário</option>
             <option value="semanal">Semanal (domingo)</option>
-          </select>
+          </SelectMenu>
         </div>
         <div>
           <label className={labelCls}>Horário de execução</label>
-          <select
+          <SelectMenu
             className={inputCls}
             value={form.hora}
             onChange={(e) => setForm({ ...form, hora: Number(e.target.value) })}
@@ -309,7 +309,7 @@ function AgendamentoTab({ tenant }: { tenant: TenantOverview }) {
             {Array.from({ length: 24 }, (_, h) => (
               <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
             ))}
-          </select>
+          </SelectMenu>
         </div>
       </div>
 
@@ -323,13 +323,13 @@ function AgendamentoTab({ tenant }: { tenant: TenantOverview }) {
           value={form.retencao}
           onChange={(e) => setForm({ ...form, retencao: Number(e.target.value) })}
         />
-        <p className="mt-1 text-[11px] text-app-muted">Backups mais antigos que este limite são removidos automaticamente.</p>
+        <p className="mt-1 text-[11px] text-ink-500">Backups mais antigos que este limite são removidos automaticamente.</p>
       </div>
 
-      {error && <p className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">{error}</p>}
+      {error && <p className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">{error}</p>}
 
       <button type="button" className={`${btnPrimary} w-full`} disabled={save.isPending} onClick={() => save.mutate(form)}>
-        {save.isPending ? 'Salvando…' : 'Salvar Configurações'}
+        {save.isPending ? 'Salvando…' : 'Salvar configurações'}
       </button>
     </div>
   );
@@ -351,20 +351,20 @@ function LogsTab({ tenant }: { tenant: TenantOverview }) {
 
   return (
     <div className={`${cardCls} max-h-96 overflow-y-auto`}>
-      {isLoading && <p className="p-4 text-sm text-app-muted">Carregando…</p>}
+      {isLoading && <p className="p-4 text-sm text-ink-500">Carregando…</p>}
       {!isLoading && (data?.items.length ?? 0) === 0 && (
-        <p className="p-6 text-center text-sm text-app-muted">Nenhum registro de log.</p>
+        <p className="p-6 text-center text-sm text-ink-500">Nenhum registro de log.</p>
       )}
       {data?.items.map((l) => (
-        <div key={l.id} className="border-b border-app-border px-3 py-2 last:border-0">
+        <div key={l.id} className="border-b border-ink-200 px-3 py-2 last:border-0">
           <div className="flex items-center gap-2">
             <Badge color="blue">{l.action.toUpperCase()}</Badge>
-            <span className="text-[11px] text-app-muted">
+            <span className="text-[11px] text-ink-500">
               {new Date(l.criado_em).toLocaleString('pt-BR')}
             </span>
           </div>
           {l.metadata && (
-            <p className="mt-1 truncate text-[11px] text-app-muted">{JSON.stringify(l.metadata)}</p>
+            <p className="mt-1 truncate text-[11px] text-ink-500">{JSON.stringify(l.metadata)}</p>
           )}
         </div>
       ))}
@@ -410,7 +410,7 @@ function RestaurarTab({ tenant }: { tenant: TenantOverview }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 rounded-lg bg-yellow-50 p-3 text-xs text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
+      <div className="flex gap-2 rounded-[10px] bg-warning-50 p-3 text-xs text-warning-600">
         <AlertTriangle className="h-8 w-8 shrink-0" aria-hidden />
         <p>
           <strong>Restaurar — use com cautela.</strong> Substitui TODOS os dados atuais de{' '}
@@ -433,14 +433,14 @@ function RestaurarTab({ tenant }: { tenant: TenantOverview }) {
         type="button"
         disabled={busy}
         onClick={() => fileRef.current?.click()}
-        className={`${cardCls} flex w-full flex-col items-center gap-2 border-2 border-dashed p-8 text-center hover:border-neon-purple`}
+        className={`${cardCls} flex w-full flex-col items-center gap-2 border-2 border-dashed p-8 text-center hover:border-brand-500`}
       >
-        <Upload className="h-8 w-8 text-app-muted" aria-hidden />
-        <p className="text-sm font-semibold text-app">Clique para selecionar o arquivo de backup</p>
-        <p className="text-xs text-app-muted">Apenas arquivos .dump.gz gerados por este sistema</p>
+        <Upload className="h-8 w-8 text-ink-500" aria-hidden />
+        <p className="text-sm font-semibold text-ink-800">Clique para selecionar o arquivo de backup</p>
+        <p className="text-xs text-ink-500">Apenas arquivos .dump.gz gerados por este sistema</p>
       </button>
 
-      {error && <p className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">{error}</p>}
+      {error && <p className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">{error}</p>}
 
       {status && (
         <div className={`${cardCls} p-4`}>
@@ -450,7 +450,7 @@ function RestaurarTab({ tenant }: { tenant: TenantOverview }) {
             >
               {status.status.toUpperCase()}
             </Badge>
-            <span className="text-xs text-app-muted">
+            <span className="text-xs text-ink-500">
               {status.status === 'concluido' && 'Restauração concluída.'}
               {status.status === 'processando' && 'Restaurando… isso pode levar alguns instantes.'}
               {status.status === 'pendente' && 'Na fila…'}
