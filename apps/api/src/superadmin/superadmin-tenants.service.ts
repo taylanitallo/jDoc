@@ -6,6 +6,7 @@ import type {
   SetTenantStatusInput,
   TenantOverview,
   UpdateTenantInput,
+  Sistema,
 } from '@jdoc/shared';
 import { DatabaseService } from '../database/database.service';
 import { TenancyService } from '../tenancy/tenancy.service';
@@ -30,6 +31,7 @@ interface TenantRow {
   brasao_url: string | null;
   schema_name: string;
   criado_em: Date;
+  modulos: Sistema[];
 }
 
 @Injectable()
@@ -55,6 +57,7 @@ export class SuperadminTenantsService {
       status: row.status,
       quotaDiscoMb: row.quota_disco_mb,
       brasaoUrl,
+      modulos: row.modulos ?? ['financeiro'],
       criadoEm: row.criado_em.toISOString(),
       usoBytes,
       usoPercent: quotaBytes > 0 ? Math.round((usoBytes / quotaBytes) * 1000) / 10 : 0,
@@ -65,7 +68,7 @@ export class SuperadminTenantsService {
     const sql = this.db.catalog();
     const rows = await sql<TenantRow[]>`
       SELECT id, slug, nome, cidade, uf, responsavel, email, status,
-             quota_disco_mb, brasao_url, schema_name, criado_em
+             quota_disco_mb, brasao_url, schema_name, criado_em, modulos
       FROM public.tenants ORDER BY nome
     `;
     return Promise.all(
@@ -83,7 +86,7 @@ export class SuperadminTenantsService {
     const sql = this.db.catalog();
     const rows = await sql<TenantRow[]>`
       SELECT id, slug, nome, cidade, uf, responsavel, email, status,
-             quota_disco_mb, brasao_url, schema_name, criado_em
+             quota_disco_mb, brasao_url, schema_name, criado_em, modulos
       FROM public.tenants WHERE id = ${id} LIMIT 1
     `;
     const row = rows[0];
@@ -128,6 +131,7 @@ export class SuperadminTenantsService {
         responsavel = ${input.responsavel ?? row.responsavel},
         email = ${input.email ?? row.email},
         brasao_url = ${input.brasaoUrl === undefined ? row.brasao_url : input.brasaoUrl},
+        modulos = ${input.modulos ?? row.modulos},
         atualizado_em = now()
       WHERE id = ${id}
     `;

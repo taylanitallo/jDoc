@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { provisionTenantSchema } from '@jdoc/database';
-import { schemaNameForSlug, tenantSlugSchema } from '@jdoc/shared';
+import { schemaNameForSlug, tenantSlugSchema, type Sistema } from '@jdoc/shared';
 import { DatabaseService } from '../database/database.service';
 import { TenancyService } from '../tenancy/tenancy.service';
 
@@ -13,6 +13,8 @@ export interface ProvisionInput {
   email?: string;
   quotaDiscoMb?: number;
   brasaoUrl?: string | null;
+  /** Modulos contratados; padrao so financeiro. */
+  modulos?: Sistema[];
 }
 
 /**
@@ -49,7 +51,7 @@ export class ProvisioningService {
     // 2) Registra no catalogo.
     const rows = await sql`
       INSERT INTO public.tenants
-        (slug, nome, schema_name, quota_disco_mb, brasao_url, cidade, uf, responsavel, email, status)
+        (slug, nome, schema_name, quota_disco_mb, brasao_url, cidade, uf, responsavel, email, status, modulos)
       VALUES (
         ${slug},
         ${input.nome},
@@ -60,7 +62,8 @@ export class ProvisioningService {
         ${input.uf ?? null},
         ${input.responsavel ?? null},
         ${input.email ?? null},
-        'ativo'
+        'ativo',
+        ${input.modulos ?? ['financeiro']}
       )
       RETURNING id
     `;

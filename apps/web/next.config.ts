@@ -3,6 +3,8 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // O botao "N" do modo dev ficava sobre o rodape do menu lateral (so existe em dev).
+  devIndicators: false,
   transpilePackages: ['@jdoc/shared'],
   async headers() {
     return [

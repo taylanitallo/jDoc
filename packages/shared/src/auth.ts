@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { tenantRoleSchema } from './constants.js';
+import { tenantRoleSchema, type TenantRole } from './constants.js';
 
 /**
  * Politica de senha: minimo 10 caracteres.
@@ -100,4 +100,14 @@ export interface ResolvedTenantSession {
 }
 export interface ResolveLoginResponse {
   sessions: ResolvedTenantSession[];
+}
+
+/** Usuario logado, para o shell (nome/papel no rodape do menu). */
+export interface UsuarioAtual {
+  nome: string;
+  email: string;
+  role: TenantRole;
+  orgao: string;
+  /** Admin ou acervo_restrito:read: enxerga documentos de acesso restrito. */
+  podeVerRestrito: boolean;
 }

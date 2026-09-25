@@ -30,6 +30,8 @@ export interface RevocationResult {
 function extractUrls(cert: forge.pki.Certificate, oid: string): string[] {
   const ext = (cert.extensions as any[]).find((e) => e.id === oid);
   const raw: string = ext && typeof ext.value === 'string' ? ext.value : '';
+  // Caracteres de controle excluidos de proposito: a URL vem de bytes DER do certificado.
+  // eslint-disable-next-line no-control-regex
   return [...new Set(raw.match(/https?:\/\/[^\s\x00-\x1f"'<>]+/g) ?? [])];
 }
 

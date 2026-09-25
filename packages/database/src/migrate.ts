@@ -47,6 +47,16 @@ async function main(): Promise<void> {
       // Fase 2 — dados cadastrais do orgao (idempotente).
       await tx.unsafe(`ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS cidade varchar(100)`);
       await tx.unsafe(`ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS uf char(2)`);
+      // Modulos contratados: Financeiro/Contabil e/ou Arquivo. Orgaos existentes seguem so
+      // com o financeiro (o Arquivo e contratado a parte pelo superadmin).
+      await tx.unsafe(
+        `ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS modulos varchar(20)[] NOT NULL DEFAULT '{financeiro}'`,
+      );
+      await tx.unsafe(`ALTER TABLE public.tenants DROP CONSTRAINT IF EXISTS tenants_modulos_check`);
+      await tx.unsafe(
+        `ALTER TABLE public.tenants ADD CONSTRAINT tenants_modulos_check
+           CHECK (cardinality(modulos) >= 1 AND modulos <@ ARRAY['financeiro', 'arquivo']::varchar(20)[])`,
+      );
       await tx.unsafe(
         `ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS responsavel varchar(200)`,
       );
@@ -148,6 +158,37 @@ async function main(): Promise<void> {
       `);
       await tx.unsafe(
         `CREATE INDEX IF NOT EXISTS idx_restore_jobs_tenant ON public.restore_jobs (tenant_id)`,
+      );
+
+      // Autenticidade publica: codigo (impresso com QR na copia autenticada) ->
+      // tenant + documento + versao exata do arquivo (hash). Fica no catalogo
+      // para a verificacao publica achar o tenant sem varrer schemas. Um
+      // codigo por versao do arquivo: PDF substituido gera codigo novo e o
+      // antigo passa a responder "substituido".
+      await tx.unsafe(`
+        CREATE TABLE IF NOT EXISTS public.codigos_verificacao (
+          codigo char(16) PRIMARY KEY,
+          tenant_id uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+          document_id uuid NOT NULL,
+          document_file_id uuid,
+          file_hash char(64) NOT NULL,
+          criado_em timestamptz NOT NULL DEFAULT now(),
+          UNIQUE NULLS NOT DISTINCT (tenant_id, document_id, document_file_id, file_hash)
+        )
+      `);
+      // Hash de cada copia carimbada emitida: quem recebe a copia confere que
+      // ela saiu do sistema sem alteracao (o hash da copia difere do original).
+      await tx.unsafe(`
+        CREATE TABLE IF NOT EXISTS public.copias_autenticadas (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          codigo char(16) NOT NULL REFERENCES public.codigos_verificacao(codigo) ON DELETE CASCADE,
+          copia_hash char(64) NOT NULL,
+          emitida_por uuid,
+          emitida_em timestamptz NOT NULL DEFAULT now()
+        )
+      `);
+      await tx.unsafe(
+        `CREATE INDEX IF NOT EXISTS idx_copias_autenticadas_codigo ON public.copias_autenticadas (codigo, copia_hash)`,
       );
     });
 

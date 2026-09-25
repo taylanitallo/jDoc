@@ -5,8 +5,11 @@ import { useParams, useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { loginSchema, type LoginInput, type TenantBranding } from '@jdoc/shared';
-import { Download, Eye, EyeOff, Landmark, LogIn, Lock, Mail } from 'lucide-react';
+import Link from 'next/link';
+import { AlertCircle, ArrowLeft, Download, Eye, EyeOff, Landmark, LogIn, Lock, Mail } from 'lucide-react';
 import { api, setAccessToken, ApiError } from '@/lib/api';
+import { AuthLayout } from '@/components/shell/auth-layout';
+import { Button, Card, Field, Input, buttonClasses } from '@/components/ui';
 import { desktopLoginBestEffort, isDesktopApp } from '@/lib/desktop-bridge';
 
 const DESKTOP_DOWNLOAD_URL =
@@ -51,7 +54,8 @@ export default function LoginPage() {
       // monitorada) quando rodando dentro do jDoc Desktop. Nao bloqueia nem
       // falha o login do site se o app nativo nao estiver disponivel.
       desktopLoginBestEffort(slug, data.email, data.senha);
-      router.push(`/${slug}/dashboard`);
+      // Com os dois modulos contratados, a tela de escolha decide; com um so, ela segue direto ao Inicio.
+      router.push(`/${slug}/modulos`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Falha ao entrar. Tente novamente.');
     }
@@ -60,118 +64,86 @@ export default function LoginPage() {
   const nome = branding?.nomeExibido || String(slug).replace(/_/g, ' ');
 
   return (
-    <main
-      className="relative flex min-h-screen items-center justify-center bg-black bg-cover px-4"
-      style={{ backgroundImage: "url('/background.png')", backgroundPosition: 'right 15%' }}
-    >
-      <div className="flex w-full max-w-5xl flex-col items-center gap-12 lg:flex-row lg:justify-end">
-        {/* A marca (logo + nome + slogan) ja vem desenhada dentro do proprio
-            background.png — nao duplicar com outra imagem/texto por cima. */}
-
-        {/* Card de login — borda com brilho neon roxo, igual ao padrao jVeiculos */}
-        <section
-          className="w-full max-w-md rounded-2xl border-2 border-neon-purple/60 bg-black/70 p-8 shadow-[0_0_35px_rgba(168,85,247,0.35)] backdrop-blur"
-        >
-          <div className="mb-6 flex flex-col items-center">
-            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-gradient-primary">
-              {branding?.brasaoUrl ? (
-                <img src={branding.brasaoUrl} alt={nome} className="h-full w-full object-cover" />
-              ) : (
-                <Landmark className="h-8 w-8 text-white" aria-hidden />
-              )}
-            </div>
-            <p className="mt-3 text-center text-sm font-semibold uppercase tracking-wide text-white">
-              {nome}
-            </p>
-            <p className="text-xs text-app-muted">Informe suas credenciais</p>
-          </div>
-
-          <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
-            <div>
-              <label htmlFor="email" className="mb-1 block text-xs font-bold uppercase text-app-muted">
-                E-mail
-              </label>
-              <div className="relative">
-                <Mail className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-app-muted" aria-hidden />
-                <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="seu@email.gov.br"
-                  className="w-full rounded-lg border border-white/10 bg-black/30 py-2 pl-9 pr-3 text-sm text-white placeholder-app-muted outline-none focus:border-neon-purple"
-                  {...register('email')}
-                />
-              </div>
-              {errors.email && <p className="mt-1 text-xs text-app-error-text">{errors.email.message}</p>}
-            </div>
-
-            <div>
-              <label htmlFor="senha" className="mb-1 block text-xs font-bold uppercase text-app-muted">
-                Senha
-              </label>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-app-muted" aria-hidden />
-                <input
-                  id="senha"
-                  type={showSenha ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  placeholder="••••••••••"
-                  className="w-full rounded-lg border border-white/10 bg-black/30 py-2 pl-9 pr-9 text-sm text-white placeholder-app-muted outline-none focus:border-neon-purple"
-                  {...register('senha')}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowSenha((v) => !v)}
-                  tabIndex={-1}
-                  aria-label={showSenha ? 'Ocultar senha' : 'Mostrar senha'}
-                  className="absolute right-3 top-2.5 text-app-muted hover:text-white"
-                >
-                  {showSenha ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
-                </button>
-              </div>
-              {errors.senha && <p className="mt-1 text-xs text-app-error-text">{errors.senha.message}</p>}
-            </div>
-
-            {error && (
-              <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-primary py-2.5 text-sm font-bold uppercase tracking-wide text-white transition hover:opacity-90 disabled:opacity-50"
-            >
-              <LogIn className="h-4 w-4" aria-hidden />
-              {isSubmitting ? 'Entrando…' : 'Entrar'}
-            </button>
-          </form>
-
-          {!desktop && (
-            <a
-              href={DESKTOP_DOWNLOAD_URL}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 py-2 text-xs font-bold uppercase tracking-wide text-app-muted transition hover:border-neon-purple hover:text-white"
-            >
-              <Download className="h-4 w-4" aria-hidden />
-              Baixar o jDoc Desktop (Windows)
-            </a>
+    <AuthLayout>
+      <div className="mb-6 flex items-center gap-3">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-[12px] bg-brand-50 text-brand-600 ring-1 ring-inset ring-brand-600/15">
+          {branding?.brasaoUrl ? (
+            <img src={branding.brasaoUrl} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <Landmark className="h-6 w-6" aria-hidden />
           )}
-        </section>
+        </span>
+        <div className="min-w-0">
+          <h1 className="truncate text-xl font-extrabold tracking-tight text-ink-900 sm:text-2xl">{nome}</h1>
+          <p className="text-sm text-ink-500">Entre com seu e-mail e senha</p>
+        </div>
       </div>
 
-      <footer className="absolute bottom-4 w-full text-center text-xs text-app-muted">
-        © 2026{' '}
-        <a
-          href="https://jeossistemas.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-white hover:underline"
-        >
-          JEOS SISTEMAS E ASSESSORIAS LTDA
-        </a>{' '}
-        • V1.0.5
-      </footer>
-    </main>
+      <Card className="p-5 sm:p-6">
+        <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
+          <Field label="E-mail" htmlFor="email" required error={errors.email?.message}>
+            <div className="relative">
+              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" aria-hidden />
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                placeholder="seu@email.gov.br"
+                className="pl-9"
+                invalid={!!errors.email}
+                {...register('email')}
+              />
+            </div>
+          </Field>
+
+          <Field label="Senha" htmlFor="senha" required error={errors.senha?.message}>
+            <div className="relative">
+              <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" aria-hidden />
+              <Input
+                id="senha"
+                type={showSenha ? 'text' : 'password'}
+                autoComplete="current-password"
+                placeholder="••••••••••"
+                className="pl-9 pr-10"
+                invalid={!!errors.senha}
+                {...register('senha')}
+              />
+              <button
+                type="button"
+                onClick={() => setShowSenha((v) => !v)}
+                aria-label={showSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-[8px] text-ink-400 hover:bg-ink-100 hover:text-ink-700"
+              >
+                {showSenha ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+              </button>
+            </div>
+          </Field>
+
+          {error && (
+            <p role="alert" className="flex items-center gap-2 rounded-[10px] bg-danger-50 px-3 py-2.5 text-sm text-danger-600 ring-1 ring-inset ring-danger-600/15">
+              <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
+              {error}
+            </p>
+          )}
+
+          <Button type="submit" size="lg" className="w-full" loading={isSubmitting} leftIcon={<LogIn aria-hidden />}>
+            {isSubmitting ? 'Entrando…' : 'Entrar'}
+          </Button>
+        </form>
+      </Card>
+
+      <div className="mt-4 flex flex-col items-center gap-3 text-sm">
+        {!desktop && (
+          <a href={DESKTOP_DOWNLOAD_URL} className={buttonClasses('outline', 'md', 'w-full')}>
+            <Download aria-hidden />
+            Baixar o jDoc Desktop (Windows)
+          </a>
+        )}
+        <Link href="/" className="inline-flex items-center gap-1 font-medium text-ink-500 hover:text-ink-800">
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          Trocar de órgão
+        </Link>
+      </div>
+    </AuthLayout>
   );
 }

@@ -4,6 +4,7 @@ import type { TenantAccessClaims } from '@jdoc/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { TenantJwtGuard } from '../auth/tenant-jwt.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
+import { SistemaGuard } from '../common/sistema.guard';
 import { CurrentUser, Permissions } from '../auth/decorators';
 import { SignatureService, type SignatureDetailView } from './signature.service';
 
@@ -11,7 +12,7 @@ const uuidSchema = z.string().uuid();
 
 /** Detalhe da assinatura de um documento. */
 @Controller('t/:slug/documents')
-@UseGuards(TenantJwtGuard, PermissionsGuard)
+@UseGuards(TenantJwtGuard, PermissionsGuard, SistemaGuard)
 export class SignatureController {
   constructor(private readonly signature: SignatureService) {}
 

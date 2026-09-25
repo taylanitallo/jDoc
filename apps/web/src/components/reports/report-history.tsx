@@ -39,18 +39,18 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const ROW_ACCENT: Record<string, string> = {
-  concluido: 'border-l-4 border-l-green-500',
-  erro: 'border-l-4 border-l-red-500',
-  pendente: 'border-l-4 border-l-orange-400',
+  concluido: 'border-l-4 border-l-success-500',
+  erro: 'border-l-4 border-l-danger-500',
+  pendente: 'border-l-4 border-l-orange-500/30',
   processando: 'border-l-4 border-l-orange-500',
 };
 
 const STAT_TILE_STYLE: Record<string, string> = {
-  purple: 'bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-300',
-  green: 'bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-300',
-  orange: 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-300',
-  red: 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-300',
-  blue: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300',
+  purple: 'bg-brand-50 text-brand-600',
+  green: 'bg-success-50 text-success-600',
+  orange: 'bg-orange-50 text-orange-600',
+  red: 'bg-danger-50 text-danger-600',
+  blue: 'bg-brand-50 text-brand-600',
 };
 
 function StatusIcon({ status }: { status: string }) {
@@ -73,12 +73,12 @@ function StatTile({
 }) {
   return (
     <div className={`${cardCls} flex items-center gap-3 p-3`}>
-      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${STAT_TILE_STYLE[color]}`}>
+      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] ${STAT_TILE_STYLE[color]}`}>
         <Icon className="h-5 w-5" aria-hidden />
       </div>
       <div className="min-w-0">
-        <p className="text-lg font-bold leading-tight text-app">{value}</p>
-        <p className="truncate text-[11px] font-medium uppercase tracking-wide text-app-muted">{label}</p>
+        <p className="text-lg font-bold leading-tight text-ink-800">{value}</p>
+        <p className="truncate text-[11px] font-medium uppercase tracking-wide text-ink-500">{label}</p>
       </div>
     </div>
   );
@@ -209,7 +209,7 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
   if (loading) {
     return (
       <div className="flex justify-center p-8" role="status" aria-live="polite">
-        <Loader2 className="h-6 w-6 animate-spin text-app-muted" aria-hidden />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-500" aria-hidden />
       </div>
     );
   }
@@ -218,7 +218,7 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
     return (
       <div className="p-4">
         {loadError ? (
-          <p className="text-sm text-app-error-text" role="alert">
+          <p className="text-sm text-danger-600" role="alert">
             {loadError}
           </p>
         ) : (
@@ -235,18 +235,18 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
   return (
     <div className="space-y-3">
       {loadError && (
-        <p className="p-2 text-sm text-app-error-text" role="alert">
+        <p className="p-2 text-sm text-danger-600" role="alert">
           {loadError}
         </p>
       )}
       {downloadError && (
-        <p className="p-2 text-sm text-app-error-text" role="alert">
+        <p className="p-2 text-sm text-danger-600" role="alert">
           {downloadError}
         </p>
       )}
       <div className="flex items-center justify-between">
         {stats.erros > 0 ? (
-          <p className="inline-flex items-center gap-1 text-xs font-semibold text-app-error-text">
+          <p className="inline-flex items-center gap-1 text-xs font-semibold text-danger-600">
             <XCircle className="h-3.5 w-3.5" aria-hidden /> {stats.erros}{' '}
             {stats.erros === 1 ? 'relatório com erro' : 'relatórios com erro'}
           </p>
@@ -255,14 +255,14 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
         )}
         <button
           type="button"
-          className="flex items-center gap-2 rounded-lg border border-red-200 bg-app-input-bg px-4 py-2 text-xs font-bold uppercase text-red-500 transition hover:bg-red-50 dark:border-red-900/40 dark:hover:bg-red-900/20"
+          className="flex items-center gap-2 rounded-[10px] border border-danger-500/30 bg-surface px-4 py-2 text-[13px] font-semibold text-danger-500 transition hover:bg-danger-50"
           onClick={() => setConfirmClear(true)}
         >
           <Trash2 className="h-4 w-4" aria-hidden /> Limpar histórico
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile icon={ListChecks} label="Total" value={jobs.length} color="purple" />
         <StatTile icon={CheckCircle2} label="Concluídos" value={stats.concluidos} color="green" />
         <StatTile icon={Loader2} label="Em andamento" value={stats.emAndamento} color="orange" />
@@ -272,21 +272,21 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
       {/* Tabela (telas médias e maiores) */}
       <div className={`${cardCls} hidden overflow-x-auto md:block`}>
         <table className="w-full text-sm">
-          <thead className="bg-app-table-head">
+          <thead className="bg-ink-50/60">
             <tr>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-app-muted">
+              <th className="p-3 text-left label-caps">
                 Status
               </th>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-app-muted">
+              <th className="p-3 text-left label-caps">
                 Total
               </th>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-app-muted">
+              <th className="p-3 text-left label-caps">
                 Tamanho
               </th>
-              <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-app-muted">
+              <th className="p-3 text-left label-caps">
                 Criado em
               </th>
-              <th className="p-3 text-right text-xs font-semibold uppercase tracking-wide text-app-muted">
+              <th className="p-3 text-right label-caps">
                 Ações
               </th>
             </tr>
@@ -297,7 +297,7 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
               return (
                 <tr
                   key={job.id}
-                  className={`border-t border-app-border transition hover:bg-app-hover ${ROW_ACCENT[job.status] ?? 'border-l-4 border-l-transparent'}`}
+                  className={`border-t border-ink-200 transition hover:bg-ink-50 ${ROW_ACCENT[job.status] ?? 'border-l-4 border-l-transparent'}`}
                 >
                   <td className="p-3">
                     <Badge color={STATUS_COLOR[job.status] ?? 'gray'}>
@@ -307,12 +307,12 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
                       </span>
                     </Badge>
                   </td>
-                  <td className="p-3 tabular-nums text-app">{job.totalRegistros}</td>
-                  <td className="p-3 tabular-nums text-app-muted">
+                  <td className="p-3 tabular-nums text-ink-800">{job.totalRegistros}</td>
+                  <td className="p-3 tabular-nums text-ink-500">
                     {job.fileSize != null ? formatBytes(job.fileSize) : '—'}
                   </td>
-                  <td className="p-3 text-app-muted" title={created.toLocaleString('pt-BR')}>
-                    <div className="text-app">{created.toLocaleDateString('pt-BR')}</div>
+                  <td className="p-3 text-ink-500" title={created.toLocaleString('pt-BR')}>
+                    <div className="text-ink-800">{created.toLocaleDateString('pt-BR')}</div>
                     <div className="text-xs">{created.toLocaleTimeString('pt-BR')}</div>
                   </td>
                   <td className="p-3">
@@ -322,18 +322,18 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
                           type="button"
                           aria-label="Baixar relatório"
                           onClick={() => handleDownload(job.id)}
-                          className="rounded-lg border border-green-200 bg-app-input-bg px-4 py-2 text-xs font-bold uppercase text-green-600 transition hover:bg-green-50 dark:border-green-900/40 dark:text-green-400 dark:hover:bg-green-900/20"
+                          className="rounded-[10px] border border-success-500/30 bg-surface px-4 py-2 text-[13px] font-semibold text-success-600 transition hover:bg-success-50"
                         >
                           <span className="inline-flex items-center gap-1.5">
                             <Download className="h-4 w-4" aria-hidden /> Download
                           </span>
                         </button>
                       ) : job.status === 'erro' ? (
-                        <span className="text-xs text-app-error-text" title={job.erroMensagem ?? undefined}>
+                        <span className="text-xs text-danger-600" title={job.erroMensagem ?? undefined}>
                           {job.erroMensagem}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-app-muted">
+                        <span className="inline-flex items-center gap-1 text-ink-500">
                           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                           <span className="sr-only">Processando</span>
                         </span>
@@ -343,7 +343,7 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
                         aria-label="Excluir relatório"
                         title="Excluir do histórico"
                         onClick={() => setConfirmDeleteId(job.id)}
-                        className="rounded-lg p-2 text-app-muted transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                        className="rounded-[10px] p-2 text-ink-500 transition hover:bg-danger-50 hover:text-danger-600"
                       >
                         <Trash2 className="h-4 w-4" aria-hidden />
                       </button>
@@ -378,37 +378,37 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
                       type="button"
                       aria-label="Baixar relatório"
                       onClick={() => handleDownload(job.id)}
-                      className="rounded-lg border border-green-200 bg-app-input-bg px-3 py-1.5 text-xs font-bold uppercase text-green-600 transition hover:bg-green-50 dark:border-green-900/40 dark:text-green-400 dark:hover:bg-green-900/20"
+                      className="rounded-[10px] border border-success-500/30 bg-surface px-3 py-1.5 text-[13px] font-semibold text-success-600 transition hover:bg-success-50"
                     >
                       <span className="inline-flex items-center gap-1.5">
                         <Download className="h-4 w-4" aria-hidden /> Download
                       </span>
                     </button>
                   ) : job.status === 'processando' ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-app-muted" aria-hidden />
+                    <Loader2 className="h-4 w-4 animate-spin text-ink-500" aria-hidden />
                   ) : null}
                   <button
                     type="button"
                     aria-label="Excluir relatório"
                     onClick={() => setConfirmDeleteId(job.id)}
-                    className="rounded-lg p-2 text-app-muted transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                    className="rounded-[10px] p-2 text-ink-500 transition hover:bg-danger-50 hover:text-danger-600"
                   >
                     <Trash2 className="h-4 w-4" aria-hidden />
                   </button>
                 </div>
               </div>
-              <dl className="mt-3 grid grid-cols-2 gap-y-1 text-xs">
-                <dt className="text-app-muted">Total</dt>
-                <dd className="text-right text-app">{job.totalRegistros}</dd>
-                <dt className="text-app-muted">Tamanho</dt>
-                <dd className="text-right text-app">
+              <dl className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-y-1 text-xs">
+                <dt className="text-ink-500">Total</dt>
+                <dd className="text-right text-ink-800">{job.totalRegistros}</dd>
+                <dt className="text-ink-500">Tamanho</dt>
+                <dd className="text-right text-ink-800">
                   {job.fileSize != null ? formatBytes(job.fileSize) : '—'}
                 </dd>
-                <dt className="text-app-muted">Criado em</dt>
-                <dd className="text-right text-app">{created.toLocaleString('pt-BR')}</dd>
+                <dt className="text-ink-500">Criado em</dt>
+                <dd className="text-right text-ink-800">{created.toLocaleString('pt-BR')}</dd>
               </dl>
               {job.status === 'erro' && job.erroMensagem && (
-                <p className="mt-2 text-xs text-app-error-text">{job.erroMensagem}</p>
+                <p className="mt-2 text-xs text-danger-600">{job.erroMensagem}</p>
               )}
             </div>
           );
@@ -422,7 +422,7 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
           onClose={() => setConfirmClear(false)}
         >
           <div className="space-y-4">
-            <div className="flex items-start gap-3 rounded-lg bg-app-error-bg px-3 py-3 text-sm text-app-error-text">
+            <div className="flex items-start gap-3 rounded-[10px] bg-danger-50 px-3 py-3 text-sm text-danger-600">
               <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
               <p>
                 Isso vai excluir <strong>permanentemente</strong> todo o histórico de relatórios gerados,
@@ -430,7 +430,7 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
               </p>
             </div>
             {clearError && (
-              <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">
+              <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">
                 {clearError}
               </p>
             )}
@@ -440,7 +440,7 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
               </button>
               <button
                 type="button"
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                className="rounded-[10px] bg-danger-600 px-4 py-2 text-sm font-semibold text-white hover:bg-danger-600 disabled:opacity-60"
                 onClick={handleClearHistory}
                 disabled={clearing}
               >
@@ -458,7 +458,7 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
           onClose={() => setConfirmDeleteId(null)}
         >
           <div className="space-y-4">
-            <div className="flex items-start gap-3 rounded-lg bg-app-error-bg px-3 py-3 text-sm text-app-error-text">
+            <div className="flex items-start gap-3 rounded-[10px] bg-danger-50 px-3 py-3 text-sm text-danger-600">
               <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
               <p>
                 Isso vai excluir <strong>permanentemente</strong> este relatório e o arquivo gerado
@@ -466,7 +466,7 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
               </p>
             </div>
             {deleteError && (
-              <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">
+              <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">
                 {deleteError}
               </p>
             )}
@@ -476,7 +476,7 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
               </button>
               <button
                 type="button"
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                className="rounded-[10px] bg-danger-600 px-4 py-2 text-sm font-semibold text-white hover:bg-danger-600 disabled:opacity-60"
                 onClick={handleDeleteOne}
                 disabled={deleting}
               >

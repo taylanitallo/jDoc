@@ -48,11 +48,25 @@ function inferTenantSlug(path: string): string | null {
  * Refresh single-flight: garante apenas uma chamada de refresh em voo.
  * Retorna true se renovou o token com sucesso, false caso contrario.
  */
-let refreshInflight: Promise<boolean> | null = null;
+export type RefreshStatus = 'ok' | 'expirada' | 'indisponivel';
+
+/** Sem resposta da API nesse tempo, a tela avisa em vez de ficar em "Carregando…" para sempre. */
+const REFRESH_TIMEOUT_MS = 15_000;
+
+let refreshInflight: Promise<RefreshStatus> | null = null;
 async function tryRefresh(): Promise<boolean> {
+  return (await refreshStatus()) === 'ok';
+}
+
+/** Renova o access token (single-flight). Para envios longos que usam XHR direto (ex.: lote). */
+export function renovarSessao(): Promise<boolean> {
+  return tryRefresh();
+}
+
+function refreshStatus(): Promise<RefreshStatus> {
   if (refreshInflight) return refreshInflight;
 
-  refreshInflight = (async (): Promise<boolean> => {
+  refreshInflight = (async (): Promise<RefreshStatus> => {
     const slug = lastTenantSlug;
     const refreshPath = slug ? `/t/${slug}/auth/refresh` : '/superadmin/auth/refresh';
     try {
@@ -60,13 +74,16 @@ async function tryRefresh(): Promise<boolean> {
         method: 'POST',
         credentials: 'include',
         headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+        signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS),
       });
-      if (!res.ok) return false;
+      if (res.status === 401 || res.status === 403) return 'expirada';
+      if (!res.ok) return 'indisponivel';
       const data = (await res.json()) as { accessToken: string };
       accessToken = data.accessToken;
-      return true;
+      return 'ok';
     } catch {
-      return false;
+      // Rede fora, API parada ou timeout: a sessao pode estar valida, so nao deu para confirmar.
+      return 'indisponivel';
     } finally {
       refreshInflight = null;
     }
@@ -140,4 +157,53 @@ export async function api<T>(
 
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+/**
+ * Baixa uma resposta binaria (PDF/CSV) autenticada e devolve um object URL.
+ * Mesmo refresh automatico do `api()` em 401. Quem chama revoga a URL quando
+ * nao precisar mais (ou deixa pro unload da aba aberta).
+ */
+export async function apiBlobUrl(path: string, options: Omit<ApiOptions, '_skipRefresh'> = {}): Promise<string> {
+  const inferred = inferTenantSlug(path);
+  if (inferred) lastTenantSlug = inferred;
+  const doFetch = (): Promise<Response> =>
+    fetch(`${API_URL}${path}`, {
+      method: options.method ?? 'GET',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
+  let res = await doFetch();
+  if (res.status === 401) {
+    if (await tryRefresh()) res = await doFetch();
+    else {
+      redirectToLogin();
+      throw new ApiError(401, 'Sessao expirada');
+    }
+  }
+  if (!res.ok) {
+    let message = 'Erro na requisição';
+    try {
+      const data = (await res.json()) as { message?: string };
+      if (data.message) message = data.message;
+    } catch {
+      // resposta sem corpo
+    }
+    throw new ApiError(res.status, message);
+  }
+  return URL.createObjectURL(await res.blob());
+}
+
+/**
+ * Bootstrap de sessao (F5 / nova aba): renova via cookie httpOnly usando o MESMO
+ * single-flight do refresh automatico. Efeito duplicado (React StrictMode) ou
+ * chamadas simultaneas viram UMA requisicao — dois refresh concorrentes com o
+ * mesmo token eram a origem das quedas de sessao por "reuso".
+ */
+export function bootstrapSession(slug: string | null): Promise<RefreshStatus> {
+  lastTenantSlug = slug;
+  return refreshStatus();
 }

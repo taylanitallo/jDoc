@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Download, Landmark, Search } from 'lucide-react';
+import { ChevronRight, Download, Landmark, Search } from 'lucide-react';
+import { AuthLayout } from '@/components/shell/auth-layout';
+import { Card, Input, buttonClasses } from '@/components/ui';
 import { api } from '@/lib/api';
 import { isDesktopApp } from '@/lib/desktop-bridge';
 
@@ -46,90 +48,73 @@ export default function Home() {
   }, [tenants, query]);
 
   return (
-    <main
-      className="relative flex min-h-screen items-center justify-center bg-black bg-cover px-4"
-      style={{ backgroundImage: "url('/background.png')", backgroundPosition: 'right 15%' }}
-    >
-      <div className="flex w-full max-w-5xl flex-col items-center gap-12 lg:flex-row lg:justify-end">
-        <section className="w-full max-w-md rounded-2xl border-2 border-neon-purple/60 bg-black/70 p-6 shadow-[0_0_35px_rgba(168,85,247,0.35)] backdrop-blur">
-          <p className="mb-4 text-center text-sm text-app-muted">
-            Selecione seu órgão para acessar o sistema
-          </p>
-
-          <div className="relative mb-4">
-            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-app-muted" aria-hidden />
-            <input
-              type="text"
-              autoFocus
-              autoCapitalize="off"
-              autoCorrect="off"
-              placeholder="Pesquisar órgão..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-black/30 py-2 pl-9 pr-3 text-sm text-white placeholder-app-muted outline-none focus:border-neon-purple"
-            />
-          </div>
-
-          <div className="max-h-80 space-y-2 overflow-y-auto">
-            {filtered.map((t) => (
-              <div
-                key={t.slug}
-                className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 p-3"
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-primary">
-                    {t.brasaoUrl ? (
-                      <img src={t.brasaoUrl} alt={t.nome} className="h-full w-full object-cover" />
-                    ) : (
-                      <Landmark className="h-4 w-4 text-white" aria-hidden />
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-white">{t.nome}</p>
-                    <p className="truncate text-xs text-neon-purple">/{t.slug}</p>
-                  </div>
-                </div>
-                <Link
-                  href={`/${t.slug}/login`}
-                  className="shrink-0 rounded-lg bg-gradient-primary px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:opacity-90"
-                >
-                  Acessar
-                </Link>
-              </div>
-            ))}
-
-            {tenants.length > 0 && filtered.length === 0 && (
-              <p className="py-6 text-center text-xs text-app-muted">Nenhum órgão encontrado.</p>
-            )}
-            {tenants.length === 0 && (
-              <p className="py-6 text-center text-xs text-app-muted">Carregando órgãos…</p>
-            )}
-          </div>
-
-          {!desktop && (
-            <a
-              href={DESKTOP_DOWNLOAD_URL}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 py-2 text-xs font-bold uppercase tracking-wide text-app-muted transition hover:border-neon-purple hover:text-white"
-            >
-              <Download className="h-4 w-4" aria-hidden />
-              Baixar o jDoc Desktop (Windows)
-            </a>
-          )}
-        </section>
+    <AuthLayout>
+      <div className="mb-6">
+        <h1 className="text-xl font-extrabold tracking-tight text-ink-900 sm:text-2xl">Acessar o sistema</h1>
+        <p className="mt-0.5 text-sm text-ink-500">Selecione seu órgão para entrar</p>
       </div>
 
-      <footer className="absolute bottom-4 w-full text-center text-xs text-app-muted">
-        © 2026{' '}
-        <a
-          href="https://jeossistemas.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-white hover:underline"
-        >
-          JEOS SISTEMAS E ASSESSORIAS LTDA
-        </a>{' '}
-        • V1.0.5
-      </footer>
-    </main>
+      <Card className="p-3 sm:p-4">
+        <div className="relative mb-3">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" aria-hidden />
+          <Input
+            type="search"
+            autoFocus
+            autoCapitalize="off"
+            autoCorrect="off"
+            placeholder="Pesquisar órgão…"
+            aria-label="Pesquisar órgão"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+
+        <ul className="max-h-80 space-y-1 overflow-y-auto">
+          {filtered.map((t) => (
+            <li key={t.slug}>
+              <Link
+                href={`/${t.slug}/login`}
+                className="group flex items-center gap-3 rounded-[10px] p-2.5 transition-colors hover:bg-ink-50"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-brand-50 text-brand-600 ring-1 ring-inset ring-brand-600/15">
+                  {t.brasaoUrl ? (
+                    <img src={t.brasaoUrl} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <Landmark className="h-5 w-5" aria-hidden />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-ink-900">{t.nome}</span>
+                  <span className="block truncate text-xs text-ink-500">/{t.slug}</span>
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-ink-400 transition-transform group-hover:translate-x-0.5 group-hover:text-brand-600" aria-hidden />
+              </Link>
+            </li>
+          ))}
+
+          {tenants.length > 0 && filtered.length === 0 && (
+            <li className="py-8 text-center text-sm text-ink-500">Nenhum órgão encontrado.</li>
+          )}
+          {tenants.length === 0 &&
+            [0, 1, 2].map((k) => (
+              <li key={k} className="flex items-center gap-3 p-2.5" aria-hidden>
+                <span className="h-10 w-10 animate-pulse rounded-[10px] bg-ink-100" />
+                <span className="flex-1 space-y-1.5">
+                  <span className="block h-3.5 w-2/3 animate-pulse rounded-[6px] bg-ink-100" />
+                  <span className="block h-3 w-1/4 animate-pulse rounded-[6px] bg-ink-100" />
+                </span>
+              </li>
+            ))}
+        </ul>
+      </Card>
+
+      {!desktop && (
+        <a href={DESKTOP_DOWNLOAD_URL} className={buttonClasses('outline', 'md', 'mt-4 w-full')}>
+          <Download aria-hidden />
+          Baixar o jDoc Desktop (Windows)
+        </a>
+      )}
+    </AuthLayout>
   );
 }

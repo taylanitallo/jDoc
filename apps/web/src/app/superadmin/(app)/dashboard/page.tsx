@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import type { MasterDashboard, TenantOverview } from '@jdoc/shared';
 import { api, ApiError } from '@/lib/api';
-import { cardCls, formatBytes, Badge, UsageBar, btnGhost } from '@/components/ui';
+import { cardCls, formatBytes, Badge, StatCard, UsageBar, btnGhost } from '@/components/ui';
 import { EmptyState } from '@/components/empty-state';
 import { useToast } from '@/components/toast';
 import { EditModal, QuotaModal } from '@/components/superadmin/tenant-modals';
@@ -60,10 +60,10 @@ export default function SuperadminDashboardPage() {
   if (isLoading || !data) {
     return (
       <div className="space-y-6">
-        <h1 className="text-lg font-bold text-app">Dashboard Master</h1>
+        <h1 className="text-xl font-extrabold tracking-tight text-ink-900 sm:text-2xl">Visão geral</h1>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-24 animate-pulse rounded-xl bg-app-skeleton" aria-hidden />
+            <div key={i} className="h-24 animate-pulse rounded-[16px] bg-ink-100" aria-hidden />
           ))}
         </div>
       </div>
@@ -71,17 +71,17 @@ export default function SuperadminDashboardPage() {
   }
 
   const cards = [
-    { label: 'TOTAL DE ÓRGÃOS', value: data.totalOrgaos, icon: Landmark, accent: 'card-accent-blue' },
-    { label: 'ATIVOS', value: data.orgaosAtivos, icon: CheckCircle2, accent: 'card-accent-green' },
-    { label: 'INATIVOS', value: data.orgaosInativos, icon: XCircle, accent: 'card-accent-orange' },
+    { label: 'Total de órgãos', value: data.totalOrgaos, icon: Landmark, tone: 'brand' },
+    { label: 'Ativos', value: data.orgaosAtivos, icon: CheckCircle2, tone: 'success' },
+    { label: 'Inativos', value: data.orgaosInativos, icon: XCircle, tone: 'orange' },
     {
-      label: 'ARMAZENAMENTO TOTAL',
+      label: 'Armazenamento total',
       value: formatBytes(data.armazenamentoTotalBytes),
       icon: HardDrive,
-      accent: 'card-accent-purple',
+      tone: 'info',
     },
-    { label: 'DOCUMENTOS INDEXADOS', value: data.documentosIndexados, icon: FileText, accent: 'card-accent-blue' },
-    { label: 'UPLOADS NO MÊS', value: data.uploadsNoMes, icon: Upload, accent: 'card-accent-green' },
+    { label: 'Documentos indexados', value: data.documentosIndexados, icon: FileText, tone: 'brand' },
+    { label: 'Uploads no mês', value: data.uploadsNoMes, icon: Upload, tone: 'success' },
   ] as const;
 
   const maxGrowth = Math.max(1, ...data.crescimento.map((g) => g.total));
@@ -89,28 +89,22 @@ export default function SuperadminDashboardPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold text-app">Dashboard Master</h1>
-        <Link href="/superadmin/orgaos" className="flex items-center gap-2 rounded-lg bg-gradient-primary px-4 py-2 text-xs font-bold uppercase tracking-wide text-white transition hover:opacity-90">
+        <h1 className="text-xl font-extrabold tracking-tight text-ink-900 sm:text-2xl">Visão geral</h1>
+        <Link href="/superadmin/orgaos" className="flex items-center gap-2 rounded-[10px] bg-brand-600 px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-brand-700">
           <Plus className="h-4 w-4" aria-hidden />
-          Novo Órgão
+          Novo órgão
         </Link>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.map(({ label, value, icon: Icon, accent }) => (
-          <div key={label} className={`${cardCls} p-4 ${accent}`}>
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-bold uppercase text-app-muted">{label}</p>
-              <Icon className="h-5 w-5 text-app-muted" aria-hidden />
-            </div>
-            <p className="mt-2 text-2xl font-extrabold text-app">{value}</p>
-          </div>
+        {cards.map(({ label, value, icon, tone }) => (
+          <StatCard key={label} label={label} value={value} icon={icon} tone={tone} />
         ))}
       </div>
 
       <div>
         <div className="mb-3 flex items-center justify-between">
-          <p className="text-xs font-bold uppercase text-app-muted">
+          <p className="label-caps">
             Órgãos cadastrados{tenants ? ` (${tenants.length})` : ''}
           </p>
           <Link href="/superadmin/orgaos" className="text-xs font-semibold text-accent hover:underline">
@@ -121,7 +115,7 @@ export default function SuperadminDashboardPage() {
         {loadingTenants ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-40 animate-pulse rounded-xl bg-app-skeleton" aria-hidden />
+              <div key={i} className="h-40 animate-pulse rounded-[16px] bg-ink-100" aria-hidden />
             ))}
           </div>
         ) : !tenants || tenants.length === 0 ? (
@@ -135,10 +129,10 @@ export default function SuperadminDashboardPage() {
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {tenants.map((t) => (
-              <div key={t.id} className={`${cardCls} border-t-4 ${t.status === 'ativo' ? 'border-t-green-500' : 'border-t-red-500'} p-4`}>
+              <div key={t.id} className={`${cardCls} border-t-4 ${t.status === 'ativo' ? 'border-t-success-500' : 'border-t-danger-500'} p-4`}>
                 <div className="mb-3 flex items-start justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-primary">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-600">
                       {t.brasaoUrl ? (
                         <img src={t.brasaoUrl} alt={t.nome} className="h-full w-full object-cover" />
                       ) : (
@@ -146,20 +140,20 @@ export default function SuperadminDashboardPage() {
                       )}
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-app">{t.nome}</p>
-                      <p className="truncate text-[11px] text-app-muted">/{t.slug}</p>
+                      <p className="truncate text-sm font-bold text-ink-800">{t.nome}</p>
+                      <p className="truncate text-[11px] text-ink-500">/{t.slug}</p>
                     </div>
                   </div>
                   <Badge color={t.status === 'ativo' ? 'green' : 'red'}>{t.status.toUpperCase()}</Badge>
                 </div>
 
-                <p className="mb-2 text-[11px] text-app-muted">
+                <p className="mb-2 text-[11px] text-ink-500">
                   Criado em {new Date(t.criadoEm).toLocaleDateString('pt-BR')}
                 </p>
 
                 <UsageBar percent={t.usoPercent} />
-                <p className="mb-3 mt-1 text-[11px] text-app-muted">
-                  {formatBytes(t.usoBytes)} de {(t.quotaDiscoMb / 1024).toFixed(2)} GB
+                <p className="mb-3 mt-1 text-[11px] text-ink-500">
+                  {formatBytes(t.usoBytes)} de {(t.quotaDiscoMb / 1024).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GB
                 </p>
 
                 <div className="space-y-1.5">
@@ -167,12 +161,12 @@ export default function SuperadminDashboardPage() {
                     href={`/${t.slug}/login`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-gradient-primary py-2 text-xs font-bold uppercase text-white transition hover:opacity-90"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-brand-600 py-2 text-[13px] font-semibold text-white transition hover:bg-brand-700"
                   >
                     <LogIn className="h-3.5 w-3.5" aria-hidden />
                     Acessar Sistema
                   </a>
-                  <div className="grid grid-cols-2 gap-1.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     <button type="button" onClick={() => setQuotaEditing(t)} className={`${btnGhost} text-[11px]`}>
                       <Sliders className="mr-1 inline h-3.5 w-3.5" aria-hidden />
                       Configurar
@@ -200,7 +194,7 @@ export default function SuperadminDashboardPage() {
                   <button
                     type="button"
                     onClick={() => setManaging(t)}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-app-border py-2 text-[11px] font-bold uppercase text-accent transition hover:bg-app-hover"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-[10px] border border-ink-200 py-2 text-[13px] font-semibold text-accent transition hover:bg-ink-50"
                   >
                     <Settings2 className="h-3.5 w-3.5" aria-hidden />
                     Gerenciar (Backup &amp; Logs)
@@ -212,8 +206,8 @@ export default function SuperadminDashboardPage() {
         )}
       </div>
 
-      <div className={`${cardCls} p-5 card-accent-purple`}>
-        <p className="mb-4 text-xs font-bold uppercase text-app-muted">
+      <div className={`${cardCls} p-5`}>
+        <p className="mb-4 label-caps">
           Crescimento — órgãos cadastrados (12 meses)
         </p>
         {data.crescimento.length === 0 ? (
@@ -226,12 +220,12 @@ export default function SuperadminDashboardPage() {
           <div className="flex h-32 items-end gap-2">
             {data.crescimento.map((g) => (
               <div key={g.mes} className="flex flex-1 flex-col items-center gap-1">
-                <span className="text-[10px] font-bold text-app">{g.total}</span>
+                <span className="text-[10px] font-bold text-ink-800">{g.total}</span>
                 <div
-                  className="w-full rounded-t bg-gradient-primary"
+                  className="w-full rounded-t bg-brand-600"
                   style={{ height: `${(g.total / maxGrowth) * 100}%`, minHeight: 4 }}
                 />
-                <span className="text-[9px] text-app-muted">{g.mes}</span>
+                <span className="text-[9px] text-ink-500">{g.mes}</span>
               </div>
             ))}
           </div>

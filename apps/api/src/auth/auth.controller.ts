@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   Param,
   Post,
@@ -10,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { CookieOptions, Request, Response } from 'express';
-import { loginSchema, type LoginInput, type TenantAccessClaims } from '@jdoc/shared';
+import { loginSchema, type LoginInput, type TenantAccessClaims, type UsuarioAtual } from '@jdoc/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { loadEnv } from '../config/env';
 import { AuthService } from './auth.service';
@@ -79,6 +80,12 @@ export class AuthController {
     const token = (req.cookies as Record<string, string> | undefined)?.[REFRESH_COOKIE];
     if (token) await this.auth.logout(token, user.sub, req.ip ?? '');
     res.clearCookie(REFRESH_COOKIE, { path: `/t/${slug}/auth` });
+  }
+
+  @Permissions()
+  @Get('me')
+  me(@CurrentUser() user: TenantAccessClaims): Promise<UsuarioAtual> {
+    return this.auth.me(user.sub);
   }
 
   @Permissions()

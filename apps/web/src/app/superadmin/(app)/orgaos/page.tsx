@@ -22,9 +22,11 @@ import {
   formatBytes,
   inputCls,
   labelCls,
+  SelectMenu,
 } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { EditModal, QuotaModal } from '@/components/superadmin/tenant-modals';
+import { ModulosBadges, ModulosContratados } from '@/components/superadmin/modulos-contratados';
 
 export default function OrgaosPage() {
   const qc = useQueryClient();
@@ -61,7 +63,7 @@ export default function OrgaosPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold text-app">Órgãos</h1>
+        <h1 className="text-xl font-extrabold tracking-tight text-ink-900 sm:text-2xl">Órgãos</h1>
         <button type="button" className={btnPrimary} onClick={() => setCreateOpen(true)}>
           <span className="flex items-center gap-2">
             <Plus className="h-4 w-4" aria-hidden /> Cadastrar Órgão
@@ -72,19 +74,20 @@ export default function OrgaosPage() {
       {error && (
         <p
           role="alert"
-          className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text"
+          className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600"
         >
           {error}
         </p>
       )}
 
-      <div className={`${cardCls} overflow-x-auto card-accent-blue`}>
+      <div className={`${cardCls} overflow-x-auto`}>
         <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-app-border text-[11px] font-bold uppercase text-app-muted">
+          <thead className="bg-ink-50/60">
+            <tr className="border-b border-ink-200 label-caps">
               <th className="px-4 py-3">Órgão</th>
               <th className="px-4 py-3">Slug</th>
               <th className="px-4 py-3">Cidade/UF</th>
+              <th className="px-4 py-3">Módulos</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3 w-52">Uso do disco</th>
               <th className="px-4 py-3">Ações</th>
@@ -95,20 +98,23 @@ export default function OrgaosPage() {
               Array.from({ length: 3 }).map((_, i) => (
                 <tr key={i}>
                   <td colSpan={6} className="px-4 py-3">
-                    <div className="h-6 animate-pulse rounded bg-app-skeleton" />
+                    <div className="h-6 animate-pulse rounded bg-ink-100" />
                   </td>
                 </tr>
               ))}
             {tenants?.map((t) => (
               <tr
                 key={t.id}
-                className="border-b border-app-border hover:bg-app-hover"
+                className="border-b border-ink-200 hover:bg-ink-50"
               >
-                <td className="px-4 py-3 font-semibold text-app">{t.nome}</td>
-                <td className="px-4 py-3 text-app-muted">/{t.slug}</td>
-                <td className="px-4 py-3 text-app-muted">
+                <td className="px-4 py-3 font-semibold text-ink-800">{t.nome}</td>
+                <td className="px-4 py-3 text-ink-500">/{t.slug}</td>
+                <td className="px-4 py-3 text-ink-500">
                   {t.cidade ?? '—'}
                   {t.uf ? `/${t.uf}` : ''}
+                </td>
+                <td className="px-4 py-3">
+                  <ModulosBadges modulos={t.modulos ?? ['financeiro']} />
                 </td>
                 <td className="px-4 py-3">
                   <Badge color={t.status === 'ativo' ? 'green' : 'red'}>
@@ -117,8 +123,8 @@ export default function OrgaosPage() {
                 </td>
                 <td className="px-4 py-3">
                   <UsageBar percent={t.usoPercent} />
-                  <p className="text-[10px] text-app-muted">
-                    {formatBytes(t.usoBytes)} de {(t.quotaDiscoMb / 1024).toFixed(2)} GB
+                  <p className="text-[10px] text-ink-500">
+                    {formatBytes(t.usoBytes)} de {(t.quotaDiscoMb / 1024).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GB
                   </p>
                 </td>
                 <td className="px-4 py-3">
@@ -128,7 +134,7 @@ export default function OrgaosPage() {
                       title="Editar"
                       aria-label={`Editar ${t.nome}`}
                       onClick={() => setEditing(t)}
-                      className="rounded p-1.5 text-app-muted hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/30 dark:hover:text-blue-300"
+                      className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
                     >
                       <Pencil className="h-4 w-4" aria-hidden />
                     </button>
@@ -137,7 +143,7 @@ export default function OrgaosPage() {
                       title="Quota de disco"
                       aria-label={`Alterar quota de ${t.nome}`}
                       onClick={() => setQuotaEditing(t)}
-                      className="rounded p-1.5 text-app-muted hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/30 dark:hover:text-purple-300"
+                      className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
                     >
                       <HardDrive className="h-4 w-4" aria-hidden />
                     </button>
@@ -152,8 +158,8 @@ export default function OrgaosPage() {
                       onClick={() => toggleStatus.mutate(t)}
                       className={`rounded p-1.5 ${
                         t.status === 'ativo'
-                          ? 'text-app-muted hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/30'
-                          : 'text-app-muted hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/30'
+                          ? 'text-ink-500 hover:bg-danger-50 hover:text-danger-500'
+                          : 'text-ink-500 hover:bg-success-50 hover:text-success-600'
                       }`}
                     >
                       <Power className="h-4 w-4" aria-hidden />
@@ -164,7 +170,7 @@ export default function OrgaosPage() {
             ))}
             {tenants?.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-app-muted">
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-ink-500">
                   Nenhum órgão cadastrado.
                 </td>
               </tr>
@@ -205,11 +211,13 @@ function CreateModal({
     handleSubmit,
     reset,
     setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<CreateTenantInput>({
     resolver: zodResolver(createTenantSchema),
-    defaultValues: { quotaDiscoMb: 1024 },
+    defaultValues: { quotaDiscoMb: 1024, modulos: ['financeiro'] },
   });
+  const modulos = watch('modulos') ?? [];
 
   const onSubmit = async (data: CreateTenantInput) => {
     setError(null);
@@ -235,19 +243,19 @@ function CreateModal({
       onClose={onClose}
     >
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="col-span-2">
-            <label className={labelCls} htmlFor="nome">Nome do órgão *</label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-2">
+            <label className={labelCls} htmlFor="nome">Nome do órgão<span className="ml-0.5 text-danger-600">*</span></label>
             <input id="nome" className={inputCls} placeholder="Prefeitura Municipal de..." {...register('nome')} />
-            {errors.nome && <p className="mt-1 text-xs text-app-error-text">{errors.nome.message}</p>}
+            {errors.nome && <p className="mt-1 text-xs text-danger-600">{errors.nome.message}</p>}
           </div>
           <div>
-            <label className={labelCls} htmlFor="slug">Slug (URL) *</label>
+            <label className={labelCls} htmlFor="slug">Slug (URL)<span className="ml-0.5 text-danger-600">*</span></label>
             <input id="slug" className={inputCls} placeholder="iraucuba" {...register('slug')} />
-            {errors.slug && <p className="mt-1 text-xs text-app-error-text">{errors.slug.message}</p>}
+            {errors.slug && <p className="mt-1 text-xs text-danger-600">{errors.slug.message}</p>}
           </div>
           <div>
-            <label className={labelCls} htmlFor="quota">Quota (GB) *</label>
+            <label className={labelCls} htmlFor="quota">Quota (GB)<span className="ml-0.5 text-danger-600">*</span></label>
             <input
               id="quota"
               type="number"
@@ -262,28 +270,28 @@ function CreateModal({
               }}
             />
             {errors.quotaDiscoMb && (
-              <p className="mt-1 text-xs text-app-error-text">
+              <p className="mt-1 text-xs text-danger-600">
                 {errors.quotaDiscoMb.message}
               </p>
             )}
           </div>
           <div>
-            <label className={labelCls} htmlFor="cidade">Cidade *</label>
+            <label className={labelCls} htmlFor="cidade">Cidade<span className="ml-0.5 text-danger-600">*</span></label>
             <input id="cidade" className={inputCls} placeholder="Irauçuba" {...register('cidade')} />
-            {errors.cidade && <p className="mt-1 text-xs text-app-error-text">{errors.cidade.message}</p>}
+            {errors.cidade && <p className="mt-1 text-xs text-danger-600">{errors.cidade.message}</p>}
           </div>
           <div>
-            <label className={labelCls} htmlFor="uf">UF *</label>
-            <select id="uf" className={inputCls} {...register('uf')}>
+            <label className={labelCls} htmlFor="uf">UF<span className="ml-0.5 text-danger-600">*</span></label>
+            <SelectMenu id="uf" className={inputCls} {...register('uf')}>
               <option value="">Selecione…</option>
               {UFS.map((uf) => (
                 <option key={uf} value={uf}>{uf}</option>
               ))}
-            </select>
-            {errors.uf && <p className="mt-1 text-xs text-app-error-text">UF obrigatória</p>}
+            </SelectMenu>
+            {errors.uf && <p className="mt-1 text-xs text-danger-600">UF obrigatória</p>}
           </div>
           <div>
-            <label className={labelCls} htmlFor="responsavel">Responsável *</label>
+            <label className={labelCls} htmlFor="responsavel">Responsável<span className="ml-0.5 text-danger-600">*</span></label>
             <input
               id="responsavel"
               className={inputCls}
@@ -291,11 +299,11 @@ function CreateModal({
               {...register('responsavel')}
             />
             {errors.responsavel && (
-              <p className="mt-1 text-xs text-app-error-text">{errors.responsavel.message}</p>
+              <p className="mt-1 text-xs text-danger-600">{errors.responsavel.message}</p>
             )}
           </div>
           <div>
-            <label className={labelCls} htmlFor="email">E-mail *</label>
+            <label className={labelCls} htmlFor="email">E-mail<span className="ml-0.5 text-danger-600">*</span></label>
             <input
               id="email"
               type="email"
@@ -303,14 +311,19 @@ function CreateModal({
               placeholder="contato@orgao.gov.br"
               {...register('email')}
             />
-            {errors.email && <p className="mt-1 text-xs text-app-error-text">{errors.email.message}</p>}
+            {errors.email && <p className="mt-1 text-xs text-danger-600">{errors.email.message}</p>}
           </div>
+          <ModulosContratados
+            value={modulos}
+            onChange={(v) => setValue('modulos', v, { shouldValidate: true })}
+            erro={errors.modulos?.message}
+          />
         </div>
 
         {error && (
           <p
             role="alert"
-            className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text"
+            className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600"
           >
             {error}
           </p>

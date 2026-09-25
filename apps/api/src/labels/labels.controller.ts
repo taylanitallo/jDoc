@@ -27,6 +27,7 @@ import {
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { TenantJwtGuard } from '../auth/tenant-jwt.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
+import { RequerSistema, SistemaGuard } from '../common/sistema.guard';
 import { CurrentUser, Permissions } from '../auth/decorators';
 import { LabelsService } from './labels.service';
 
@@ -37,7 +38,8 @@ const uuidSchema = z.string().uuid();
  * Permissao por modulo e dinamica no service (`${module}:create`).
  */
 @Controller('t/:slug/labels-imports')
-@UseGuards(TenantJwtGuard, PermissionsGuard)
+@RequerSistema('financeiro')
+@UseGuards(TenantJwtGuard, PermissionsGuard, SistemaGuard)
 export class LabelsController {
   constructor(private readonly labels: LabelsService) {}
 

@@ -1,68 +1,324 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-/* Tokens de tema.
- * - Light: usado por padrao. JEOS usa gradiente sutil cinza-azulado para fundo.
- * - Dark: acionados quando <html class="dark">. Sidebar JEOS (azul-marinho) NAO muda -
- *   e a identidade institucional e ja e escura por design.
- */
-:root {
-  --app-bg: #f8f9fb;
-  --app-card: #ffffff;
-  --app-border: #e5e7eb;
-  --app-text: #1f2937;
-  --app-muted: #6b7280;
-  --app-input-bg: #ffffff;
-  --app-input-border: #d1d5db;
-  --app-skeleton: #e5e7eb;
-  --app-error-bg: #fef2f2;
-  --app-error-text: #dc2626;
-  --app-badge-gray-bg: #f3f4f6;
-  --app-badge-gray-text: #4b5563;
-  --app-table-head: #f9fafb;
-  --app-hover: #f9fafb;
+/* Tema escuro por classe (.dark no <html>, alternado pelo next-themes). */
+@custom-variant dark (&:where(.dark, .dark *));
 
-  /* Identidade JEOS (nao muda com tema) */
-  --content-bg: #f8f9fb;
+/* =========================================================================
+   Design System — tokens únicos para todo o produto.
+   Qualquer cor, raio, sombra ou tipografia usada nas telas sai daqui.
+   ========================================================================= */
+
+@theme {
+  /* Marca institucional */
+  --color-brand-50: #eef4ff;
+  --color-brand-100: #dbe6fe;
+  --color-brand-200: #bfd3fe;
+  --color-brand-300: #93b4fd;
+  --color-brand-400: #608cfa;
+  --color-brand-500: #3b66f6;
+  --color-brand-600: #2547eb;
+  --color-brand-700: #1d35d8;
+  --color-brand-800: #1e2eaf;
+  --color-brand-900: #1e2d8a;
+  --color-brand-950: #171d54;
+
+  /* Neutros da interface */
+  --color-surface: #ffffff;
+  --color-canvas: #f6f8fb;
+  --color-ink-50: #f8fafc;
+  --color-ink-100: #f1f5f9;
+  --color-ink-200: #e2e8f0;
+  --color-ink-300: #cbd5e1;
+  --color-ink-400: #94a3b8;
+  --color-ink-500: #64748b;
+  --color-ink-600: #475569;
+  --color-ink-700: #334155;
+  --color-ink-800: #1e293b;
+  --color-ink-900: #0f172a;
+
+  /* Semânticos */
+  --color-success-50: #ecfdf5;
+  --color-success-500: #16a34a;
+  --color-success-600: #15803d;
+  --color-warning-50: #fffbeb;
+  --color-warning-200: #fde68a;
+  --color-warning-300: #fcd34d;
+  --color-warning-500: #eab308;
+  --color-warning-600: #ca8a04;
+  --color-danger-50: #fef2f2;
+  --color-danger-500: #ef4444;
+  --color-danger-600: #dc2626;
+  --color-info-50: #eff6ff;
+  --color-info-500: #3b82f6;
+  --color-orange-50: #fff7ed;
+  --color-orange-500: #f97316;
+  --color-orange-600: #ea580c;
+  --color-info-600: #2563eb;
+  --color-violet-50: #f5f3ff;
+  --color-violet-500: #8b5cf6;
+  --color-violet-600: #7c3aed;
+  --color-teal-50: #f0fdfa;
+  --color-teal-500: #14b8a6;
+  --color-teal-600: #0d9488;
+  --color-pink-50: #fdf2f8;
+  --color-pink-500: #ec4899;
+  --color-pink-600: #db2777;
+
+  /* Raios */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
+
+  /* Sombras */
+  --shadow-xs: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+  --shadow-sm: 0 1px 3px 0 rgb(15 23 42 / 0.06), 0 1px 2px -1px rgb(15 23 42 / 0.04);
+  --shadow-md: 0 4px 12px -2px rgb(15 23 42 / 0.08), 0 2px 6px -2px rgb(15 23 42 / 0.04);
+  --shadow-lg: 0 12px 28px -6px rgb(15 23 42 / 0.12), 0 4px 10px -4px rgb(15 23 42 / 0.06);
+  --shadow-xl: 0 24px 48px -12px rgb(15 23 42 / 0.18);
+
+  /* Tipografia */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
-.dark {
-  --app-bg: #0f1424;
-  --app-card: #1a2036;
-  --app-border: #2d3550;
-  --app-text: #e5e7eb;
-  --app-muted: #9ca3af;
-  --app-input-bg: #1a2036;
-  --app-input-border: #3a4366;
-  --app-skeleton: #2d3550;
-  --app-error-bg: #3b1212;
-  --app-error-text: #fca5a5;
-  --app-badge-gray-bg: #2d3550;
-  --app-badge-gray-text: #9ca3af;
-  --app-table-head: #232a44;
-  --app-hover: #232a44;
-
-  --content-bg: #0f1424;
+/* `accent` = cor de destaque do órgão (Configurações > Layout sobrescreve --accent-color). */
+@theme inline {
+  --color-accent: var(--accent-color, var(--color-brand-600));
 }
 
-body {
-  background: var(--content-bg);
-  color: var(--app-text);
+@layer base {
+  * {
+    border-color: var(--color-ink-200);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink-800);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .dark {
+    --color-surface: #0b1020;
+    --color-canvas: #050816;
+    --color-ink-50: #111827;
+    --color-ink-100: #1f2937;
+    --color-ink-200: #374151;
+    --color-ink-300: #4b5563;
+    --color-ink-400: #6b7280;
+    --color-ink-500: #9ca3af;
+    --color-ink-600: #d1d5db;
+    --color-ink-700: #e5e7eb;
+    --color-ink-800: #f3f4f6;
+    --color-ink-900: #f9fafb;
+
+    /*
+     * Par "-50 de fundo suave + -600 de ícone/texto": sem redefinir o -50
+     * aqui ele continuaria quase branco no tema escuro e o -600 por cima
+     * ficaria ilegível. Escurece o -50 mantendo o matiz.
+     */
+    --color-brand-50: #182238;
+    --color-success-50: #142a1e;
+    --color-warning-50: #2c2512;
+    --color-danger-50: #2c1719;
+    --color-info-50: #17233d;
+    --color-orange-50: #2c1d12;
+    --color-violet-50: #221a3d;
+    --color-teal-50: #10292a;
+    --color-pink-50: #2e1524;
+
+    /* Bordas de amarelo suave visíveis sobre o -50 escuro. */
+    --color-warning-200: #7c5e10;
+    --color-warning-300: #9c7515;
+  }
+
+  /* Foco visível e consistente em todo o produto */
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Cursor de "mãozinha" em tudo que responde a clique. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  a[href],
+  label[for],
+  select:not(:disabled),
+  summary,
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  select:disabled,
+  input[type="checkbox"]:disabled,
+  input[type="radio"]:disabled {
+    cursor: not-allowed;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-ink-300);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-ink-400);
+    background-clip: content-box;
+  }
 }
 
-/* Particulas/circuito sutil do login (CSS puro, sem unsafe-inline) */
-.login-circuit {
-  background-image:
-    radial-gradient(circle at 20% 30%, rgba(168, 85, 247, 0.12) 0, transparent 40%),
-    radial-gradient(circle at 80% 70%, rgba(217, 70, 239, 0.10) 0, transparent 40%),
-    linear-gradient(rgba(124, 58, 237, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(124, 58, 237, 0.05) 1px, transparent 1px);
-  background-size: 100% 100%, 100% 100%, 48px 48px, 48px 48px;
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Rótulo de seção: caixa alta, espaçado, peso alto */
+  .label-caps {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-ink-500);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Área segura para menu inferior no celular */
+  .pb-safe {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+  }
 }
 
-/* * Acentos institucionais dos cards (nao mudam por tema; cores fortes por design). */
-.card-accent-blue { border-top: 4px solid #3b82f6; }
-.card-accent-green { border-top: 4px solid #22c55e; }
-.card-accent-orange { border-top: 4px solid #f97316; }
-.card-accent-purple { border-top: 4px solid #a855f7; }
+/* Animações compartilhadas */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.18s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-slide-up {
+    animation: none;
+  }
+}
+
+/* ── Impressão / "Exportar PDF" ───────────────────────────────────────────
+   Ctrl+P do navegador vira documento: sem menu, barras, botões e rolagem
+   interna, em A4 paisagem, com as cores preservadas. */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  [data-print-hide],
+  aside,
+  button:not([aria-haspopup]):not([aria-pressed]),
+  [data-testid="toast-region"] {
+    display: none !important;
+  }
+
+  [data-print-reset] {
+    padding-left: 0 !important;
+    margin-left: 0 !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  main .overflow-auto,
+  main .overflow-y-auto,
+  main .overflow-x-auto,
+  main [class*="max-h-"] {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .sticky,
+  .fixed {
+    position: static !important;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+  tr,
+  li,
+  [data-testid="kpi"] {
+    break-inside: avoid;
+  }
+
+  .shadow-xs,
+  .shadow-sm,
+  .shadow-md,
+  .shadow-lg {
+    box-shadow: none !important;
+  }
+}

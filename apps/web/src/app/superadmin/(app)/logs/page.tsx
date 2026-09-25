@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ShieldAlert } from 'lucide-react';
 import type { TenantOverview } from '@jdoc/shared';
 import { api } from '@/lib/api';
-import { Badge, btnGhost, cardCls, inputCls, labelCls } from '@/components/ui';
+import { Badge, cardCls, inputCls, labelCls, Pagination, SelectMenu } from '@/components/ui';
 
 interface LogItem {
   id: string;
@@ -68,18 +68,17 @@ export default function LogsPage() {
     enabled: scope === 'global' || !!tenantId,
   });
 
-  const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-bold text-app">Logs de Auditoria</h1>
+      <h1 className="text-xl font-extrabold tracking-tight text-ink-900 sm:text-2xl">Logs de Auditoria</h1>
 
       {/* Filtros */}
-      <div className={`${cardCls} p-4 card-accent-orange`}>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <div className={`${cardCls} p-4`}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:grid-cols-6">
           <div>
             <label className={labelCls} htmlFor="l-scope">Escopo</label>
-            <select
+            <SelectMenu
               id="l-scope"
               className={inputCls}
               value={scope}
@@ -90,12 +89,12 @@ export default function LogsPage() {
             >
               <option value="global">Global (segurança)</option>
               <option value="tenant">Por órgão</option>
-            </select>
+            </SelectMenu>
           </div>
           {scope === 'tenant' && (
             <div>
               <label className={labelCls} htmlFor="l-tenant">Órgão</label>
-              <select
+              <SelectMenu
                 id="l-tenant"
                 className={inputCls}
                 value={tenantId}
@@ -108,7 +107,7 @@ export default function LogsPage() {
                 {tenants?.map((t) => (
                   <option key={t.id} value={t.id}>{t.nome}</option>
                 ))}
-              </select>
+              </SelectMenu>
             </div>
           )}
           <div>
@@ -167,10 +166,10 @@ export default function LogsPage() {
       </div>
 
       {/* Tabela */}
-      <div className={`${cardCls} overflow-x-auto card-accent-purple`}>
+      <div className={`${cardCls} overflow-x-auto`}>
         <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-app-border text-[11px] font-bold uppercase text-app-muted">
+          <thead className="bg-ink-50/60">
+            <tr className="border-b border-ink-200 label-caps">
               <th className="px-4 py-3">Quando</th>
               <th className="px-4 py-3">Ação</th>
               <th className="px-4 py-3">Ator</th>
@@ -182,7 +181,7 @@ export default function LogsPage() {
             {isLoading && (
               <tr>
                 <td colSpan={5} className="px-4 py-3">
-                  <div className="h-6 animate-pulse rounded bg-app-skeleton" />
+                  <div className="h-6 animate-pulse rounded bg-ink-100" />
                 </td>
               </tr>
             )}
@@ -191,29 +190,29 @@ export default function LogsPage() {
               return (
                 <tr
                   key={log.id}
-                  className={`border-b border-app-border ${
+                  className={`border-b border-ink-200 ${
                     isSecurity
-                      ? 'bg-red-50/60 dark:bg-red-900/20'
-                      : 'hover:bg-app-hover'
+                      ? 'bg-danger-50/60'
+                      : 'hover:bg-ink-50'
                   }`}
                 >
-                  <td className="whitespace-nowrap px-4 py-3 text-app-muted">
+                  <td className="whitespace-nowrap px-4 py-3 text-ink-500">
                     {new Date(log.criado_em).toLocaleString('pt-BR')}
                   </td>
                   <td className="px-4 py-3">
                     <span className="flex items-center gap-1.5">
                       {isSecurity && (
-                        <ShieldAlert className="h-4 w-4 text-red-500" aria-hidden />
+                        <ShieldAlert className="h-4 w-4 text-danger-500" aria-hidden />
                       )}
                       <Badge color={isSecurity ? 'red' : 'blue'}>{log.action}</Badge>
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-xs text-app-muted">
+                  <td className="px-4 py-3 text-xs text-ink-500">
                     {log.actor_type ? `${log.actor_type}: ` : ''}
                     {log.actor_id ? `${log.actor_id.slice(0, 8)}…` : '—'}
                   </td>
-                  <td className="px-4 py-3 text-app-muted">{log.ip ?? '—'}</td>
-                  <td className="max-w-xs truncate px-4 py-3 text-xs text-app-muted">
+                  <td className="px-4 py-3 text-ink-500">{log.ip ?? '—'}</td>
+                  <td className="max-w-xs truncate px-4 py-3 text-xs text-ink-500">
                     {log.metadata ? JSON.stringify(log.metadata) : '—'}
                   </td>
                 </tr>
@@ -221,7 +220,7 @@ export default function LogsPage() {
             })}
             {data?.items.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-app-muted">
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-ink-500">
                   Nenhum log encontrado com esses filtros.
                 </td>
               </tr>
@@ -231,31 +230,7 @@ export default function LogsPage() {
       </div>
 
       {/* Paginacao */}
-      {data && data.total > 0 && (
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-app-muted">
-            {data.total} registro(s) — página {data.page} de {totalPages}
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className={btnGhost}
-              disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              Anterior
-            </button>
-            <button
-              type="button"
-              className={btnGhost}
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Próxima
-            </button>
-          </div>
-        </div>
-      )}
+      {data && <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPageChange={setPage} />}
     </div>
   );
 }

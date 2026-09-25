@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
-import { Badge, btnPrimary, cardCls, formatBytes, inputCls, labelCls } from '@/components/ui';
+import { Badge, btnPrimary, cardCls, formatBytes, inputCls, labelCls, SelectMenu } from '@/components/ui';
 import { RefreshCw, Download } from 'lucide-react';
 import type { BackupView, BackupsListResponse, TenantOverview } from '@jdoc/shared';
 import { useToast } from '@/components/toast';
@@ -90,15 +90,15 @@ export default function BackupsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold text-app">Painel de Backups</h1>
+        <h1 className="text-xl font-extrabold tracking-tight text-ink-900 sm:text-2xl">Painel de Backups</h1>
       </div>
 
-      <div className={`${cardCls} flex flex-wrap items-end gap-3 p-4 card-accent-blue`}>
+      <div className={`${cardCls} flex flex-wrap items-end gap-3 p-4`}>
         <div className="min-w-[240px] flex-1">
           <label className={labelCls} htmlFor="backup-tenant">
             Selecione o orgão
           </label>
-          <select
+          <SelectMenu
             id="backup-tenant"
             className={inputCls}
             value={selectedTenantId}
@@ -111,7 +111,7 @@ export default function BackupsPage() {
                 {t.nome} ({t.slug})
               </option>
             ))}
-          </select>
+          </SelectMenu>
         </div>
 
         <button
@@ -130,7 +130,7 @@ export default function BackupsPage() {
           <label className={labelCls} htmlFor="backup-filter">
             Filtrar por orgão
           </label>
-          <select
+          <SelectMenu
             id="backup-filter"
             className={inputCls}
             value={filterTenantId}
@@ -142,20 +142,20 @@ export default function BackupsPage() {
                 {t.nome} ({t.slug})
               </option>
             ))}
-          </select>
+          </SelectMenu>
         </div>
       </div>
 
       {error && (
-        <p role="alert" className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text">
+        <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">
           {error}
         </p>
       )}
 
-      <div className={`${cardCls} overflow-x-auto card-accent-blue`}>
+      <div className={`${cardCls} overflow-x-auto`}>
         <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-app-border bg-app-table-head text-[11px] font-bold uppercase text-app-muted">
+          <thead className="bg-ink-50/60">
+            <tr className="border-b border-ink-200 bg-ink-50 label-caps">
               <th className="px-4 py-3">Órgão</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Tamanho</th>
@@ -169,23 +169,23 @@ export default function BackupsPage() {
               Array.from({ length: 3 }).map((_, i) => (
                 <tr key={i} aria-hidden>
                   <td colSpan={6} className="px-4 py-3">
-                    <div className="h-6 animate-pulse rounded bg-app-skeleton" />
+                    <div className="h-6 animate-pulse rounded bg-ink-100" />
                   </td>
                 </tr>
               ))}
             {backupsFiltrados.map((b: BackupView) => (
-              <tr key={b.id} className="border-b border-app-border hover:bg-app-hover">
-                <td className="px-4 py-3 font-semibold text-app">{b.tenantSlug}</td>
+              <tr key={b.id} className="border-b border-ink-200 hover:bg-ink-50">
+                <td className="px-4 py-3 font-semibold text-ink-800">{b.tenantSlug}</td>
                 <td className="px-4 py-3">
                   <Badge color={statusColor(b.status)}>{b.status.toUpperCase()}</Badge>
                 </td>
-                <td className="px-4 py-3 text-app-muted">
+                <td className="px-4 py-3 text-ink-500">
                   {b.sizeBytes ? formatBytes(b.sizeBytes) : '—'}
                 </td>
-                <td className="px-4 py-3 text-app-muted">
+                <td className="px-4 py-3 text-ink-500">
                   {new Date(b.criadoEm).toLocaleString('pt-BR')}
                 </td>
-                <td className="px-4 py-3 text-app-muted">
+                <td className="px-4 py-3 text-ink-500">
                   {b.concluidoEm ? new Date(b.concluidoEm).toLocaleString('pt-BR') : '—'}
                 </td>
                 <td className="px-4 py-3">
@@ -197,8 +197,8 @@ export default function BackupsPage() {
                     onClick={() => baixarBackup.mutate(b.id)}
                     className={`rounded p-1.5 ${
                       b.status === 'concluido'
-                        ? 'text-app-muted hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/30'
-                        : 'cursor-not-allowed text-gray-300 dark:text-gray-600'
+                        ? 'text-ink-500 hover:bg-success-50 hover:text-success-600'
+                        : 'cursor-not-allowed text-ink-300'
                     }`}
                   >
                     <Download className="h-4 w-4" aria-hidden />
@@ -208,7 +208,7 @@ export default function BackupsPage() {
             ))}
             {!isLoading && backupsFiltrados.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-app-muted">
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-ink-500">
                   Nenhum backup encontrado para o filtro selecionado.
                 </td>
               </tr>

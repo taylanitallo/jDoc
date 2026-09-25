@@ -39,10 +39,13 @@ import {
   type TenantAccessClaims,
   type TrashQuery,
   type UpdateDocumentInput,
+  camposMetadadosSchema,
+  type DocumentTypeLookup,
 } from '@jdoc/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { TenantJwtGuard } from '../auth/tenant-jwt.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
+import { SistemaGuard } from '../common/sistema.guard';
 import { CurrentUser, Permissions } from '../auth/decorators';
 import { DocumentsService } from './documents.service';
 import { DatabaseService } from '../database/database.service';
@@ -50,6 +53,7 @@ import { requireTenantContext } from '../tenancy/tenant-context';
 import { Throttle } from '@nestjs/throttler';
 
 const uuidSchema = z.string().uuid();
+const documentTypesQuerySchema = z.object({ modulo: z.enum(['outros', 'acervo']).optional() }).strict();
 const bulkIdsSchema = z.object({ ids: z.array(uuidSchema).min(1).max(200) }).strict();
 
 /**
@@ -64,7 +68,7 @@ const queryBooleanSchema = z.enum(['true', 'false']).transform((v) => v === 'tru
  * — por isso as rotas usam @Permissions() (autenticacao) + checagem no service.
  */
 @Controller('t/:slug/documents')
-@UseGuards(TenantJwtGuard, PermissionsGuard)
+@UseGuards(TenantJwtGuard, PermissionsGuard, SistemaGuard)
 export class DocumentsController {
   constructor(private readonly docs: DocumentsService) {}
 
@@ -363,7 +367,7 @@ export class DocumentsController {
 
 /** Cadastros de apoio para selects (CRUD completo entra na Fase 6). */
 @Controller('t/:slug')
-@UseGuards(TenantJwtGuard, PermissionsGuard)
+@UseGuards(TenantJwtGuard, PermissionsGuard, SistemaGuard)
 export class TenantLookupsController {
   constructor(private readonly db: DatabaseService) {}
 
@@ -380,12 +384,27 @@ export class TenantLookupsController {
 
   @Permissions()
   @Get('document-types')
-  async documentTypes(): Promise<Array<{ id: string; nome: string; cor: string }>> {
+  async documentTypes(
+    @Query(new ZodValidationPipe(documentTypesQuerySchema)) q: z.infer<typeof documentTypesQuerySchema>,
+  ): Promise<DocumentTypeLookup[]> {
     const ctx = requireTenantContext();
     const sql = this.db.tenant(ctx.schemaName);
-    const rows = await sql<Array<{ id: string; nome: string; cor: string }>>`
-      SELECT id, nome, cor FROM document_types WHERE ativo = true ORDER BY nome
+    // Sem filtro = so 'outros' (compatibilidade: telas antigas e jDoc Desktop nao conhecem o Acervo).
+    const modulo = q.modulo ?? 'outros';
+    const rows = await sql<
+      Array<{ id: string; nome: string; cor: string; campos: unknown; classificacao_id: string | null; nivel_acesso_padrao: string }>
+    >`
+      SELECT id, nome, cor, campos, classificacao_id, nivel_acesso_padrao FROM document_types
+      WHERE ativo = true AND modulo = ${modulo}
+      ORDER BY nome
     `;
-    return rows.map((r) => ({ id: r.id, nome: r.nome, cor: r.cor }));
+    return rows.map((r) => ({
+      id: r.id,
+      nome: r.nome,
+      cor: r.cor,
+      campos: camposMetadadosSchema.catch([]).parse(typeof r.campos === 'string' ? JSON.parse(r.campos) : r.campos),
+      classificacaoId: r.classificacao_id,
+      nivelAcessoPadrao: r.nivel_acesso_padrao as DocumentTypeLookup['nivelAcessoPadrao'],
+    }));
   }
 }
