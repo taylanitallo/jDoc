@@ -163,6 +163,11 @@ export async function api<T>(
  * Mesmo refresh automatico do `api()` em 401. Quem chama revoga a URL quando
  * nao precisar mais (ou deixa pro unload da aba aberta).
  */
+/** URL absoluta de uma rota PUBLICA da API (links diretos, ex.: PDF do portal da legislacao). */
+export function apiUrl(path: string): string {
+  return `${API_URL}${path}`;
+}
+
 export async function apiBlobUrl(path: string, options: Omit<ApiOptions, '_skipRefresh'> = {}): Promise<string> {
   const inferred = inferTenantSlug(path);
   if (inferred) lastTenantSlug = inferred;

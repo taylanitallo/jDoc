@@ -28,7 +28,7 @@ const DB_URL = process.env.DATABASE_URL ?? 'postgres://jdoc:jdoc_dev@localhost:5
 const SA_EMAIL = 'sa-e2e@jeossistemas.com';
 const SA_PASS = 'senha-super-e2e-123';
 const SA_TOTP_SECRET = 'JDOCE2ETESTSECRETJDOCE2ETEST';
-const NEW_SLUG = 'sa_e2e_novo';
+const NEW_SLUG = 'sae2enovo';
 const TENANT_X = 'sa_e2e_x';
 const USER_EMAIL = 'op@teste.gov.br';
 const USER_PASS = 'senha-forte-123';
@@ -289,13 +289,24 @@ describe('Superadmin — Fase 2', () => {
     expect(Array.isArray(res.body.crescimento)).toBe(true);
   });
 
+  it('slug com acento, espaco, _ ou maiuscula = 400', async () => {
+    const token = await saLogin();
+    for (const slug of ['iraçuba', 'ira cuba', 'ira_cuba', 'Iraucuba', 'ira$']) {
+      await request(app.getHttpServer())
+        .post('/superadmin/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ slug, nome: 'Teste', cidade: 'Irauçuba', uf: 'CE', responsavel: 'A B C', email: 'a@b.gov.br', modulos: ['financeiro'] })
+        .expect(400);
+    }
+  });
+
   it('body com campo extra = 400 (zod strict)', async () => {
     const token = await saLogin();
     await request(app.getHttpServer())
       .post('/superadmin/tenants')
       .set('Authorization', `Bearer ${token}`)
       .send({
-        slug: 'qualquer_x',
+        slug: 'qualquerx',
         nome: 'Teste',
         cidade: 'X',
         uf: 'CE',

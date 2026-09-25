@@ -24,4 +24,16 @@ describe('tenant slug / schema name', () => {
     expect(tenantSlugSchema.safeParse('Invalido').success).toBe(false);
     expect(tenantSlugSchema.safeParse('com-hifen').success).toBe(false);
   });
+
+  it('slug novo: so letras minusculas e numeros', async () => {
+    const { novoTenantSlugSchema, slugDeTexto } = await import('./tenant.js');
+    expect(novoTenantSlugSchema.safeParse('iraucuba').success).toBe(true);
+    expect(novoTenantSlugSchema.safeParse('itapaje2').success).toBe(true);
+    for (const ruim of ['iraçuba', 'ira cuba', 'ira_cuba', 'ira-cuba', 'Iraucuba', 'ira$', 'ab', 'superadmin']) {
+      expect(novoTenantSlugSchema.safeParse(ruim).success, ruim).toBe(false);
+    }
+    expect(slugDeTexto('Irauçuba')).toBe('iraucuba');
+    expect(slugDeTexto('São Gonçalo do Amarante')).toBe('saogoncalodoamarante');
+    expect(slugDeTexto('Itapajé ~$_')).toBe('itapaje');
+  });
 });

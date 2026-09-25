@@ -24,3 +24,4 @@ export * from './atendimento.js';
 export * from './sigilo.js';
 export * from './dossies.js';
 export * from './descricao.js';
+export * from './legislacao.js';

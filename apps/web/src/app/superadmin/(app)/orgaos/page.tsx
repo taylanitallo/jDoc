@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Pencil, Plus, Power, HardDrive } from 'lucide-react';
+import { Pencil, Plus, Power, HardDrive, Trash2 } from 'lucide-react';
 import {
   createTenantSchema,
-  UFS,
+  slugDeTexto,
   type CreateTenantInput,
   type TenantOverview,
 } from '@jdoc/shared';
@@ -22,10 +22,10 @@ import {
   formatBytes,
   inputCls,
   labelCls,
-  SelectMenu,
 } from '@/components/ui';
 import { useToast } from '@/components/toast';
-import { EditModal, QuotaModal } from '@/components/superadmin/tenant-modals';
+import { UfCidadeFields } from '@/components/superadmin/uf-cidade';
+import { EditModal, ExcluirOrgaoModal, QuotaModal } from '@/components/superadmin/tenant-modals';
 import { ModulosBadges, ModulosContratados } from '@/components/superadmin/modulos-contratados';
 
 export default function OrgaosPage() {
@@ -39,6 +39,7 @@ export default function OrgaosPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<TenantOverview | null>(null);
   const [quotaEditing, setQuotaEditing] = useState<TenantOverview | null>(null);
+  const [excluindo, setExcluindo] = useState<TenantOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['sa-tenants'] });
@@ -164,6 +165,15 @@ export default function OrgaosPage() {
                     >
                       <Power className="h-4 w-4" aria-hidden />
                     </button>
+                    <button
+                      type="button"
+                      title={t.status === 'ativo' ? 'Desative para poder excluir' : 'Excluir órgão'}
+                      aria-label={`Excluir ${t.nome}`}
+                      onClick={() => setExcluindo(t)}
+                      className="rounded p-1.5 text-ink-400 hover:bg-danger-50 hover:text-danger-600"
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden />
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -183,6 +193,7 @@ export default function OrgaosPage() {
       {editing && (
         <EditModal tenant={editing} onClose={() => setEditing(null)} onDone={invalidate} />
       )}
+      {excluindo && <ExcluirOrgaoModal tenant={excluindo} onClose={() => setExcluindo(null)} onDone={invalidate} />}
       {quotaEditing && (
         <QuotaModal
           tenant={quotaEditing}
@@ -205,6 +216,7 @@ function CreateModal({
 }) {
   const toast = useToast();
   const [error, setError] = useState<string | null>(null);
+  const slugEditado = useRef(false);
   const [quotaGb, setQuotaGb] = useState(1);
   const {
     register,
@@ -224,6 +236,7 @@ function CreateModal({
     try {
       await api('/superadmin/tenants', { method: 'POST', body: data });
       reset();
+      slugEditado.current = false;
       setQuotaGb(1);
       onDone();
       onClose();
@@ -250,8 +263,23 @@ function CreateModal({
             {errors.nome && <p className="mt-1 text-xs text-danger-600">{errors.nome.message}</p>}
           </div>
           <div>
-            <label className={labelCls} htmlFor="slug">Slug (URL)<span className="ml-0.5 text-danger-600">*</span></label>
-            <input id="slug" className={inputCls} placeholder="iraucuba" {...register('slug')} />
+            <label className={labelCls} htmlFor="slug">Endereço (slug)<span className="ml-0.5 text-danger-600">*</span></label>
+            <input
+              id="slug"
+              className={`${inputCls} font-mono`}
+              placeholder="iraucuba"
+              autoComplete="off"
+              spellCheck={false}
+              value={watch('slug') ?? ''}
+              onChange={(e) => {
+                // Normaliza enquanto digita: "Irauçuba" vira "iraucuba" (endereco web, sem acento/espaco/simbolo).
+                slugEditado.current = e.target.value.trim().length > 0;
+                setValue('slug', slugDeTexto(e.target.value), { shouldValidate: true });
+              }}
+            />
+            <p className="mt-1 truncate text-xs text-ink-500">
+              doc.jeossistemas.com/<strong className="font-mono text-ink-700">{watch('slug') || 'endereco'}</strong>
+            </p>
             {errors.slug && <p className="mt-1 text-xs text-danger-600">{errors.slug.message}</p>}
           </div>
           <div>
@@ -275,21 +303,20 @@ function CreateModal({
               </p>
             )}
           </div>
-          <div>
-            <label className={labelCls} htmlFor="cidade">Cidade<span className="ml-0.5 text-danger-600">*</span></label>
-            <input id="cidade" className={inputCls} placeholder="Irauçuba" {...register('cidade')} />
-            {errors.cidade && <p className="mt-1 text-xs text-danger-600">{errors.cidade.message}</p>}
-          </div>
-          <div>
-            <label className={labelCls} htmlFor="uf">UF<span className="ml-0.5 text-danger-600">*</span></label>
-            <SelectMenu id="uf" className={inputCls} {...register('uf')}>
-              <option value="">Selecione…</option>
-              {UFS.map((uf) => (
-                <option key={uf} value={uf}>{uf}</option>
-              ))}
-            </SelectMenu>
-            {errors.uf && <p className="mt-1 text-xs text-danger-600">UF obrigatória</p>}
-          </div>
+          <UfCidadeFields
+            idPrefix="novo"
+            obrigatorio
+            uf={watch('uf') ?? ''}
+            cidade={watch('cidade') ?? ''}
+            onUf={(v) => setValue('uf', v as CreateTenantInput['uf'], { shouldValidate: true })}
+            onCidade={(v) => {
+              setValue('cidade', v, { shouldValidate: !!v });
+              // Sugere o endereco pela cidade enquanto ninguem digitou um.
+              if (v && !slugEditado.current) setValue('slug', slugDeTexto(v), { shouldValidate: true });
+            }}
+            erroUf={errors.uf ? 'Selecione a UF' : undefined}
+            erroCidade={errors.cidade ? 'Selecione a cidade' : undefined}
+          />
           <div>
             <label className={labelCls} htmlFor="responsavel">Responsável<span className="ml-0.5 text-danger-600">*</span></label>
             <input

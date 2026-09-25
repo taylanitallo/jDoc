@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { BadRequestException, Injectable, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
+import { SCHEMA_NAME_REGEX } from '@jdoc/shared';
 import type {
   CreateTenantInput,
   SetQuotaInput,
@@ -36,6 +37,8 @@ interface TenantRow {
 
 @Injectable()
 export class SuperadminTenantsService {
+  private readonly logger = new Logger(SuperadminTenantsService.name);
+
   constructor(
     private readonly db: DatabaseService,
     private readonly tenancy: TenancyService,
@@ -167,6 +170,46 @@ export class SuperadminTenantsService {
       targetTenantId: id,
       ip,
       metadata: { slug: row.slug },
+    });
+  }
+
+  /**
+   * Exclusao DEFINITIVA do orgao: apaga o schema (documentos, usuarios, configuracoes),
+   * o registro no catalogo e todos os arquivos. Exige o orgao inativo e o slug digitado.
+   * O log global (global_audit_logs) fica — e a prova de quem excluiu e quando.
+   */
+  async remove(id: string, confirmacao: string, actorId: string, ip: string): Promise<void> {
+    const row = await this.getById(id);
+    if (row.status !== 'inativo') throw new ConflictException('Desative o órgão antes de excluir');
+    if (confirmacao.trim().toLowerCase() !== row.slug) throw new BadRequestException('Digite o slug do órgão para confirmar a exclusão');
+    if (!SCHEMA_NAME_REGEX.test(row.schema_name)) throw new BadRequestException('Schema inválido');
+
+    await this.db.closeTenant(row.schema_name);
+    const direct = this.db.direct();
+    try {
+      await direct.begin(async (tx) => {
+        await tx.unsafe(`DROP SCHEMA IF EXISTS "${row.schema_name}" CASCADE`);
+        await tx.unsafe('DELETE FROM public.tenants WHERE id = $1', [id]);
+      });
+    } finally {
+      await direct.end({ timeout: 5 });
+    }
+    await this.tenancy.invalidate(row.slug);
+    // Arquivos por ultimo: se o storage falhar, o orgao ja nao existe e o log registra a pendencia.
+    let arquivos = 'removidos';
+    try {
+      await this.storage.deleteAll(row.slug);
+    } catch (e) {
+      arquivos = `falha: ${(e as Error).message}`;
+      this.logger.error(`Orgao ${row.slug} excluido, mas os arquivos nao foram removidos: ${(e as Error).message}`);
+    }
+    await this.audit.logGlobal({
+      actorType: 'superadmin',
+      actorId,
+      action: 'tenant_deleted',
+      targetTenantId: id,
+      ip,
+      metadata: { slug: row.slug, nome: row.nome, arquivos },
     });
   }
 

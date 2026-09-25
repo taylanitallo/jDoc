@@ -37,6 +37,8 @@ import {
   type MasterDashboard,
   type SuperadminAccessClaims,
   type TenantOverview,
+  deleteTenantSchema,
+  type DeleteTenantInput,
 } from '@jdoc/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { SuperadminJwtGuard } from '../superadmin-auth/superadmin-jwt.guard';
@@ -153,6 +155,17 @@ export class SuperadminController {
     await this.tenants.deleteBrasao(id, a.id, a.ip);
   }
 
+  @Delete('tenants/:id')
+  @HttpCode(204)
+  async deleteTenant(
+    @Param('id', new ZodValidationPipe(uuidSchema)) id: string,
+    @Body(new ZodValidationPipe(deleteTenantSchema)) body: DeleteTenantInput,
+    @Req() req: Request,
+  ): Promise<void> {
+    const a = actor(req);
+    await this.tenants.remove(id, body.confirmacao, a.id, a.ip);
+  }
+
   // ---- Usuarios de tenant ----
 
   @Get('tenants/:id/users')
@@ -195,6 +208,17 @@ export class SuperadminController {
   ): Promise<void> {
     const a = actor(req);
     await this.users.setActive(id, userId, body, a.id, a.ip);
+  }
+
+  @Delete('tenants/:id/users/:userId')
+  @HttpCode(204)
+  async deleteUser(
+    @Param('id', new ZodValidationPipe(uuidSchema)) id: string,
+    @Param('userId', new ZodValidationPipe(uuidSchema)) userId: string,
+    @Req() req: Request,
+  ): Promise<void> {
+    const a = actor(req);
+    await this.users.remove(id, userId, a.id, a.ip);
   }
 
   // ---- Logs ----

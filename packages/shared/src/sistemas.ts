@@ -35,7 +35,7 @@ export function sistemaDoModulo(m: DocModule): Sistema {
 /** Modulos RBAC (MODULES) que pertencem a cada sistema — a tela de permissoes so mostra os contratados. */
 export const MODULOS_RBAC_POR_SISTEMA: Record<Sistema, readonly string[]> = {
   financeiro: ['receitas', 'despesas', 'balancete', 'extrato', 'outros', 'prestacao_contas'],
-  arquivo: ['acervo', 'acervo_restrito', 'classificacao', 'temporalidade', 'arquivo_fisico', 'integridade', 'atendimento', 'sigilo', 'dossies', 'descricao'],
+  arquivo: ['acervo', 'acervo_restrito', 'classificacao', 'temporalidade', 'arquivo_fisico', 'integridade', 'atendimento', 'sigilo', 'dossies', 'descricao', 'legislacao'],
 };
 
 export function temSistema(sistemas: readonly string[] | undefined, s: Sistema): boolean {

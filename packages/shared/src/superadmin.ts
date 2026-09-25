@@ -116,3 +116,7 @@ export interface MasterDashboard {
   uploadsNoMes: number;
   crescimento: Array<{ mes: string; total: number }>;
 }
+
+/** Exclusao definitiva de orgao: so com o orgao inativo e digitando o slug para confirmar. */
+export const deleteTenantSchema = z.object({ confirmacao: z.string().trim().min(1) }).strict();
+export type DeleteTenantInput = z.infer<typeof deleteTenantSchema>;

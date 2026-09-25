@@ -163,4 +163,41 @@ export class SuperadminUsersService {
       metadata: { userId },
     });
   }
+
+  /**
+   * Exclui o usuario. Nao exclui o ultimo administrador ativo nem quem ja registrou
+   * documentos/atos (a autoria precisa continuar rastreavel) — para esses, desativar.
+   */
+  async remove(tenantId: string, userId: string, actorId: string, ip: string): Promise<void> {
+    const tenant = await this.tenants.getById(tenantId);
+    const sql = this.db.tenant(tenant.schema_name);
+    const [u] = await sql<Array<{ email: string; role: string; ativo: boolean }>>`SELECT email, role, ativo FROM users WHERE id = ${userId}`;
+    if (!u) throw new NotFoundException('Usuario nao encontrado');
+    if (u.role === 'admin' && u.ativo) {
+      const [n] = await sql<Array<{ n: number }>>`SELECT count(*)::int AS n FROM users WHERE role = 'admin' AND ativo AND id <> ${userId}`;
+      if ((n?.n ?? 0) === 0) throw new ConflictException('Não é possível excluir o único administrador ativo do órgão');
+    }
+    const [docs] = await sql<Array<{ n: number }>>`SELECT count(*)::int AS n FROM documents WHERE created_by = ${userId}`;
+    if ((docs?.n ?? 0) > 0) throw new ConflictException('Este usuário já registrou documentos ou atos; para manter o histórico, desative-o em vez de excluir');
+    try {
+      await sql.begin(async (tx) => {
+        await tx`DELETE FROM user_permissions WHERE user_id = ${userId}`;
+        await tx`DELETE FROM users WHERE id = ${userId}`;
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code === '23503') {
+        throw new ConflictException('Este usuário já registrou documentos ou atos no sistema; para manter o histórico, desative-o em vez de excluir');
+      }
+      throw e;
+    }
+    await this.refreshTokens.revokeAllForUser('tenant', userId).catch(() => undefined);
+    await this.audit.logGlobal({
+      actorType: 'superadmin',
+      actorId,
+      action: 'tenant_user_deleted',
+      targetTenantId: tenantId,
+      ip,
+      metadata: { email: u.email, role: u.role },
+    });
+  }
 }

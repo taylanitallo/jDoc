@@ -38,6 +38,8 @@ export const MODULES = [
   'dossies',
   /** Descricao arquivistica (NOBRADE) e instrumentos de pesquisa. */
   'descricao',
+  /** Legislacao compilada (texto por dispositivo, alteracoes, portal publico). */
+  'legislacao',
 ] as const;
 export const moduleSchema = z.enum(MODULES);
 export type ModuleName = z.infer<typeof moduleSchema>;
