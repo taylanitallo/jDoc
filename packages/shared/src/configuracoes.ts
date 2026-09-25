@@ -175,6 +175,8 @@ export type TenantSettings = z.infer<typeof tenantSettingsSchema>;
  *  nao exige a permissao layout:read (essa e so para a tela de edicao). */
 export interface TenantBranding {
   nomeExibido: string | null;
+  /** Nome do orgao no cadastro (ex.: "Prefeitura de Itapajé") — usado quando nao ha nome exibido. */
+  nomeOrgao?: string | null;
   corDestaque: string | null;
   /** Signed URL ja resolvida (nao e o file_key) — pronta para <img src>. */
   brasaoUrl: string | null;

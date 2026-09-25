@@ -127,6 +127,22 @@ export class StorageService {
     await rm(this.localPath(slug, key), { force: true });
   }
 
+  /**
+   * Apaga TODOS os arquivos do orgao (bucket inteiro). Irreversivel — usado so na
+   * exclusao definitiva do orgao pelo superadmin.
+   */
+  async deleteAll(slug: string): Promise<void> {
+    const bucket = this.bucket(slug);
+    if (this.supabase) {
+      const { error: e1 } = await this.supabase.storage.emptyBucket(bucket);
+      if (e1 && !/not.?found/i.test(e1.message)) throw new Error(`Falha ao esvaziar ${bucket}: ${e1.message}`);
+      const { error: e2 } = await this.supabase.storage.deleteBucket(bucket);
+      if (e2 && !/not.?found/i.test(e2.message)) throw new Error(`Falha ao remover ${bucket}: ${e2.message}`);
+      return;
+    }
+    await rm(join(this.baseDir, bucket), { recursive: true, force: true });
+  }
+
   /** Como delete(), mas FALHA se o provedor recusar — usado pela eliminacao legal, onde "apagou" precisa ser verdade. */
   async deleteStrict(slug: string, key: string): Promise<void> {
     assertSafeFileKey(key);

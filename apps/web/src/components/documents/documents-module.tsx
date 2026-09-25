@@ -413,6 +413,11 @@ function FileConferenciaBadge({
  *  explicita pra absorver o espaço restante. Os demais modulos usam larguras
  *  percentuais proporcionais entre si, senao uma unica coluna sem limite
  *  acaba engolindo todo o espaço vazio sozinha quando o conteudo e curto. */
+/** Tipos documentais normativos: ganham o botao "Texto compilado". */
+function ehNormativo(d: DocumentView): boolean {
+  return /\b(lei|decreto|portaria|resolu|emenda)/i.test(d.documentTypeNome ?? '');
+}
+
 const FASE_TOM_DOC: Partial<Record<DocumentView['fase'], 'info' | 'warning' | 'violet' | 'neutral'>> = {
   corrente: 'info',
   intermediaria: 'warning',
@@ -1303,6 +1308,15 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                             <Eye className="h-4 w-4" aria-hidden />
                           </button>
                         )}
+                        {module === 'acervo' && ehNormativo(d) && (
+                          <Link
+                            href={`/${slug}/normas/documento/${d.id}`}
+                            title="Texto compilado (legislação)"
+                            className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
+                          >
+                            <Scale className="h-4 w-4" aria-hidden />
+                          </Link>
+                        )}
                         <button
                           type="button"
                           title="Editar"
@@ -1433,6 +1447,15 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                             >
                               <Eye className="h-4 w-4" aria-hidden />
                             </button>
+                          )}
+                          {module === 'acervo' && ehNormativo(d) && (
+                            <Link
+                              href={`/${slug}/normas/documento/${d.id}`}
+                              title="Texto compilado (legislação)"
+                              className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
+                            >
+                              <Scale className="h-4 w-4" aria-hidden />
+                            </Link>
                           )}
                           <button
                             type="button"

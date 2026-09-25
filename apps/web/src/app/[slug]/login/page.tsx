@@ -61,7 +61,7 @@ export default function LoginPage() {
     }
   };
 
-  const nome = branding?.nomeExibido || String(slug).replace(/_/g, ' ');
+  const nome = branding?.nomeExibido || branding?.nomeOrgao || String(slug).replace(/_/g, ' ');
 
   return (
     <AuthLayout>
@@ -74,7 +74,7 @@ export default function LoginPage() {
           )}
         </span>
         <div className="min-w-0">
-          <h1 className="truncate text-xl font-extrabold tracking-tight text-ink-900 sm:text-2xl">{nome}</h1>
+          <h1 className="text-xl font-extrabold uppercase leading-tight tracking-tight text-ink-900 sm:text-2xl" title={nome}>{nome}</h1>
           <p className="text-sm text-ink-500">Entre com seu e-mail e senha</p>
         </div>
       </div>

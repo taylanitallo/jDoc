@@ -956,6 +956,66 @@ export async function provisionTenantSchema(sql: Sql, slug: string): Promise<str
       `CREATE INDEX IF NOT EXISTS idx_documents_unidade_descricao ON "${schemaName}".documents (unidade_descricao_id) WHERE unidade_descricao_id IS NOT NULL`,
     );
 
+    // Legislacao compilada: norma estruturada dispositivo por dispositivo + historico de
+    // redacoes dadas por normas posteriores (texto compilado estilo Planalto).
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".normas (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        document_id uuid NOT NULL UNIQUE REFERENCES "${schemaName}".documents(id),
+        tipo varchar(20) NOT NULL,
+        numero varchar(20) NOT NULL,
+        ano integer NOT NULL,
+        data_publicacao date,
+        ementa text NOT NULL,
+        situacao varchar(20) NOT NULL DEFAULT 'vigente' CHECK (situacao IN ('vigente', 'alterada', 'revogada_parcial', 'revogada')),
+        revogada_total boolean NOT NULL DEFAULT false,
+        publicada boolean NOT NULL DEFAULT false,
+        revisada_por uuid,
+        revisada_em timestamptz,
+        criado_em timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (tipo, numero, ano)
+      )
+    `);
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".norma_dispositivos (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        norma_id uuid NOT NULL REFERENCES "${schemaName}".normas(id) ON DELETE CASCADE,
+        parent_id uuid REFERENCES "${schemaName}".norma_dispositivos(id) ON DELETE CASCADE,
+        tipo varchar(12) NOT NULL,
+        rotulo varchar(60) NOT NULL,
+        ordem double precision NOT NULL,
+        texto_original text,
+        criado_em timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_norma_dispositivos_norma ON "${schemaName}".norma_dispositivos (norma_id, ordem)`,
+    );
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".norma_redacoes (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        dispositivo_id uuid NOT NULL REFERENCES "${schemaName}".norma_dispositivos(id) ON DELETE CASCADE,
+        acao varchar(12) NOT NULL CHECK (acao IN ('redacao', 'revogacao', 'inclusao')),
+        texto text,
+        norma_alteradora_id uuid NOT NULL REFERENCES "${schemaName}".normas(id),
+        vigencia_inicio date NOT NULL,
+        criado_por uuid,
+        criado_em timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_norma_redacoes_disp ON "${schemaName}".norma_redacoes (dispositivo_id, vigencia_inicio)`,
+    );
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".norma_relacoes (
+        origem_id uuid NOT NULL REFERENCES "${schemaName}".normas(id) ON DELETE CASCADE,
+        destino_id uuid NOT NULL REFERENCES "${schemaName}".normas(id) ON DELETE CASCADE,
+        tipo varchar(20) NOT NULL CHECK (tipo IN ('altera', 'revoga', 'revoga_parcialmente')),
+        criado_em timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (origem_id, destino_id, tipo)
+      )
+    `);
+
     // Tenant Settings (customizacao visual/layout)
     await tx.unsafe(`
       CREATE TABLE IF NOT EXISTS "${schemaName}".tenant_settings (

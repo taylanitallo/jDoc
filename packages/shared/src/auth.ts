@@ -2,12 +2,12 @@ import { z } from 'zod';
 import { tenantRoleSchema, type TenantRole } from './constants.js';
 
 /**
- * Politica de senha: minimo 10 caracteres.
+ * Politica de senha: minimo 6 caracteres (pedido do cliente).
  * Checagem contra senhas vazadas comuns fica no backend (lista/serviço).
  */
 export const passwordSchema = z
   .string()
-  .min(10, 'Senha deve ter no minimo 10 caracteres')
+  .min(6, 'A senha deve ter no mínimo 6 caracteres')
   .max(200);
 
 export const emailSchema = z.string().email().max(254).toLowerCase();

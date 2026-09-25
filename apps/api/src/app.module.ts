@@ -27,6 +27,7 @@ import { AtendimentoModule } from './atendimento/atendimento.module';
 import { SigiloModule } from './sigilo/sigilo.module';
 import { DossiesModule } from './dossies/dossies.module';
 import { DescricaoModule } from './descricao/descricao.module';
+import { LegislacaoModule } from './legislacao/legislacao.module';
 import { ThrottlerConfigModule } from './common/throttler.module';
 import { HealthController } from './health.controller';
 import { TenantsPublicController } from './tenants-public.controller';
@@ -61,6 +62,7 @@ import { TenantsPublicController } from './tenants-public.controller';
     SigiloModule,
     DossiesModule,
     DescricaoModule,
+    LegislacaoModule,
   ],
   controllers: [HealthController, TenantsPublicController],
 })

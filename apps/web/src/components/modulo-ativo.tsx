@@ -11,7 +11,7 @@ const CHAVE = 'jdoc-modulo-ativo';
 /** Rotas (segmento apos /<slug>/) que pertencem a cada modulo. As demais sao comuns. */
 export const ROTAS_DO_MODULO: Record<Sistema, readonly string[]> = {
   financeiro: ['receitas', 'despesas', 'balancete', 'extrato', 'outros', 'prestacao-contas', 'midia-legislativa', 'pasta-monitorada'],
-  arquivo: ['acervo', 'dossies', 'descricao', 'arquivo-fisico', 'temporalidade', 'integridade', 'relatorios', 'atendimento', 'sigilo'],
+  arquivo: ['acervo', 'dossies', 'descricao', 'normas', 'arquivo-fisico', 'temporalidade', 'integridade', 'relatorios', 'atendimento', 'sigilo'],
 };
 
 export function moduloDaRota(segmento: string): Sistema | null {

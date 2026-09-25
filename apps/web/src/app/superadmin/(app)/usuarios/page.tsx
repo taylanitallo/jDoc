@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { KeyRound, Plus, Power } from 'lucide-react';
+import { KeyRound, Plus, Power, Trash2 } from 'lucide-react';
 import {
   createTenantUserSchema,
   MODULES,
@@ -81,6 +81,15 @@ export default function UsuariosPage() {
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['sa-users', tenantId] });
+
+  const excluir = useMutation({
+    mutationFn: (u: TenantUserView) => api(`/superadmin/tenants/${tenantId}/users/${u.id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      invalidate();
+      toast.success('Usuário excluído.');
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Falha ao excluir'),
+  });
 
   const toggleActive = useMutation({
     mutationFn: (u: TenantUserView) =>
@@ -197,6 +206,18 @@ export default function UsuariosPage() {
                         }`}
                       >
                         <Power className="h-4 w-4" aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        title="Excluir"
+                        aria-label={`Excluir ${u.nome}`}
+                        disabled={excluir.isPending}
+                        onClick={() => {
+                          if (window.confirm(`Excluir o usuário ${u.nome} (${u.email})? Esta ação não pode ser desfeita.`)) excluir.mutate(u);
+                        }}
+                        className="rounded p-1.5 text-ink-400 hover:bg-danger-50 hover:text-danger-600"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden />
                       </button>
                     </div>
                   </td>
@@ -402,7 +423,7 @@ function ResetPasswordModal({
       ) : (
         <div className="space-y-4">
           <div>
-            <label className={labelCls} htmlFor="r-senha">Nova senha (mín. 10 caracteres)</label>
+            <label className={labelCls} htmlFor="r-senha">Nova senha (mín. 6 caracteres)</label>
             <input
               id="r-senha"
               type="password"

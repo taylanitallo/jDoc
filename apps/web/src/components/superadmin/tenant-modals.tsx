@@ -6,13 +6,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { FileUp, Trash2 } from 'lucide-react';
 import {
   updateTenantSchema,
-  UFS,
   type UpdateTenantInput,
   type TenantOverview,
 } from '@jdoc/shared';
 import { api, ApiError } from '@/lib/api';
 import { uploadTenantBrasao } from '@/lib/upload';
 import { ModulosContratados } from './modulos-contratados';
+import { UfCidadeFields } from './uf-cidade';
 import {
   Modal,
   UsageBar,
@@ -21,7 +21,6 @@ import {
   formatBytes,
   inputCls,
   labelCls,
-  SelectMenu,
 } from '@/components/ui';
 import { useToast } from '@/components/toast';
 
@@ -137,19 +136,13 @@ export function EditModal({
               <p className="mt-1 text-xs text-danger-600">{errors.nome.message}</p>
             )}
           </div>
-          <div>
-            <label className={labelCls} htmlFor="e-cidade">Cidade</label>
-            <input id="e-cidade" className={inputCls} {...register('cidade')} />
-          </div>
-          <div>
-            <label className={labelCls} htmlFor="e-uf">UF</label>
-            <SelectMenu id="e-uf" className={inputCls} {...register('uf')}>
-              <option value="">—</option>
-              {UFS.map((uf) => (
-                <option key={uf} value={uf}>{uf}</option>
-              ))}
-            </SelectMenu>
-          </div>
+          <UfCidadeFields
+            idPrefix="e"
+            uf={watch('uf') ?? ''}
+            cidade={watch('cidade') ?? ''}
+            onUf={(v) => setValue('uf', (v || undefined) as UpdateTenantInput['uf'], { shouldDirty: true })}
+            onCidade={(v) => setValue('cidade', v || undefined, { shouldDirty: true })}
+          />
           <div>
             <label className={labelCls} htmlFor="e-resp">Responsável</label>
             <input id="e-resp" className={inputCls} {...register('responsavel')} />
@@ -343,6 +336,75 @@ export function QuotaModal({
           <button type="button" className={btnPrimary} onClick={save} disabled={saving}>
             {saving ? 'Salvando…' : 'Salvar quota'}
           </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** Exclusao definitiva: so com o orgao inativo e digitando o slug. */
+export function ExcluirOrgaoModal({ tenant, onClose, onDone }: { tenant: TenantOverview; onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
+  const [texto, setTexto] = useState('');
+  const [excluindo, setExcluindo] = useState(false);
+  const inativo = tenant.status === 'inativo';
+  const confere = texto.trim().toLowerCase() === tenant.slug;
+
+  const excluir = async () => {
+    setExcluindo(true);
+    try {
+      await api(`/superadmin/tenants/${tenant.id}`, { method: 'DELETE', body: { confirmacao: texto.trim() } });
+      toast.success(`Órgão ${tenant.nome} excluído.`);
+      onDone();
+      onClose();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : 'Falha ao excluir');
+    } finally {
+      setExcluindo(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Excluir órgão"
+      subtitle={`${tenant.nome} — /${tenant.slug}`}
+      open
+      onClose={() => !excluindo && onClose()}
+      footer={
+        <>
+          <button type="button" className={btnGhost} onClick={onClose} disabled={excluindo}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-[10px] bg-danger-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-danger-500 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!inativo || !confere || excluindo}
+            onClick={excluir}
+          >
+            <Trash2 className="h-4 w-4" aria-hidden /> {excluindo ? 'Excluindo…' : 'Excluir definitivamente'}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4 text-sm">
+        {!inativo ? (
+          <p className="rounded-[10px] bg-warning-50 px-3 py-2 text-warning-700">
+            Desative o órgão antes de excluir. Assim ninguém está usando o sistema no momento da exclusão.
+          </p>
+        ) : (
+          <div className="rounded-[10px] border border-danger-500/30 bg-danger-50 px-3 py-3 text-danger-600">
+            <p className="font-semibold">Esta ação não pode ser desfeita.</p>
+            <p className="mt-1">
+              Serão apagados todos os documentos, arquivos PDF, usuários e configurações deste órgão. Faça um backup antes, em
+              “Gerenciar (Backup &amp; Logs)”, se precisar guardar os dados.
+            </p>
+          </div>
+        )}
+        <div>
+          <label className={labelCls} htmlFor="excluir-slug">
+            Para confirmar, digite o slug <strong className="font-mono">{tenant.slug}</strong>
+          </label>
+          <input id="excluir-slug" className={inputCls} value={texto} onChange={(e) => setTexto(e.target.value)} disabled={!inativo} autoComplete="off" />
         </div>
       </div>
     </Modal>
