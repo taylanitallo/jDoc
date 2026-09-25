@@ -32,6 +32,7 @@ export class TenancyMiddleware implements NestMiddleware {
       schemaName: tenant.schemaName,
       nome: tenant.nome,
       quotaDiscoMb: tenant.quotaDiscoMb,
+      modulos: tenant.modulos,
     };
 
     // Disponibiliza tambem via req para guards/controllers.

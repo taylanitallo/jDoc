@@ -19,7 +19,6 @@ import cookieParser from 'cookie-parser';
 import postgres from 'postgres';
 import Redis from 'ioredis';
 import * as argon2 from 'argon2';
-import { execSync } from 'node:child_process';
 import { AppModule } from '../src/app.module';
 import { AllExceptionsFilter } from '../src/common/all-exceptions.filter';
 import { provisionTenantSchema } from '@jdoc/database';
@@ -144,9 +143,9 @@ describe('Relatorios — Fase 5', () => {
       .send({
         periodoInicio: '2026-01-01',
         periodoFim: '2026-12-31',
-        tipoData: 'producao',
+        tipoData: 'documento',
         ordenacao: 'data',
-        relatorio: 'detalhado',
+        relatorio: 'resumido_categoria',
       })
       .expect(201);
 
@@ -171,9 +170,9 @@ describe('Relatorios — Fase 5', () => {
       .send({
         periodoInicio: '2026-01-01',
         periodoFim: '2026-12-31',
-        tipoData: 'producao',
+        tipoData: 'documento',
         ordenacao: 'data',
-        relatorio: 'detalhado',
+        relatorio: 'resumido_categoria',
       })
       .expect(403);
 
@@ -235,7 +234,7 @@ describe('Relatorios — Fase 5', () => {
       .send({
         periodoInicio: '2026-01-01',
         periodoFim: '2026-12-31',
-        tipoData: 'producao',
+        tipoData: 'documento',
         ordenacao: 'alfabetica',
         relatorio: 'resumido_categoria',
       })
@@ -291,9 +290,9 @@ describe('Relatorios — Fase 5', () => {
       .send({
         periodoInicio: '2026-01-01',
         periodoFim: '2026-12-31',
-        tipoData: 'producao',
+        tipoData: 'documento',
         ordenacao: 'data',
-        relatorio: 'detalhado',
+        relatorio: 'resumido_categoria',
       })
       .expect(201);
     const otherJobId = queued.body.id as string;
@@ -314,9 +313,9 @@ describe('Relatorios — Fase 5', () => {
       .send({
         periodoInicio: '2026-01-01',
         periodoFim: '2026-12-31',
-        tipoData: 'producao',
+        tipoData: 'documento',
         ordenacao: 'data',
-        relatorio: 'detalhado',
+        relatorio: 'resumido_categoria',
       })
       .expect(201);
     const jobId = queued.body.id as string;
@@ -340,9 +339,9 @@ describe('Relatorios — Fase 5', () => {
       .send({
         periodoInicio: '2099-01-01',
         periodoFim: '2099-12-31',
-        tipoData: 'producao',
+        tipoData: 'documento',
         ordenacao: 'data',
-        relatorio: 'detalhado',
+        relatorio: 'resumido_categoria',
       })
       .expect(201);
     const jobId = queued.body.id as string;
@@ -378,7 +377,7 @@ describe('Relatorios — Fase 5', () => {
     expect(res.body.total).toBeGreaterThan(0);
   });
 
-  it('download da midia legislativa retorna ZIP valido (assinatura PK + relatorio.pdf na raiz do prestacao)', async () => {
+  it('download: midia legislativa em ZIP e prestacao de contas em PDF', async () => {
     // 1) ZIP de midia: assinatura PK\x03\x04 e tamanho > 0.
     const token = await login(ADMIN_EMAIL);
     const queuedMidia = await request(app.getHttpServer())
@@ -427,14 +426,14 @@ describe('Relatorios — Fase 5', () => {
     // Valida URL assinada e formato PK
     expect(midiaSigned).toMatch(/exp=/);
 
-    // 2) ZIP de prestacao: relatorio.pdf deve estar na raiz.
+    // 2) Prestacao de contas: o worker entrega o relatorio em PDF direto (sem ZIP).
     const queuedPrestacao = await request(app.getHttpServer())
       .post(`/t/${SLUG}/reports/prestacao-contas`)
       .set('Authorization', `Bearer ${token}`)
       .send({
         periodoInicio: '2099-01-01',
         periodoFim: '2099-12-31',
-        tipoData: 'producao',
+        tipoData: 'documento',
         ordenacao: 'data',
         relatorio: 'resumido_categoria',
       })
@@ -453,10 +452,10 @@ describe('Relatorios — Fase 5', () => {
     }
     expect(prestacaoStatus).toBe('concluido');
 
-    // File_key do prestacao precisa terminar em .zip (mudanca do item C)
+    // Prestacao gera PDF direto (reports.worker: "Upload direto do PDF gerado (sem empacotar em zip)").
     const prestacaoFileKey = (await sql.unsafe(
       `SELECT file_key FROM "tenant_${SLUG}".report_jobs WHERE id = '${prestacaoJobId}'`,
     )) as unknown as Array<{ file_key: string }>;
-    expect(prestacaoFileKey[0].file_key).toMatch(/\.zip$/);
+    expect(prestacaoFileKey[0].file_key).toMatch(/\.pdf$/);
   });
 });

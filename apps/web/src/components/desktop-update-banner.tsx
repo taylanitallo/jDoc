@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Download, RefreshCw } from 'lucide-react';
 import { isDesktopApp, desktopInvoke } from '@/lib/desktop-bridge';
+import { buttonClasses } from '@/components/ui';
 
 /**
  * Banner de atualizacao para as versoes LEGADAS do jDoc Desktop — as anteriores
@@ -73,12 +74,12 @@ export function DesktopUpdateBanner() {
   if (!show) return null;
 
   return (
-    <div className="flex items-center gap-3 border-b border-neon-purple/40 bg-gradient-to-r from-purple-600/15 to-fuchsia-600/15 px-4 py-2.5">
-      <RefreshCw className="h-4 w-4 shrink-0 text-neon-violet" aria-hidden />
-      <p className="min-w-0 flex-1 text-sm text-app">
+    <div className="flex items-center gap-3 border-b border-brand-500/30 bg-brand-50 px-4 py-2.5">
+      <RefreshCw className="h-4 w-4 shrink-0 text-brand-600" aria-hidden />
+      <p className="min-w-0 flex-1 text-sm text-ink-800">
         <b>Atualização disponível</b>
         {latest?.version && current ? (
-          <span className="text-app-muted">
+          <span className="text-ink-500">
             {' '}
             — versão {current} → {latest.version}
           </span>
@@ -88,7 +89,7 @@ export function DesktopUpdateBanner() {
         href={latest?.url ?? '#'}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex shrink-0 items-center gap-2 rounded-lg bg-gradient-primary px-4 py-1.5 text-sm font-bold text-white transition hover:opacity-90"
+        className={buttonClasses('primary', 'sm')}
       >
         <Download className="h-4 w-4" aria-hidden />
         Atualizar

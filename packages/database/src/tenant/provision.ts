@@ -499,6 +499,463 @@ export async function provisionTenantSchema(sql: Sql, slug: string): Promise<str
       `CREATE INDEX IF NOT EXISTS idx_ordenadores_ativo ON "${schemaName}".ordenadores_despesa (ativo)`,
     );
 
+    // Gestao arquivistica: Plano de Classificacao + Tabela de Temporalidade (CONARQ).
+    // Classe sem prazos/destinacao = apenas agrupadora (documento usa subclasse).
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".classificacoes (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        parent_id uuid REFERENCES "${schemaName}".classificacoes(id),
+        codigo varchar(40) NOT NULL UNIQUE,
+        descricao varchar(300) NOT NULL,
+        nivel integer NOT NULL DEFAULT 1,
+        prazo_corrente_anos integer CHECK (prazo_corrente_anos >= 0),
+        prazo_intermediario_anos integer CHECK (prazo_intermediario_anos >= 0),
+        destinacao varchar(20) CHECK (destinacao IN ('eliminacao', 'guarda_permanente')),
+        evento_contagem varchar(20) NOT NULL DEFAULT 'data_documento'
+          CHECK (evento_contagem IN ('data_documento', 'fim_exercicio', 'manual')),
+        observacoes text,
+        ativo boolean NOT NULL DEFAULT true,
+        criado_em timestamptz NOT NULL DEFAULT now(),
+        atualizado_em timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_classificacoes_parent ON "${schemaName}".classificacoes (parent_id)`,
+    );
+    await tx.unsafe(
+      `ALTER TABLE "${schemaName}".documents
+         ADD COLUMN IF NOT EXISTS classificacao_id uuid REFERENCES "${schemaName}".classificacoes(id),
+         ADD COLUMN IF NOT EXISTS fase varchar(20) NOT NULL DEFAULT 'corrente',
+         ADD COLUMN IF NOT EXISTS nivel_acesso varchar(20) NOT NULL DEFAULT 'publico',
+         ADD COLUMN IF NOT EXISTS data_inicio_contagem date,
+         ADD COLUMN IF NOT EXISTS data_prevista_transferencia date,
+         ADD COLUMN IF NOT EXISTS data_prevista_destinacao date,
+         ADD COLUMN IF NOT EXISTS fase_alterada_em timestamptz`,
+    );
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_documents_classificacao ON "${schemaName}".documents (classificacao_id)`,
+    );
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_documents_temporalidade
+         ON "${schemaName}".documents (fase, data_prevista_transferencia, data_prevista_destinacao)
+         WHERE deleted_at IS NULL`,
+    );
+    // Acervo (Arquivo Municipal): tipos documentais com metadados configuraveis,
+    // classe e nivel de acesso padrao. Tipos existentes continuam em 'outros'.
+    await tx.unsafe(
+      `ALTER TABLE "${schemaName}".document_types
+         ADD COLUMN IF NOT EXISTS modulo varchar(20) NOT NULL DEFAULT 'outros',
+         ADD COLUMN IF NOT EXISTS campos jsonb NOT NULL DEFAULT '[]'::jsonb,
+         ADD COLUMN IF NOT EXISTS classificacao_id uuid REFERENCES "${schemaName}".classificacoes(id),
+         ADD COLUMN IF NOT EXISTS nivel_acesso_padrao varchar(20) NOT NULL DEFAULT 'publico'`,
+    );
+    // Nome unico POR MODULO: "Contrato" pode existir em Outros Arquivos e no Acervo.
+    await tx.unsafe(`ALTER TABLE "${schemaName}".document_types DROP CONSTRAINT IF EXISTS document_types_nome_key`);
+    await tx.unsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_document_types_modulo_nome ON "${schemaName}".document_types (modulo, nome)`,
+    );
+    // Metadados do tipo + metadados de digitalizacao (Decreto 10.278/2020, Anexo II).
+    await tx.unsafe(
+      `ALTER TABLE "${schemaName}".documents
+         ADD COLUMN IF NOT EXISTS metadados jsonb NOT NULL DEFAULT '{}'::jsonb,
+         ADD COLUMN IF NOT EXISTS digitalizado boolean NOT NULL DEFAULT false,
+         ADD COLUMN IF NOT EXISTS responsavel_digitalizacao varchar(200),
+         ADD COLUMN IF NOT EXISTS data_digitalizacao date,
+         ADD COLUMN IF NOT EXISTS local_digitalizacao varchar(200)`,
+    );
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_documents_metadados ON "${schemaName}".documents USING gin (metadados jsonb_path_ops)`,
+    );
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_documents_metadados_trgm
+         ON "${schemaName}".documents USING gin ((metadados::text) gin_trgm_ops)`,
+    );
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_documents_nivel_acesso ON "${schemaName}".documents (nivel_acesso)`,
+    );
+
+    // Busca no conteudo: texto por pagina extraido do PDF (camada de texto ou OCR).
+    // O PDF original nunca e alterado (hash e assinatura preservados). tsv e
+    // calculado pela API a partir do texto ja sem acento (unaccent nao e
+    // IMMUTABLE e nao fica visivel no search_path do tenant).
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".document_textos (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        document_id uuid NOT NULL REFERENCES "${schemaName}".documents(id) ON DELETE CASCADE,
+        document_file_id uuid REFERENCES "${schemaName}".document_files(id) ON DELETE CASCADE,
+        pagina integer NOT NULL,
+        texto text NOT NULL,
+        tsv tsvector NOT NULL,
+        origem varchar(10) NOT NULL DEFAULT 'texto' CHECK (origem IN ('texto', 'ocr')),
+        criado_em timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_document_textos_tsv ON "${schemaName}".document_textos USING gin (tsv)`,
+    );
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_document_textos_doc ON "${schemaName}".document_textos (document_id, document_file_id)`,
+    );
+    await tx.unsafe(
+      `ALTER TABLE "${schemaName}".documents
+         ADD COLUMN IF NOT EXISTS ocr_status varchar(20),
+         ADD COLUMN IF NOT EXISTS ocr_erro varchar(500),
+         ADD COLUMN IF NOT EXISTS ocr_processado_em timestamptz`,
+    );
+    await tx.unsafe(
+      `ALTER TABLE "${schemaName}".document_files
+         ADD COLUMN IF NOT EXISTS ocr_status varchar(20),
+         ADD COLUMN IF NOT EXISTS ocr_erro varchar(500),
+         ADD COLUMN IF NOT EXISTS ocr_processado_em timestamptz`,
+    );
+
+    // Arquivo fisico: arvore de locais (predio > sala > estante > prateleira > caixa)
+    // onde fica o ORIGINAL em papel, e emprestimos de documento/caixa.
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".locais_fisicos (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        parent_id uuid REFERENCES "${schemaName}".locais_fisicos(id),
+        tipo varchar(20) NOT NULL CHECK (tipo IN ('predio', 'sala', 'estante', 'prateleira', 'caixa')),
+        codigo varchar(40) NOT NULL,
+        descricao varchar(300),
+        capacidade integer,
+        ativo boolean NOT NULL DEFAULT true,
+        criado_em timestamptz NOT NULL DEFAULT now(),
+        atualizado_em timestamptz NOT NULL DEFAULT now(),
+        UNIQUE NULLS NOT DISTINCT (parent_id, tipo, codigo)
+      )
+    `);
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_locais_fisicos_parent ON "${schemaName}".locais_fisicos (parent_id)`,
+    );
+    await tx.unsafe(
+      `ALTER TABLE "${schemaName}".documents
+         ADD COLUMN IF NOT EXISTS possui_original_fisico boolean NOT NULL DEFAULT false,
+         ADD COLUMN IF NOT EXISTS local_fisico_id uuid REFERENCES "${schemaName}".locais_fisicos(id)`,
+    );
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_documents_local_fisico ON "${schemaName}".documents (local_fisico_id)`,
+    );
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".emprestimos (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        numero integer NOT NULL,
+        ano integer NOT NULL,
+        document_id uuid REFERENCES "${schemaName}".documents(id),
+        local_fisico_id uuid REFERENCES "${schemaName}".locais_fisicos(id),
+        solicitante_nome varchar(200) NOT NULL,
+        solicitante_setor varchar(200) NOT NULL,
+        finalidade varchar(500),
+        registrado_por uuid,
+        data_saida timestamptz NOT NULL DEFAULT now(),
+        prazo_devolucao date NOT NULL,
+        data_devolucao timestamptz,
+        recebido_por uuid,
+        observacao_devolucao varchar(500),
+        UNIQUE (ano, numero),
+        CHECK ((document_id IS NULL) <> (local_fisico_id IS NULL))
+      )
+    `);
+    // No maximo UM emprestimo aberto por documento e por caixa (garantido pelo banco).
+    await tx.unsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_emprestimo_aberto_doc ON "${schemaName}".emprestimos (document_id)
+         WHERE data_devolucao IS NULL AND document_id IS NOT NULL`,
+    );
+    await tx.unsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_emprestimo_aberto_local ON "${schemaName}".emprestimos (local_fisico_id)
+         WHERE data_devolucao IS NULL AND local_fisico_id IS NOT NULL`,
+    );
+
+    // Eliminacao legal (Resolucao CONARQ n. 40): listagem -> aprovacao da CPAD ->
+    // edital de ciencia publicado -> prazo -> termo de eliminacao. O arquivo digital
+    // e apagado; metadados e hash de cada documento ficam para sempre (itens).
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".eliminacoes (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        numero integer NOT NULL,
+        ano integer NOT NULL,
+        status varchar(20) NOT NULL DEFAULT 'rascunho'
+          CHECK (status IN ('rascunho', 'aprovada', 'edital_publicado', 'concluida', 'cancelada')),
+        observacoes text,
+        comissao jsonb NOT NULL DEFAULT '[]'::jsonb,
+        ata_aprovacao varchar(100),
+        data_aprovacao date,
+        veiculo_publicacao varchar(200),
+        data_publicacao_edital date,
+        prazo_edital_dias integer NOT NULL DEFAULT 45 CHECK (prazo_edital_dias BETWEEN 30 AND 365),
+        criado_por uuid,
+        criado_em timestamptz NOT NULL DEFAULT now(),
+        concluida_em timestamptz,
+        concluida_por uuid,
+        cancelada_em timestamptz,
+        cancelada_por uuid,
+        motivo_cancelamento varchar(500),
+        UNIQUE (ano, numero)
+      )
+    `);
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".eliminacao_itens (
+        eliminacao_id uuid NOT NULL REFERENCES "${schemaName}".eliminacoes(id) ON DELETE CASCADE,
+        document_id uuid NOT NULL REFERENCES "${schemaName}".documents(id),
+        classificacao_codigo varchar(40),
+        classificacao_descricao varchar(300),
+        descricao text NOT NULL,
+        module varchar(20) NOT NULL,
+        exercicio integer,
+        document_date date,
+        local_fisico varchar(500),
+        arquivos jsonb NOT NULL DEFAULT '[]'::jsonb,
+        PRIMARY KEY (eliminacao_id, document_id)
+      )
+    `);
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_eliminacao_itens_doc ON "${schemaName}".eliminacao_itens (document_id)`,
+    );
+    await tx.unsafe(
+      `ALTER TABLE "${schemaName}".documents
+         ADD COLUMN IF NOT EXISTS eliminado_em timestamptz,
+         ADD COLUMN IF NOT EXISTS eliminacao_id uuid REFERENCES "${schemaName}".eliminacoes(id)`,
+    );
+
+    // Guias de transferencia (corrente -> intermediario) e recolhimento (-> permanente):
+    // registro oficial de cada movimentacao de fase, com os itens movidos.
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".guias_arquivisticas (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        numero integer NOT NULL,
+        ano integer NOT NULL,
+        tipo varchar(20) NOT NULL CHECK (tipo IN ('transferencia', 'recolhimento')),
+        observacoes text,
+        criado_por uuid,
+        criado_em timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (tipo, ano, numero)
+      )
+    `);
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".guia_itens (
+        guia_id uuid NOT NULL REFERENCES "${schemaName}".guias_arquivisticas(id) ON DELETE CASCADE,
+        document_id uuid NOT NULL REFERENCES "${schemaName}".documents(id),
+        PRIMARY KEY (guia_id, document_id)
+      )
+    `);
+
+    // Integridade (preservacao digital): ultima conferencia do SHA-256 de cada arquivo,
+    // execucoes da verificacao e ocorrencias (arquivo alterado/ausente) ate serem tratadas.
+    for (const tabela of ['documents', 'document_files']) {
+      await tx.unsafe(`
+        ALTER TABLE "${schemaName}".${tabela}
+          ADD COLUMN IF NOT EXISTS integridade_status varchar(12)
+            CHECK (integridade_status IN ('ok', 'divergente', 'ausente')),
+          ADD COLUMN IF NOT EXISTS integridade_verificada_em timestamptz
+      `);
+    }
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_documents_integridade ON "${schemaName}".documents (integridade_verificada_em NULLS FIRST) WHERE file_key IS NOT NULL`,
+    );
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".verificacoes_integridade (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        origem varchar(10) NOT NULL CHECK (origem IN ('agendada', 'manual')),
+        status varchar(12) NOT NULL DEFAULT 'processando' CHECK (status IN ('processando', 'concluida', 'erro')),
+        iniciada_por uuid,
+        iniciada_em timestamptz NOT NULL DEFAULT now(),
+        concluida_em timestamptz,
+        total integer NOT NULL DEFAULT 0,
+        ok integer NOT NULL DEFAULT 0,
+        divergentes integer NOT NULL DEFAULT 0,
+        ausentes integer NOT NULL DEFAULT 0,
+        erro text
+      )
+    `);
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".integridade_ocorrencias (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        verificacao_id uuid REFERENCES "${schemaName}".verificacoes_integridade(id) ON DELETE SET NULL,
+        document_id uuid NOT NULL REFERENCES "${schemaName}".documents(id) ON DELETE CASCADE,
+        document_file_id uuid REFERENCES "${schemaName}".document_files(id) ON DELETE CASCADE,
+        file_key text NOT NULL,
+        tipo varchar(12) NOT NULL CHECK (tipo IN ('divergente', 'ausente')),
+        hash_esperado varchar(64) NOT NULL,
+        hash_encontrado varchar(64),
+        detectada_em timestamptz NOT NULL DEFAULT now(),
+        resolvida_em timestamptz,
+        resolvida_por uuid,
+        observacao text
+      )
+    `);
+    // Uma ocorrencia aberta por arquivo: a verificacao seguinte nao duplica o alerta.
+    await tx.unsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_integridade_ocorrencia_aberta ON "${schemaName}".integridade_ocorrencias (file_key) WHERE resolvida_em IS NULL`,
+    );
+
+    // Atendimento e consultas (LAI): pedido, documentos consultados, prazo e decisao.
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".atendimentos (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        numero integer NOT NULL,
+        ano integer NOT NULL,
+        status varchar(12) NOT NULL DEFAULT 'aberto' CHECK (status IN ('aberto', 'atendido', 'indeferido', 'cancelado')),
+        solicitante_nome varchar(200) NOT NULL,
+        solicitante_documento varchar(40),
+        solicitante_contato varchar(200),
+        vinculo varchar(20) NOT NULL,
+        setor_orgao varchar(200),
+        canal varchar(20) NOT NULL,
+        finalidade text NOT NULL,
+        forma_acesso varchar(20) NOT NULL,
+        documentos_nao_cadastrados text,
+        justificativa_restrito text,
+        data_pedido timestamptz NOT NULL DEFAULT now(),
+        prazo_final timestamptz NOT NULL,
+        prorrogado boolean NOT NULL DEFAULT false,
+        justificativa_prorrogacao text,
+        resposta text,
+        concluido_em timestamptz,
+        concluido_por uuid,
+        registrado_por uuid,
+        criado_em timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (ano, numero)
+      )
+    `);
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".atendimento_documentos (
+        atendimento_id uuid NOT NULL REFERENCES "${schemaName}".atendimentos(id) ON DELETE CASCADE,
+        document_id uuid NOT NULL REFERENCES "${schemaName}".documents(id),
+        PRIMARY KEY (atendimento_id, document_id)
+      )
+    `);
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_atendimento_documentos_doc ON "${schemaName}".atendimento_documentos (document_id)`,
+    );
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_atendimentos_abertos ON "${schemaName}".atendimentos (prazo_final) WHERE status = 'aberto'`,
+    );
+
+    // Sigilo (LAI): grau vigente no documento + Termos de Classificacao de Informacao (historico).
+    await tx.unsafe(`
+      ALTER TABLE "${schemaName}".documents
+        ADD COLUMN IF NOT EXISTS grau_sigilo varchar(15)
+          CHECK (grau_sigilo IN ('reservado', 'secreto', 'ultrassecreto', 'pessoal'))
+    `);
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".termos_sigilo (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        numero integer NOT NULL,
+        ano integer NOT NULL,
+        document_id uuid NOT NULL REFERENCES "${schemaName}".documents(id),
+        grau varchar(15) NOT NULL CHECK (grau IN ('reservado', 'secreto', 'ultrassecreto', 'pessoal')),
+        hipotese varchar(20) NOT NULL,
+        fundamento_complemento text,
+        razoes text NOT NULL,
+        autoridade_nome varchar(200) NOT NULL,
+        autoridade_cargo varchar(200) NOT NULL,
+        data_producao date NOT NULL,
+        data_classificacao date NOT NULL DEFAULT current_date,
+        prazo_fim date NOT NULL,
+        status varchar(15) NOT NULL DEFAULT 'vigente' CHECK (status IN ('vigente', 'desclassificado', 'expirado')),
+        nivel_acesso_anterior varchar(20) NOT NULL DEFAULT 'publico',
+        encerrado_em timestamptz,
+        encerrado_por uuid,
+        motivo_encerramento text,
+        criado_por uuid,
+        criado_em timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (ano, numero)
+      )
+    `);
+    // Um termo vigente por documento (reclassificar = desclassificar e classificar de novo).
+    await tx.unsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_termo_sigilo_vigente ON "${schemaName}".termos_sigilo (document_id) WHERE status = 'vigente'`,
+    );
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_termos_sigilo_prazo ON "${schemaName}".termos_sigilo (prazo_fim) WHERE status = 'vigente'`,
+    );
+
+    // Dossies e processos: conjunto de documentos com ordem de juntada, encerramento,
+    // apensacao e historico de atos. A temporalidade dos documentos juntados conta do encerramento.
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".dossies (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        tipo varchar(10) NOT NULL CHECK (tipo IN ('dossie', 'processo')),
+        numero varchar(60) NOT NULL,
+        assunto varchar(500) NOT NULL,
+        interessado varchar(300),
+        classificacao_id uuid REFERENCES "${schemaName}".classificacoes(id),
+        nivel_acesso varchar(20) NOT NULL DEFAULT 'restrito' CHECK (nivel_acesso IN ('publico', 'restrito')),
+        data_abertura date NOT NULL DEFAULT current_date,
+        data_encerramento date,
+        apensado_a uuid REFERENCES "${schemaName}".dossies(id),
+        local_fisico_id uuid REFERENCES "${schemaName}".locais_fisicos(id),
+        observacoes text,
+        criado_por uuid,
+        criado_em timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (tipo, numero)
+      )
+    `);
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".dossie_documentos (
+        dossie_id uuid NOT NULL REFERENCES "${schemaName}".dossies(id) ON DELETE CASCADE,
+        document_id uuid NOT NULL UNIQUE REFERENCES "${schemaName}".documents(id),
+        ordem integer NOT NULL,
+        juntado_em timestamptz NOT NULL DEFAULT now(),
+        juntado_por uuid,
+        PRIMARY KEY (dossie_id, document_id)
+      )
+    `);
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".dossie_eventos (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        dossie_id uuid NOT NULL REFERENCES "${schemaName}".dossies(id) ON DELETE CASCADE,
+        tipo varchar(20) NOT NULL,
+        descricao text NOT NULL,
+        usuario_id uuid,
+        criado_em timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_dossie_eventos_dossie ON "${schemaName}".dossie_eventos (dossie_id, criado_em)`,
+    );
+
+    // Descricao arquivistica (NOBRADE): arvore de unidades de descricao (acervo > fundo > secao >
+    // serie > dossie > item). Os 7 elementos obrigatorios em colunas; os opcionais em jsonb.
+    // Documentos e dossies apontam para a unidade que os descreve (serie, dossie, item...).
+    await tx.unsafe(`
+      CREATE TABLE IF NOT EXISTS "${schemaName}".unidades_descricao (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        parent_id uuid REFERENCES "${schemaName}".unidades_descricao(id),
+        nivel varchar(10) NOT NULL CHECK (nivel IN ('acervo', 'fundo', 'colecao', 'secao', 'subsecao', 'serie', 'subserie', 'dossie', 'item')),
+        codigo varchar(40) NOT NULL,
+        titulo varchar(500) NOT NULL,
+        datas varchar(100),
+        dimensao_suporte text,
+        produtor varchar(500),
+        condicoes_acesso text,
+        elementos jsonb NOT NULL DEFAULT '{}'::jsonb,
+        pontos_acesso text[] NOT NULL DEFAULT '{}',
+        criado_por uuid,
+        criado_em timestamptz NOT NULL DEFAULT now(),
+        atualizado_por uuid,
+        atualizado_em timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    // Codigo unico entre irmaos (o codigo de referencia completo sai da cadeia).
+    await tx.unsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_unidades_descricao_codigo ON "${schemaName}".unidades_descricao (COALESCE(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), lower(codigo))`,
+    );
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_unidades_descricao_parent ON "${schemaName}".unidades_descricao (parent_id)`,
+    );
+    await tx.unsafe(`
+      ALTER TABLE "${schemaName}".documents
+        ADD COLUMN IF NOT EXISTS unidade_descricao_id uuid REFERENCES "${schemaName}".unidades_descricao(id)
+    `);
+    await tx.unsafe(`
+      ALTER TABLE "${schemaName}".dossies
+        ADD COLUMN IF NOT EXISTS unidade_descricao_id uuid REFERENCES "${schemaName}".unidades_descricao(id)
+    `);
+    await tx.unsafe(
+      `CREATE INDEX IF NOT EXISTS idx_documents_unidade_descricao ON "${schemaName}".documents (unidade_descricao_id) WHERE unidade_descricao_id IS NOT NULL`,
+    );
+
     // Tenant Settings (customizacao visual/layout)
     await tx.unsafe(`
       CREATE TABLE IF NOT EXISTS "${schemaName}".tenant_settings (

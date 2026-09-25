@@ -1,62 +1,38 @@
 'use client';
 
 import { useState } from 'react';
-import { Film, FilePlus2, History } from 'lucide-react';
+import { FilePlus2, History } from 'lucide-react';
 import { ReportForm } from '@/components/reports/report-form';
 import { ReportHistory } from '@/components/reports/report-history';
 import { useParams } from 'next/navigation';
-import { accentGradientStyle, cardCls } from '@/components/ui';
-import { useBranding } from '@/components/branding';
+import { Card, CardBody, CardHeader, PageHeader } from '@/components/ui';
 
 export default function MidiaLegislativaPage() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
   const [reload, setReload] = useState(0);
-  const { corDestaque } = useBranding();
 
   return (
-    <div className="space-y-6 p-6">
-      <div
-        className="overflow-hidden rounded-2xl bg-gradient-primary p-6 text-white shadow-lg"
-        style={accentGradientStyle(corDestaque)}
-      >
-        <div className="flex items-center gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/15">
-            <Film className="h-7 w-7" aria-hidden />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold">Mídia Legislativa</h1>
-            <p className="mt-0.5 text-sm text-white/80">
-              Gere pacotes de mídia legislativa organizados por exercício, mês e tipo.
-            </p>
-          </div>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Mídia legislativa"
+        description="Gere pacotes de mídia legislativa organizados por exercício, mês e tipo."
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className={`${cardCls} card-accent-purple lg:col-span-1 p-6`}>
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-app">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-300">
-              <FilePlus2 className="h-5 w-5" aria-hidden />
-            </span>
-            Novo Relatório
-          </h2>
-          <ReportForm
-            slug={slug}
-            tipo="midia_legislativa"
-            onSubmit={() => setReload(r => r + 1)}
-          />
-        </div>
+        <Card className="lg:col-span-1">
+          <CardHeader title="Novo relatório" description="Escolha os filtros e gere o pacote" icon={FilePlus2} />
+          <CardBody>
+            <ReportForm slug={slug} tipo="midia_legislativa" onSubmit={() => setReload((r) => r + 1)} />
+          </CardBody>
+        </Card>
 
-        <div className={`${cardCls} card-accent-blue lg:col-span-2 p-6`}>
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-app">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
-              <History className="h-5 w-5" aria-hidden />
-            </span>
-            Histórico
-          </h2>
-          <ReportHistory slug={slug} tipo="midia_legislativa" reload={reload} />
-        </div>
+        <Card className="lg:col-span-2">
+          <CardHeader title="Histórico" description="Relatórios gerados anteriormente" icon={History} />
+          <CardBody>
+            <ReportHistory slug={slug} tipo="midia_legislativa" reload={reload} />
+          </CardBody>
+        </Card>
       </div>
     </div>
   );

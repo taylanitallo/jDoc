@@ -17,6 +17,16 @@ import { LabelsModule } from './labels/labels.module';
 import { ConfiguracoesModule } from './configuracoes/configuracoes.module';
 import { ReportsModule } from './reports/reports.module';
 import { AssistenteModule } from './assistente/assistente.module';
+import { ArquivisticaModule } from './arquivistica/arquivistica.module';
+import { OcrModule } from './ocr/ocr.module';
+import { AutenticidadeModule } from './autenticidade/autenticidade.module';
+import { ArquivoFisicoModule } from './arquivo-fisico/arquivo-fisico.module';
+import { IntegridadeModule } from './integridade/integridade.module';
+import { RelatoriosArquivoModule } from './relatorios-arquivo/relatorios-arquivo.module';
+import { AtendimentoModule } from './atendimento/atendimento.module';
+import { SigiloModule } from './sigilo/sigilo.module';
+import { DossiesModule } from './dossies/dossies.module';
+import { DescricaoModule } from './descricao/descricao.module';
 import { ThrottlerConfigModule } from './common/throttler.module';
 import { HealthController } from './health.controller';
 import { TenantsPublicController } from './tenants-public.controller';
@@ -41,6 +51,16 @@ import { TenantsPublicController } from './tenants-public.controller';
     ConfiguracoesModule,
     ReportsModule,
     AssistenteModule,
+    ArquivisticaModule,
+    OcrModule,
+    AutenticidadeModule,
+    ArquivoFisicoModule,
+    IntegridadeModule,
+    RelatoriosArquivoModule,
+    AtendimentoModule,
+    SigiloModule,
+    DossiesModule,
+    DescricaoModule,
   ],
   controllers: [HealthController, TenantsPublicController],
 })

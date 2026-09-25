@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type Redis from 'ioredis';
-import { tenantSlugSchema } from '@jdoc/shared';
+import { sistemaSchema, tenantSlugSchema, type Sistema } from '@jdoc/shared';
 import { REDIS } from '../redis/redis.module';
 import { DatabaseService } from '../database/database.service';
 
@@ -12,6 +12,7 @@ export interface ResolvedTenant {
   schemaName: string;
   quotaDiscoMb: number;
   brasaoUrl: string | null;
+  modulos: Sistema[];
 }
 
 const CACHE_TTL_S = 60;
@@ -37,7 +38,11 @@ export class TenancyService {
     const cacheKey = `tenant:slug:${slug}`;
     try {
       const cached = await this.redis.get(cacheKey);
-      if (cached) return JSON.parse(cached) as ResolvedTenant;
+      if (cached) {
+        const t = JSON.parse(cached) as ResolvedTenant;
+        // Entrada de cache anterior aos modulos contratados: trata como so financeiro.
+        return { ...t, modulos: t.modulos ?? ['financeiro'] };
+      }
     } catch (err) {
       // Cache indisponivel nao derruba a resolucao — segue pro banco.
       this.logger.warn(`Cache indisponivel: ${(err as Error).message}`);
@@ -45,7 +50,7 @@ export class TenancyService {
 
     const sql = this.db.catalog();
     const rows = await sql`
-      SELECT id, slug, nome, status, schema_name, quota_disco_mb, brasao_url
+      SELECT id, slug, nome, status, schema_name, quota_disco_mb, brasao_url, modulos
       FROM public.tenants
       WHERE slug = ${slug}
       LIMIT 1
@@ -61,6 +66,8 @@ export class TenancyService {
       schemaName: String(row.schema_name),
       quotaDiscoMb: Number(row.quota_disco_mb),
       brasaoUrl: row.brasao_url === null ? null : String(row.brasao_url),
+      // Valor fora da allowlist (nao deveria existir: ha CHECK no banco) e descartado.
+      modulos: ((row.modulos as string[] | null) ?? []).filter((m): m is Sistema => sistemaSchema.safeParse(m).success),
     };
 
     try {

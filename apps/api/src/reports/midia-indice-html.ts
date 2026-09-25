@@ -188,7 +188,7 @@ function formatDataBR(iso: string): string {
 
 function formatDataHoraBR(iso: string): string {
   const d = new Date(iso);
-  return `${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR')}`;
+  return `${d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })} às ${d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`;
 }
 
 /** Neutraliza qualquer "</script" que possa aparecer em texto livre (historico/descricao/credor). */

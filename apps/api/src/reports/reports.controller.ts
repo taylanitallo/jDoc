@@ -22,12 +22,14 @@ import {
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { TenantJwtGuard } from '../auth/tenant-jwt.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
+import { RequerSistema, SistemaGuard } from '../common/sistema.guard';
 import { CurrentUser, Permissions } from '../auth/decorators';
 import { ReportsService } from './reports.service';
 import { Throttle } from '@nestjs/throttler';
 
 @Controller('t/:slug/reports')
-@UseGuards(TenantJwtGuard, PermissionsGuard)
+@RequerSistema('financeiro')
+@UseGuards(TenantJwtGuard, PermissionsGuard, SistemaGuard)
 export class ReportsController {
   constructor(private readonly reports: ReportsService) {}
 

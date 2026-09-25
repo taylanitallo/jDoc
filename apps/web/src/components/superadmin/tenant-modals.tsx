@@ -12,6 +12,7 @@ import {
 } from '@jdoc/shared';
 import { api, ApiError } from '@/lib/api';
 import { uploadTenantBrasao } from '@/lib/upload';
+import { ModulosContratados } from './modulos-contratados';
 import {
   Modal,
   UsageBar,
@@ -20,6 +21,7 @@ import {
   formatBytes,
   inputCls,
   labelCls,
+  SelectMenu,
 } from '@/components/ui';
 import { useToast } from '@/components/toast';
 
@@ -44,10 +46,13 @@ export function EditModal({
   const {
     register,
     handleSubmit,
+    setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<UpdateTenantInput>({
     resolver: zodResolver(updateTenantSchema),
     defaultValues: {
+      modulos: tenant.modulos ?? ['financeiro'],
       nome: tenant.nome,
       cidade: tenant.cidade ?? undefined,
       uf: (tenant.uf as UpdateTenantInput['uf']) ?? undefined,
@@ -124,12 +129,12 @@ export function EditModal({
   return (
     <Modal title="Editar Órgão" subtitle={`/${tenant.slug}`} open onClose={onClose}>
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="col-span-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-2">
             <label className={labelCls} htmlFor="e-nome">Nome</label>
             <input id="e-nome" className={inputCls} {...register('nome')} />
             {errors.nome && (
-              <p className="mt-1 text-xs text-app-error-text">{errors.nome.message}</p>
+              <p className="mt-1 text-xs text-danger-600">{errors.nome.message}</p>
             )}
           </div>
           <div>
@@ -138,12 +143,12 @@ export function EditModal({
           </div>
           <div>
             <label className={labelCls} htmlFor="e-uf">UF</label>
-            <select id="e-uf" className={inputCls} {...register('uf')}>
+            <SelectMenu id="e-uf" className={inputCls} {...register('uf')}>
               <option value="">—</option>
               {UFS.map((uf) => (
                 <option key={uf} value={uf}>{uf}</option>
               ))}
-            </select>
+            </SelectMenu>
           </div>
           <div>
             <label className={labelCls} htmlFor="e-resp">Responsável</label>
@@ -158,7 +163,7 @@ export function EditModal({
               {...register('email')}
             />
             {errors.email && (
-              <p className="mt-1 text-xs text-app-error-text">{errors.email.message}</p>
+              <p className="mt-1 text-xs text-danger-600">{errors.email.message}</p>
             )}
           </div>
         </div>
@@ -166,11 +171,11 @@ export function EditModal({
         <div>
           <label className={labelCls}>Brasão do Município</label>
           <div className="flex items-center gap-3">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-app-border bg-app-table-head">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-ink-200 bg-ink-50">
               {brasaoUrl ? (
                 <img src={brasaoUrl} alt="Brasão atual" className="h-full w-full object-cover" />
               ) : (
-                <span className="text-[9px] text-app-muted">Sem brasão</span>
+                <span className="text-[9px] text-ink-500">Sem brasão</span>
               )}
             </div>
 
@@ -186,12 +191,12 @@ export function EditModal({
               onDrop={onDropBrasao}
               onClick={() => document.getElementById('sa-brasao-file-input')?.click()}
               onKeyDown={(e) => e.key === 'Enter' && document.getElementById('sa-brasao-file-input')?.click()}
-              className={`flex flex-1 cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed p-3 text-center transition ${
-                dragOver ? 'border-accent bg-purple-50 dark:bg-purple-900/10' : 'border-app-border hover:border-app-muted'
+              className={`flex flex-1 cursor-pointer flex-col items-center gap-1 rounded-[16px] border-2 border-dashed p-3 text-center transition ${
+                dragOver ? 'border-accent bg-brand-50' : 'border-ink-200 hover:border-ink-400'
               }`}
             >
-              <FileUp className="h-4 w-4 text-app-muted" aria-hidden />
-              <p className="text-[11px] text-app-muted">
+              <FileUp className="h-4 w-4 text-ink-500" aria-hidden />
+              <p className="text-[11px] text-ink-500">
                 PNG/JPEG até 2MB —{' '}
                 <span className="font-semibold text-accent">clique para selecionar</span>
               </p>
@@ -220,16 +225,30 @@ export function EditModal({
             )}
           </div>
           {uploadingBrasao && progress !== null && (
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-app-skeleton">
-              <div className="h-full bg-gradient-primary transition-all" style={{ width: `${progress}%` }} />
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-ink-100">
+              <div className="h-full bg-brand-600 transition-all" style={{ width: `${progress}%` }} />
             </div>
           )}
         </div>
 
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ModulosContratados
+            value={watch('modulos') ?? []}
+            onChange={(v) => setValue('modulos', v, { shouldValidate: true, shouldDirty: true })}
+            erro={errors.modulos?.message}
+          />
+        </div>
+        {(tenant.modulos ?? ['financeiro']).some((s) => !(watch('modulos') ?? []).includes(s)) && (
+          <p className="rounded-[10px] bg-orange-50 px-3 py-2 text-xs text-orange-600">
+            Desligar um módulo esconde as telas e bloqueia a API dele para o órgão. Os dados NÃO são apagados e voltam se o
+            módulo for religado.
+          </p>
+        )}
+
         {error && (
           <p
             role="alert"
-            className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text"
+            className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600"
           >
             {error}
           </p>
@@ -287,10 +306,10 @@ export function QuotaModal({
     <Modal title="Quota de Disco" subtitle={tenant.nome} open onClose={onClose}>
       <div className="space-y-4">
         <div>
-          <p className="mb-2 text-xs font-bold uppercase text-app-muted">Uso atual</p>
+          <p className="mb-2 label-caps">Uso atual</p>
           <UsageBar percent={tenant.usoPercent} />
-          <p className="mt-1 text-xs text-app-muted">
-            {formatBytes(tenant.usoBytes)} de {(tenant.quotaDiscoMb / 1024).toFixed(2)} GB
+          <p className="mt-1 text-xs text-ink-500">
+            {formatBytes(tenant.usoBytes)} de {(tenant.quotaDiscoMb / 1024).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GB
           </p>
         </div>
         <div>
@@ -304,7 +323,7 @@ export function QuotaModal({
             value={quotaGb}
             onChange={(e) => setQuotaGb(Number(e.target.value))}
           />
-          <p className="mt-1 text-[11px] text-app-muted">
+          <p className="mt-1 text-[11px] text-ink-500">
             Limite interno do jDoc (bloqueia novos envios ao atingir). Não reserva espaço
             no Supabase — o espaço real disponível depende do plano contratado lá.
           </p>
@@ -312,7 +331,7 @@ export function QuotaModal({
         {error && (
           <p
             role="alert"
-            className="rounded-lg bg-app-error-bg px-3 py-2 text-xs text-app-error-text"
+            className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600"
           >
             {error}
           </p>

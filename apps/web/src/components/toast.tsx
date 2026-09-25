@@ -37,18 +37,18 @@ export function useToast(): ToastApi {
 
 const KIND_STYLES: Record<ToastKind, { wrapper: string; icon: string; Icon: typeof CheckCircle2 }> = {
   success: {
-    wrapper: 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-100',
-    icon: 'text-emerald-500',
+    wrapper: 'border-ink-200/70 bg-surface text-ink-800',
+    icon: 'text-success-600',
     Icon: CheckCircle2,
   },
   error: {
-    wrapper: 'border-red-300 bg-red-50 text-red-800 dark:border-red-700 dark:bg-red-900/40 dark:text-red-100',
-    icon: 'text-red-500',
+    wrapper: 'border-danger-500/30 bg-surface text-ink-800',
+    icon: 'text-danger-600',
     Icon: AlertTriangle,
   },
   info: {
-    wrapper: 'border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-700 dark:bg-blue-900/40 dark:text-blue-100',
-    icon: 'text-blue-500',
+    wrapper: 'border-ink-200/70 bg-surface text-ink-800',
+    icon: 'text-brand-600',
     Icon: Info,
   },
 };
@@ -92,7 +92,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <div
         aria-live="polite"
         aria-atomic="true"
-        className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-80 flex-col gap-2"
+        className="pointer-events-none fixed inset-x-4 bottom-4 z-[60] flex flex-col gap-2 sm:inset-x-auto sm:right-4 sm:w-96"
       >
         {items.map(item => {
           const style = KIND_STYLES[item.kind];
@@ -101,15 +101,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <div
               key={item.id}
               role={item.kind === 'error' ? 'alert' : 'status'}
-              className={`pointer-events-auto flex items-start gap-2 rounded-lg border px-3 py-2 shadow-lg ${style.wrapper}`}
+              className={`pointer-events-auto flex animate-slide-up items-start gap-2.5 rounded-[12px] border px-4 py-3 shadow-lg ${style.wrapper}`}
             >
               <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${style.icon}`} aria-hidden />
-              <p className="flex-1 text-xs font-medium">{item.message}</p>
+              <p className="flex-1 text-sm font-medium">{item.message}</p>
               <button
                 type="button"
                 onClick={() => remove(item.id)}
                 aria-label="Fechar notificação"
-                className="rounded p-0.5 opacity-60 hover:opacity-100"
+                className="rounded-[6px] p-0.5 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
               >
                 <X className="h-3.5 w-3.5" aria-hidden />
               </button>

@@ -39,3 +39,13 @@ export const tenantSchema = z.object({
   criadoEm: z.string().datetime(),
 });
 export type Tenant = z.infer<typeof tenantSchema>;
+
+/**
+ * Slugs que colidem com rotas publicas/fixas do front (jdoc.../<slug>) — nao
+ * podem virar orgao. Checado so na CRIACAO (slug existente continua valido).
+ */
+export const RESERVED_TENANT_SLUGS = ['verificar', 'superadmin', 'public', 'api', 't', 'login', 'files'] as const;
+export const novoTenantSlugSchema = tenantSlugSchema.refine(
+  (s) => !(RESERVED_TENANT_SLUGS as readonly string[]).includes(s),
+  'Slug reservado pelo sistema — escolha outro',
+);

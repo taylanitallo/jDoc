@@ -19,7 +19,7 @@ import type { EtiquetaCandidate, EtiquetasPendentesResult } from '@jdoc/shared';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/toast';
 import { EmptyState } from '@/components/empty-state';
-import { cardCls, btnPrimary, btnGhost, formatBytes } from '@/components/ui';
+import { cardCls, btnPrimary, btnGhost, formatBytes, PageHeader } from '@/components/ui';
 import { isDesktopApp, desktopInvoke } from '@/lib/desktop-bridge';
 
 /**
@@ -210,24 +210,23 @@ export default function PastaMonitoradaPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-bold text-app">
-          <FolderSync className="h-6 w-6 text-accent" aria-hidden />
-          Pasta Monitorada
-        </h1>
-        <p className="mt-1 text-app-muted">
-          Solte os PDFs nomeados pelo documento de caixa (ex.: <code>2020001.pdf</code>) na pasta abaixo.
-          Cada arquivo é vinculado à etiqueta de despesa com o mesmo número.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Pasta monitorada"
+        description={
+          <>
+            Solte os PDFs nomeados pelo documento de caixa (ex.: <code className="rounded-[6px] bg-ink-100 px-1 py-0.5 text-[13px]">2020001.pdf</code>) na
+            pasta abaixo. Cada arquivo é vinculado à etiqueta de despesa com o mesmo número.
+          </>
+        }
+      />
 
       <div className={`${cardCls} p-4`}>
         <div className="flex flex-wrap items-center gap-3">
           {folder ? (
             <>
-              <span className="min-w-0 flex-1 truncate text-sm text-app" title={folder}>
-                <b className="text-app-muted">Pasta monitorada:</b> {folder}
+              <span className="min-w-0 flex-1 truncate text-sm text-ink-800" title={folder}>
+                <b className="text-ink-500">Pasta monitorada:</b> {folder}
               </span>
               <button
                 type="button"
@@ -250,7 +249,7 @@ export default function PastaMonitoradaPage() {
             </>
           ) : (
             <>
-              <span className="flex-1 text-sm text-app-muted">Nenhuma pasta monitorada.</span>
+              <span className="flex-1 text-sm text-ink-500">Nenhuma pasta monitorada.</span>
               <button type="button" className={btnPrimary} onClick={() => void chooseFolder()} disabled={folderBusy}>
                 escolher pasta
               </button>
@@ -259,14 +258,14 @@ export default function PastaMonitoradaPage() {
         </div>
 
         {folder && showPendentes && (
-          <div className="mt-3 border-t border-app-border pt-3">
+          <div className="mt-3 border-t border-ink-200 pt-3">
             {!pendentes ? (
-              <p className="text-xs text-app-muted">Carregando…</p>
+              <p className="text-xs text-ink-500">Carregando…</p>
             ) : pendentes.items.length === 0 ? (
-              <p className="text-xs text-app-muted">Nenhuma etiqueta de despesa aguardando arquivo. 🎉</p>
+              <p className="text-xs text-ink-500">Nenhuma etiqueta de despesa aguardando arquivo. 🎉</p>
             ) : (
               <>
-                <p className="mb-2 text-xs text-app-muted">
+                <p className="mb-2 text-xs text-ink-500">
                   {pendentes.total} etiqueta(s) de despesa ainda sem PDF
                   {pendentes.total > pendentes.items.length ? ` (mostrando ${pendentes.items.length})` : ''}:
                 </p>
@@ -274,14 +273,14 @@ export default function PastaMonitoradaPage() {
                   {pendentes.items.map((e) => (
                     <li
                       key={e.id}
-                      className="flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded border border-app-border px-2.5 py-1.5 text-xs"
+                      className="flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded border border-ink-200 px-2.5 py-1.5 text-xs"
                     >
-                      <span className="rounded bg-app-badge-gray-bg px-1.5 py-0.5 text-app-badge-gray-text">
+                      <span className="rounded bg-ink-100 px-1.5 py-0.5 text-ink-600">
                         {e.docCaixa ?? '—'}
                       </span>
-                      <span className="text-app-muted">Emp. {e.empenho ?? '—'}</span>
-                      <span className="min-w-0 flex-1 truncate text-app">{e.credor ?? '—'}</span>
-                      <span className="font-semibold text-app">{formatBRL(e.value)}</span>
+                      <span className="text-ink-500">Emp. {e.empenho ?? '—'}</span>
+                      <span className="min-w-0 flex-1 truncate text-ink-800">{e.credor ?? '—'}</span>
+                      <span className="font-semibold text-ink-800">{formatBRL(e.value)}</span>
                     </li>
                   ))}
                 </ul>
@@ -300,7 +299,7 @@ export default function PastaMonitoradaPage() {
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-3">
-            <p className="flex-1 text-sm text-app-muted">
+            <p className="flex-1 text-sm text-ink-500">
               {files.length} arquivo(s) na pasta.
             </p>
             <button
@@ -380,19 +379,19 @@ function PendingRow({
   return (
     <li className={`${cardCls} space-y-3 p-4`}>
       <div className="flex flex-wrap items-center gap-3">
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-app" title={file.name}>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink-800" title={file.name}>
           {file.name}
         </span>
-        <span className="rounded bg-app-badge-gray-bg px-2 py-0.5 text-xs text-app-badge-gray-text">
+        <span className="rounded bg-ink-100 px-2 py-0.5 text-xs text-ink-600">
           Doc. caixa: <b>{file.docCaixa}</b>
         </span>
-        <span className="text-xs text-app-muted">{formatBytes(file.size)}</span>
+        <span className="text-xs text-ink-500">{formatBytes(file.size)}</span>
       </div>
 
       {isLoading ? (
-        <p className="text-xs text-app-muted">Buscando etiqueta…</p>
+        <p className="text-xs text-ink-500">Buscando etiqueta…</p>
       ) : !etiquetas || etiquetas.length === 0 ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-orange-700">
+        <div className="flex flex-wrap items-center gap-3 rounded-[10px] border border-orange-500/30 bg-orange-50 p-3 text-sm text-orange-600">
           <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
           <span className="flex-1">
             Sem etiqueta de despesa aguardando arquivo com o documento de caixa <b>{file.docCaixa}</b>.
@@ -405,7 +404,7 @@ function PendingRow({
       ) : (
         <div className="space-y-2">
           {varias && (
-            <p className="text-xs font-semibold text-app-muted">
+            <p className="text-xs font-semibold text-ink-500">
               Mais de uma etiqueta com esse documento de caixa — escolha a que este arquivo pertence:
             </p>
           )}
@@ -413,7 +412,7 @@ function PendingRow({
             {etiquetas.map((e) => (
               <label
                 key={e.id}
-                className="flex cursor-pointer items-center gap-3 rounded-lg border border-app-border p-2.5 text-sm hover:border-accent"
+                className="flex cursor-pointer items-center gap-3 rounded-[10px] border border-ink-200 p-2.5 text-sm hover:border-accent"
               >
                 <input
                   type="radio"
@@ -421,17 +420,17 @@ function PendingRow({
                   checked={selected === e.id}
                   onChange={() => setSelected(e.id)}
                 />
-                <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-app">
+                <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-ink-800">
                   <span>
-                    <span className="text-app-muted">Empenho</span> {e.empenho ?? '—'}
+                    <span className="text-ink-500">Empenho</span> {e.empenho ?? '—'}
                   </span>
                   <span>
-                    <span className="text-app-muted">Credor</span> {e.credor ?? '—'}
+                    <span className="text-ink-500">Credor</span> {e.credor ?? '—'}
                   </span>
                   <span className="font-semibold">{formatBRL(e.value)}</span>
-                  <span className="text-app-muted">{e.documentDate ?? '—'}</span>
+                  <span className="text-ink-500">{e.documentDate ?? '—'}</span>
                   {e.subtype && (
-                    <span className="text-app-muted">{SUBTYPE_LABEL[e.subtype] ?? e.subtype}</span>
+                    <span className="text-ink-500">{SUBTYPE_LABEL[e.subtype] ?? e.subtype}</span>
                   )}
                 </span>
               </label>

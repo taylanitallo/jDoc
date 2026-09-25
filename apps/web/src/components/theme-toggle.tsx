@@ -22,7 +22,7 @@ export function ThemeToggle() {
       onClick={() => setTheme(isDark ? 'light' : 'dark')}
       aria-label={isDark ? 'Alternar para tema claro' : 'Alternar para tema escuro'}
       title={isDark ? 'Tema claro' : 'Tema escuro'}
-      className="rounded-lg border border-app-input-border bg-app-input-bg p-1.5 text-app-muted transition hover:bg-app-hover hover:text-app"
+      className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-ink-200 bg-surface text-ink-500 shadow-xs transition hover:bg-ink-50 hover:text-ink-800"
     >
       {!mounted ? (
         // Render neutro enquanto hidrata para evitar flicker

@@ -3,6 +3,13 @@ import { defineConfig } from 'vitest/config';
 import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 
+// Quem passa DATABASE_URL de teste nao pode herdar do .env um DIRECT_URL de
+// outro banco: o provisionamento (DDL) usa DIRECT_URL e criaria schemas de
+// teste no banco de desenvolvimento.
+if (process.env.DATABASE_URL && !process.env.DIRECT_URL) {
+  process.env.DIRECT_URL = process.env.DATABASE_URL;
+}
+
 // Carrega variaveis do .env do root
 try {
   const envFile = resolve(process.cwd(), '../../.env');

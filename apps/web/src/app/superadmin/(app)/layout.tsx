@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
-import Link from 'next/link';
+import { useState, type ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -12,42 +11,36 @@ import {
   ShieldCheck,
   KeyRound,
   DatabaseBackup,
-  LogOut,
 } from 'lucide-react';
 import { api, setAccessToken } from '@/lib/api';
-import { ThemeToggle } from '@/components/theme-toggle';
+import { TelaSessao, useSessao } from '@/components/shell/sessao';
+import { AppShell } from '@/components/shell/app-shell';
 
 const items = [
-  { href: '/superadmin/dashboard', label: 'DASHBOARD', icon: LayoutDashboard },
-  { href: '/superadmin/orgaos', label: 'ÓRGÃOS', icon: Landmark },
-  { href: '/superadmin/usuarios', label: 'USUÁRIOS', icon: Users },
-  { href: '/superadmin/backups', label: 'BACKUPS', icon: DatabaseBackup },
-  { href: '/superadmin/logs', label: 'LOGS', icon: ScrollText },
+  { href: '/superadmin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/superadmin/orgaos', label: 'Órgãos', icon: Landmark },
+  { href: '/superadmin/usuarios', label: 'Usuários', icon: Users },
+  { href: '/superadmin/backups', label: 'Backups', icon: DatabaseBackup },
+  { href: '/superadmin/logs', label: 'Logs', icon: ScrollText },
   { href: '/superadmin/2fa-setup', label: '2FA', icon: KeyRound },
-] as const;
+];
+
+const TITULOS: Record<string, { title: string; description: string }> = {
+  dashboard: { title: 'Dashboard', description: 'Visão geral de todos os órgãos' },
+  orgaos: { title: 'Órgãos', description: 'Cadastro, módulos contratados, quota e status' },
+  usuarios: { title: 'Usuários', description: 'Usuários de qualquer órgão e superadmins' },
+  backups: { title: 'Backups', description: 'Cópias de segurança por órgão' },
+  logs: { title: 'Logs', description: 'Auditoria global e eventos de segurança' },
+  '2fa-setup': { title: 'Autenticação em dois fatores', description: 'Configure o 2FA do seu acesso' },
+};
 
 export default function SuperadminShell({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
-  const [ready, setReady] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
 
-  // Bootstrap de sessao: tenta refresh via cookie httpOnly.
-  useEffect(() => {
-    let active = true;
-    api<{ accessToken: string }>('/superadmin/auth/refresh', { method: 'POST' })
-      .then((r) => {
-        if (!active) return;
-        setAccessToken(r.accessToken);
-        setReady(true);
-      })
-      .catch(() => {
-        if (active) router.replace('/superadmin/login');
-      });
-    return () => {
-      active = false;
-    };
-  }, [router]);
+  // Bootstrap de sessao: refresh via cookie httpOnly (com timeout e "Tentar novamente").
+  const { estado, tentarDeNovo } = useSessao(null, '/superadmin/login');
 
   const logout = async () => {
     try {
@@ -58,60 +51,23 @@ export default function SuperadminShell({ children }: { children: ReactNode }) {
     }
   };
 
-  if (!ready) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-app-bg">
-        <p className="text-sm text-app-muted">Carregando…</p>
-      </div>
-    );
-  }
+  if (estado !== 'pronta') return <TelaSessao estado={estado} onTentar={tentarDeNovo} />;
+
+  const titulo = TITULOS[pathname.split('/')[2] ?? ''] ?? { title: 'Painel master' };
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="flex min-h-screen bg-app-bg">
-        <aside className="flex w-64 shrink-0 flex-col bg-sidebar-bg">
-          <div className="flex items-center gap-3 bg-gradient-primary px-4 py-3">
-            <ShieldCheck className="h-8 w-8 text-white" aria-hidden />
-            <div>
-              <p className="text-sm font-bold uppercase text-white">Painel Master</p>
-              <p className="text-[10px] text-white/80">JEOS Sistemas</p>
-            </div>
-          </div>
-          <nav className="flex-1 py-3">
-            {items.map(({ href, label, icon: Icon }) => {
-              const active = pathname.startsWith(href);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`flex items-center gap-3 px-4 py-2.5 text-xs font-semibold tracking-wide transition ${
-                    active
-                      ? 'border-l-4 border-accent bg-sidebar-hover text-white'
-                      : 'border-l-4 border-transparent text-app-muted hover:bg-sidebar-hover hover:text-white'
-                  }`}
-                >
-                  <Icon className="h-4 w-4 shrink-0" aria-hidden />
-                  {label}
-                </Link>
-              );
-            })}
-          </nav>
-          <button
-            type="button"
-            onClick={logout}
-            className="flex items-center gap-3 px-4 py-3 text-xs font-semibold text-app-muted transition hover:text-white"
-          >
-            <LogOut className="h-4 w-4" aria-hidden />
-            SAIR
-          </button>
-        </aside>
-        <main className="min-w-0 flex-1 p-6">
-          <div className="mb-4 flex justify-end">
-            <ThemeToggle />
-          </div>
-          {children}
-        </main>
-      </div>
+      <AppShell
+        appName="jDoc Master"
+        subtitle="JEOS Sistemas"
+        icon={ShieldCheck}
+        groups={[{ title: 'Administração', items: [...items] }]}
+        user={{ nome: 'Superadmin JEOS', papel: 'Painel master' }}
+        onLogout={logout}
+        titulo={titulo}
+      >
+        {children}
+      </AppShell>
     </QueryClientProvider>
   );
 }
