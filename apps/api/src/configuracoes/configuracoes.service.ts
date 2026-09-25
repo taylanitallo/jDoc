@@ -1086,7 +1086,27 @@ export class ConfiguracoesService {
     const ctx = requireTenantContext();
     const sql = this.db.tenant(ctx.schemaName);
 
-    await sql.unsafe(`DELETE FROM users WHERE id = $1`, [id]);
+    if (id === actorId) throw new BadRequestException('Você não pode excluir o próprio usuário');
+    const [alvo] = await sql<Array<{ role: string; ativo: boolean }>>`SELECT role, ativo FROM users WHERE id = ${id}`;
+    if (!alvo) throw new NotFoundException('Usuário não encontrado');
+    if (alvo.role === 'admin' && alvo.ativo) {
+      const [n] = await sql<Array<{ n: number }>>`SELECT count(*)::int AS n FROM users WHERE role = 'admin' AND ativo AND id <> ${id}`;
+      if ((n?.n ?? 0) === 0) throw new ConflictException('Não é possível excluir o único administrador ativo');
+    }
+    const [docs] = await sql<Array<{ n: number }>>`SELECT count(*)::int AS n FROM documents WHERE created_by = ${id}`;
+    if ((docs?.n ?? 0) > 0) throw new ConflictException('Este usuário já registrou documentos ou atos; para manter o histórico, desative-o em vez de excluir');
+    try {
+      await sql.begin(async (tx) => {
+        await tx`DELETE FROM user_permissions WHERE user_id = ${id}`;
+        await tx`DELETE FROM users WHERE id = ${id}`;
+      });
+    } catch (e) {
+      // Autoria de documentos/atos precisa continuar rastreavel.
+      if ((e as { code?: string }).code === '23503') {
+        throw new ConflictException('Este usuário já registrou documentos ou atos; para manter o histórico, desative-o em vez de excluir');
+      }
+      throw e;
+    }
 
     // Revogar todas as sessoes do usuario
     await this.refreshTokens.revokeAllForUser('tenant', id);
@@ -1244,7 +1264,7 @@ export class ConfiguracoesService {
     const brasaoUrl =
       brasaoKey ? await this.storage.createSignedUrl(ctx.slug, brasaoKey, BRASAO_URL_TTL_S) : null;
 
-    return { nomeExibido, corDestaque, brasaoUrl, modulos: ctx.modulos };
+    return { nomeExibido, nomeOrgao: ctx.nome ?? null, corDestaque, brasaoUrl, modulos: ctx.modulos };
   }
 
   /** Substitui o brasao do tenant (upload de PNG/JPEG, valida pelos magic bytes). */

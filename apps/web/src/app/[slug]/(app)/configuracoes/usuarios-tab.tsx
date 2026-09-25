@@ -7,7 +7,8 @@ import { api, ApiError } from '@/lib/api';
 import type { UnidadeOrcamentaria, UsuarioTenant } from '@jdoc/shared';
 import { MODULES, MODULE_ACTIONS, MODULOS_RBAC_POR_SISTEMA } from '@jdoc/shared';
 import { useBranding } from '@/components/branding';
-import { Pencil, Key, Plus, Users as UsersIcon } from 'lucide-react';
+import { useToast } from '@/components/toast';
+import { Pencil, Key, Plus, Trash2, Users as UsersIcon } from 'lucide-react';
 import { EmptyState } from '@/components/empty-state';
 import { Avatar, Badge, Modal, btnGhost, btnPrimary, cardCls, inputCls, labelCls, type Tone, SelectMenu } from '@/components/ui';
 
@@ -32,6 +33,7 @@ const MODULE_LABELS: Record<string, string> = {
   sigilo: 'Sigilo (LAI)',
   dossies: 'Dossiês e processos',
   descricao: 'Descrição arquivística (NOBRADE)',
+  legislacao: 'Legislação (texto compilado)',
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -48,6 +50,16 @@ export function UsuariosTab() {
   const [page] = useState(1);
   const [editing, setEditing] = useState<UsuarioTenant | 'new' | null>(null);
   const [resetting, setResetting] = useState<UsuarioTenant | null>(null);
+
+  const toast = useToast();
+  const excluir = useMutation({
+    mutationFn: (id: string) => api(`/t/${slug}/configuracoes/usuarios/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['configuracoes', 'usuarios'] });
+      toast.success('Usuário excluído.');
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? (e.status === 403 ? 'Você não tem permissão para excluir usuários.' : e.message) : 'Falha ao excluir'),
+  });
 
   const { data, isLoading } = useQuery<{ items: UsuarioTenant[]; total: number }>({
     queryKey: ['configuracoes', 'usuarios', page],
@@ -137,6 +149,18 @@ export function UsuariosTab() {
                         className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-warning-50 hover:text-warning-600"
                       >
                         <Key className="h-4 w-4" aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Excluir usuário ${u.nome}`}
+                        title="Excluir"
+                        disabled={excluir.isPending}
+                        onClick={() => {
+                          if (window.confirm(`Excluir o usuário ${u.nome} (${u.email})? Esta ação não pode ser desfeita.`)) excluir.mutate(u.id!);
+                        }}
+                        className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-400 transition-colors hover:bg-danger-50 hover:text-danger-600"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden />
                       </button>
                     </div>
                   </td>

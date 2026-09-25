@@ -45,7 +45,24 @@ export type Tenant = z.infer<typeof tenantSchema>;
  * podem virar orgao. Checado so na CRIACAO (slug existente continua valido).
  */
 export const RESERVED_TENANT_SLUGS = ['verificar', 'superadmin', 'public', 'api', 't', 'login', 'files'] as const;
-export const novoTenantSlugSchema = tenantSlugSchema.refine(
-  (s) => !(RESERVED_TENANT_SLUGS as readonly string[]).includes(s),
-  'Slug reservado pelo sistema — escolha outro',
-);
+/**
+ * Slug de orgao NOVO: vira o endereco (doc.jeossistemas.com/<slug>), entao so letras
+ * minusculas sem acento e numeros — sem espaco, "_", "-", "ç", "~" etc. Slugs antigos
+ * com "_" continuam validos (tenantSlugSchema), so nao se cria mais nenhum.
+ */
+export const novoTenantSlugSchema = z
+  .string()
+  .min(3, 'O endereço precisa ter ao menos 3 caracteres')
+  .max(30, 'O endereço pode ter no máximo 30 caracteres')
+  .regex(/^[a-z0-9]+$/, 'Use só letras minúsculas sem acento e números (sem espaço, ç, _, - ou símbolos)')
+  .refine((s) => !(RESERVED_TENANT_SLUGS as readonly string[]).includes(s), 'Endereço reservado pelo sistema — escolha outro');
+
+/** Converte um texto (ex.: "Irauçuba", "São Gonçalo do Amarante") em slug valido: "iraucuba", "saogoncalodoamarante". */
+export function slugDeTexto(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .slice(0, 30);
+}

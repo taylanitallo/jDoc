@@ -65,6 +65,14 @@ export class DatabaseService implements OnModuleDestroy {
     return pool;
   }
 
+  /** Fecha e esquece o pool de um schema (usado ao excluir o orgao). */
+  async closeTenant(schemaName: string): Promise<void> {
+    const pool = this.tenantPools.get(schemaName);
+    if (!pool) return;
+    this.tenantPools.delete(schemaName);
+    await pool.end({ timeout: 5 }).catch(() => undefined);
+  }
+
   async onModuleDestroy(): Promise<void> {
     const closers: Array<Promise<void>> = [];
     if (this.catalogPool) closers.push(this.catalogPool.end({ timeout: 5 }));
