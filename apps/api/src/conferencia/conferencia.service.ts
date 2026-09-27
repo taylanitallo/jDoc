@@ -50,7 +50,8 @@ export class ConferenciaService implements OnModuleDestroy {
 
   async enqueueConferencia(data: ConferenciaJobData): Promise<void> {
     if (!this.queue) return;
-    await this.queue.add('conferir', data);
+    // IA sobrecarregada (429/503): o worker devolve o job e ele volta em 1, 2 e 4 minutos.
+    await this.queue.add('conferir', data, { attempts: 4, backoff: { type: 'exponential', delay: 60_000 }, removeOnComplete: 1000, removeOnFail: 1000 });
   }
 
   /**

@@ -117,10 +117,52 @@ function buildPrompt(etiqueta: Etiqueta): string {
   ].join('\n');
 }
 
-/** Mensagem de erro curta e legivel pra guardar/exibir (nunca o stack inteiro). */
-function erroLegivel(err: unknown): string {
+/** Sobrecarga/limite do provedor (Gemini 429/503, Claude 529): passa sozinho, vale tentar de novo. */
+const STATUS_TRANSITORIO = new Set([429, 500, 502, 503, 504, 529]);
+/** Tentativas dentro do mesmo job e espera entre elas. */
+const ESPERAS_MS = [2_000, 6_000];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Status HTTP do erro dos SDKs (campo status) ou do JSON que o Gemini poe na mensagem. */
+export function statusHttp(err: unknown): number | null {
+  if (err && typeof err === 'object' && 'status' in err && typeof (err as { status: unknown }).status === 'number') {
+    return (err as { status: number }).status;
+  }
   const msg = err instanceof Error ? err.message : String(err);
-  return msg.length > 400 ? `${msg.slice(0, 400)}…` : msg;
+  const m = msg.match(/"code"\s*:\s*(\d{3})/) ?? msg.match(/\b(429|500|502|503|504|529)\b/);
+  return m ? Number(m[1]) : null;
+}
+
+export function transitorio(err: unknown): boolean {
+  const s = statusHttp(err);
+  return s !== null && STATUS_TRANSITORIO.has(s);
+}
+
+/** Mensagem curta, em portugues, pra guardar/exibir (nunca o JSON cru nem o stack). */
+export function erroLegivel(err: unknown): string {
+  const s = statusHttp(err);
+  if (s !== null && STATUS_TRANSITORIO.has(s)) {
+    return 'O serviço de IA está sobrecarregado no momento. O sistema tentou de novo algumas vezes; use "Analisar documento (IA)" mais tarde.';
+  }
+  if (s === 401 || s === 403) return 'A chave de acesso da IA foi recusada. Avise o suporte.';
+  if (s === 400 || s === 413) return 'A IA não conseguiu ler este PDF (arquivo grande demais ou ilegível).';
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.length > 300 ? `${msg.slice(0, 300)}…` : msg;
+}
+
+/** Repete a chamada em erro transitorio; `tentativa` permite trocar de modelo na ultima. */
+async function comRetry<T>(fn: (tentativa: number) => Promise<T>): Promise<T> {
+  for (let tentativa = 0; ; tentativa++) {
+    try {
+      return await fn(tentativa);
+    } catch (e) {
+      if (!transitorio(e) || tentativa >= ESPERAS_MS.length) throw e;
+      await sleep(ESPERAS_MS[tentativa]!);
+    }
+  }
 }
 
 /**
@@ -202,6 +244,16 @@ export class ConferenciaWorker implements OnModuleInit, OnModuleDestroy {
       `;
       this.logger.log(`Conferencia de ${documentId} (${targetTable}:${targetId}, ${this.provider}): ${resultado.status}`);
     } catch (err) {
+      // Sobrecarga do provedor: devolve o job pra fila (BullMQ tenta de novo com espera
+      // crescente) e deixa o documento como pendente em vez de "falha".
+      const tentativas = job.opts.attempts ?? 1;
+      if (transitorio(err) && job.attemptsMade + 1 < tentativas) {
+        await sql`
+          UPDATE ${sql(targetTable)} SET conferencia_status = 'pendente', conferencia_erro = NULL WHERE id = ${targetId}
+        `;
+        this.logger.warn(`Conferencia de ${documentId}: IA sobrecarregada, nova tentativa agendada (${job.attemptsMade + 1}/${tentativas})`);
+        throw err;
+      }
       const status: ConferenciaStatus = 'falha';
       const erro = erroLegivel(err);
       await sql`
@@ -233,7 +285,8 @@ export class ConferenciaWorker implements OnModuleInit, OnModuleDestroy {
     });
 
     try {
-      const response = await this.anthropic.beta.messages.create({
+      const anthropic = this.anthropic;
+      const response = await comRetry(() => anthropic.beta.messages.create({
         // Haiku 4.5 (nao o default Opus) - decisao explicita do usuario por
         // custo: ~5x mais barato, e essa tarefa (extrair valor/credor/doc
         // caixa de 1 PDF e comparar) e simples o bastante pra nao precisar
@@ -252,7 +305,7 @@ export class ConferenciaWorker implements OnModuleInit, OnModuleDestroy {
             ],
           },
         ],
-      });
+      }));
 
       if (response.stop_reason === 'refusal') {
         throw new Error(`IA recusou a analise (stop_reason=refusal)`);
@@ -276,8 +329,10 @@ export class ConferenciaWorker implements OnModuleInit, OnModuleDestroy {
     // documentos, ate ~30MB, cabem tranquilo sem precisar da Files API dele).
     // "gemini-2.5-flash" foi descontinuado pra contas novas (404); o alias
     // "-latest" aponta sempre pro flash atual, evitando esse tipo de quebra.
-    const response = await this.gemini.models.generateContent({
-      model: 'gemini-flash-latest',
+    const gemini = this.gemini;
+    // Ultima tentativa no modelo "lite": costuma estar livre quando o principal esta sobrecarregado.
+    const response = await comRetry((tentativa) => gemini.models.generateContent({
+      model: tentativa >= ESPERAS_MS.length ? 'gemini-flash-lite-latest' : 'gemini-flash-latest',
       contents: [
         {
           role: 'user',
@@ -291,7 +346,7 @@ export class ConferenciaWorker implements OnModuleInit, OnModuleDestroy {
         responseMimeType: 'application/json',
         responseSchema: GEMINI_RESPONSE_SCHEMA,
       },
-    });
+    }));
 
     const text = response.text;
     if (!text) throw new Error('Resposta do Gemini sem texto');
