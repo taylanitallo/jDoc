@@ -318,7 +318,7 @@ function ConferenciaBadge({ documento }: { documento: DocumentView }) {
         </div>
       );
     } else {
-      tooltip = <p>{erro ?? 'Falha ao analisar — clique em "Analisar documento (IA)" para tentar de novo'}</p>;
+      tooltip = <p>{erro ? erroIaLegivel(erro) : 'Falha ao analisar — clique em "Analisar documento (IA)" para tentar de novo'}</p>;
     }
 
     return (
@@ -413,6 +413,14 @@ function FileConferenciaBadge({
  *  explicita pra absorver o espaço restante. Os demais modulos usam larguras
  *  percentuais proporcionais entre si, senao uma unica coluna sem limite
  *  acaba engolindo todo o espaço vazio sozinha quando o conteudo e curto. */
+/** Erros gravados antes da correcao vinham com o JSON cru do provedor de IA. */
+function erroIaLegivel(erro: string): string {
+  if (/"code"\s*:\s*(429|5\d\d)|UNAVAILABLE|RESOURCE_EXHAUSTED|overloaded|high demand/i.test(erro)) {
+    return 'O serviço de IA estava sobrecarregado. Clique em "Analisar documento (IA)" para tentar de novo.';
+  }
+  return erro.trim().startsWith('{') ? 'Falha ao analisar — clique em "Analisar documento (IA)" para tentar de novo.' : erro;
+}
+
 /** Tipos documentais normativos: ganham o botao "Texto compilado". */
 function ehNormativo(d: DocumentView): boolean {
   return /\b(lei|decreto|portaria|resolu|emenda)/i.test(d.documentTypeNome ?? '');
@@ -431,9 +439,9 @@ const DETAIL_COLUMNS: Record<
   Array<{ header: string; render: (d: DocumentView) => string; cell?: (d: DocumentView) => ReactNode; className?: string }>
 > = {
   despesas: [
-    { header: 'Doc. Caixa', render: (d) => d.docCaixa ?? '—', className: 'w-20' },
-    { header: 'Empenho', render: (d) => d.empenho ?? '—', className: 'w-24' },
-    { header: 'Órgão', render: orgaoLabel, className: 'w-44' },
+    { header: 'Doc. Caixa', render: (d) => d.docCaixa ?? '—', className: 'w-28 tabular-nums' },
+    { header: 'Empenho', render: (d) => d.empenho ?? '—', className: 'w-24 tabular-nums' },
+    { header: 'Órgão', render: orgaoLabel, className: 'w-32' },
     { header: 'Credor', render: (d) => d.credor ?? '—' },
     { header: 'Tipo', render: (d) => (d.subtype ? SUBTYPE_SHORT[d.subtype] ?? d.subtype : '—'), className: 'w-10 text-center' },
   ],
@@ -512,7 +520,7 @@ const DETAIL_COLUMNS: Record<
  * espremer.
  */
 const MIN_TABLE_WIDTH: Record<DocModule, number> = {
-  despesas: 900,
+  despesas: 980,
   receitas: 760,
   balancete: 680,
   extrato: 820,
@@ -1190,7 +1198,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
 
       {/* Tablet/desktop: tabela completa com scroll horizontal. */}
       <div className={`${cardCls} hidden overflow-x-auto md:block`}>
-        <table className="w-full table-fixed text-left text-sm" style={{ minWidth: MIN_TABLE_WIDTH[module] }}>
+        <table className="w-full table-fixed text-left text-[13px]" style={{ minWidth: MIN_TABLE_WIDTH[module] }}>
           <thead className="bg-ink-50/60">
             <tr className="label-caps border-b border-ink-200">
               {!showTrash && (
@@ -1210,10 +1218,10 @@ export function DocumentsModule({ module }: { module: DocModule }) {
               {DETAIL_COLUMNS[module].map((col) => (
                 <th key={col.header} className={`whitespace-nowrap px-3 py-3 ${col.className ?? ''}`}>{col.header}</th>
               ))}
-              {hasValor && <th className="w-24 whitespace-nowrap px-3 py-3 text-right">Valor</th>}
-              <th className="w-24 whitespace-nowrap px-3 py-3 text-right">Páginas</th>
+              {hasValor && <th className="w-28 whitespace-nowrap px-3 py-3 text-right">Valor</th>}
+              <th className="w-20 whitespace-nowrap px-3 py-3 text-right">Páginas</th>
               <th className="w-8 px-1 py-3" title="Conferência por IA" aria-label="Conferência por IA" />
-              <th className="w-32 whitespace-nowrap py-3 pl-4 pr-3 text-right">Ações</th>
+              <th className="w-28 whitespace-nowrap py-3 pl-2 pr-3 text-right">Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -1267,25 +1275,26 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                   <td
                     key={col.header}
                     title={col.render(d)}
-                    className={`${col.cell ? 'overflow-hidden whitespace-nowrap' : 'truncate'} px-3 py-3 text-ink-800 ${col.className ?? ''}`}
+                    className={`${col.cell ? 'overflow-hidden whitespace-nowrap' : 'break-words'} px-3 py-3 align-middle text-ink-800 ${col.className ?? ''}`}
                   >
-                    {col.cell ? col.cell(d) : col.render(d)}
+                    {/* Texto longo quebra em ate 2 linhas em vez de sumir com "..." (o title mostra tudo). */}
+                    {col.cell ? col.cell(d) : <span className="line-clamp-2">{col.render(d)}</span>}
                   </td>
                 ))}
                 {hasValor && (
-                  <td className="w-24 whitespace-nowrap px-3 py-3 text-right text-ink-800">
+                  <td className="w-28 whitespace-nowrap tabular-nums px-3 py-3 text-right text-ink-800">
                     {d.value !== null
                       ? d.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                       : '—'}
                   </td>
                 )}
-                <td className="w-24 whitespace-nowrap px-3 py-3 text-right text-ink-800 tabular-nums">
+                <td className="w-20 whitespace-nowrap px-3 py-3 text-right text-ink-800 tabular-nums">
                   {semArquivo ? <Badge tone="warning">Sem PDF</Badge> : (d.pageCount ?? '—')}
                 </td>
                 <td className="w-8 px-1 py-3 text-center">
                   <ConferenciaBadge documento={d} />
                 </td>
-                <td className="w-32 py-2 pl-4 pr-3" onClick={(e) => e.stopPropagation()}>
+                <td className="w-28 py-2 pl-2 pr-3" onClick={(e) => e.stopPropagation()}>
                   <div className="flex justify-end gap-1">
                     {showTrash ? (
                       <button
