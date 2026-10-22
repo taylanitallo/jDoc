@@ -27,3 +27,5 @@ export * from './descricao.js';
 export * from './legislacao.js';
 export * from './tema.js';
 export * from './plataforma.js';
+export * from './catalogo.js';
+export * from './integracoes.js';

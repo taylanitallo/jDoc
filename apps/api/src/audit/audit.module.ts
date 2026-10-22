@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { Global, Injectable, Logger, Module } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { tenantContextStorage } from '../tenancy/tenant-context';
@@ -23,6 +24,18 @@ export interface GlobalAuditEntry extends AuditEntry {
   /** Antes/depois, para o detalhe do log. */
   changes?: { antes?: unknown; depois?: unknown } | null;
 }
+
+/**
+ * Admin da requisicao atual (o guard do superadmin preenche). Assim todo
+ * log de superadmin ganha o nome do admin sem cada servico repassar.
+ */
+export const adminAuditContext = new AsyncLocalStorage<{ id: string; nome: string }>();
+
+/**
+ * Sessao de "entrar como" (token do orgao com `imp`): todo log do orgao
+ * feito nela registra quem da plataforma estava por tras e o motivo.
+ */
+export const impersonacaoContext = new AsyncLocalStorage<{ adminId: string; adminNome: string; motivo: string }>();
 
 /** Acao de um admin da equipe, com antes/depois. */
 export interface AdminAuditEntry {
@@ -54,6 +67,8 @@ export class AuditService {
       this.logger.error(`logTenant sem contexto de tenant: ${entry.action}`);
       return;
     }
+    const imp = impersonacaoContext.getStore();
+    if (imp) entry = { ...entry, metadata: { ...(entry.metadata ?? {}), impersonacao: imp } };
     try {
       const sql = this.db.tenant(ctx.schemaName);
       await sql`
@@ -74,6 +89,8 @@ export class AuditService {
   }
 
   async logGlobal(entry: GlobalAuditEntry): Promise<void> {
+    const admin = adminAuditContext.getStore();
+    const adminName = entry.adminName ?? (admin && admin.id === entry.actorId ? admin.nome : null);
     try {
       const sql = this.db.catalog();
       await sql`
@@ -87,7 +104,7 @@ export class AuditService {
           ${entry.ip ?? null},
           ${entry.userAgent ?? null},
           ${entry.metadata ? JSON.stringify(entry.metadata) : null},
-          ${entry.adminName ?? null},
+          ${adminName ?? null},
           ${entry.entity ?? null},
           ${entry.entityId ?? null},
           ${entry.changes ? JSON.stringify(entry.changes) : null}

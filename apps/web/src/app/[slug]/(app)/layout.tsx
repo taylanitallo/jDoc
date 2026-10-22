@@ -21,6 +21,8 @@ import {
   Settings,
   ShieldCheck,
   ShieldAlert,
+  EyeOff,
+  LogOut,
   TrendingDown,
   TrendingUp,
   Warehouse,
@@ -33,7 +35,8 @@ import { ContaMenu, ExercicioProvider, ExercicioSelect } from '@/components/topb
 import { BrandingProvider, useBranding } from '@/components/branding';
 import { DesktopUpdateBanner } from '@/components/desktop-update-banner';
 import { AssistenteWidget, AylaVisibilityProvider } from '@/components/assistente-widget';
-import { api, setAccessToken, setLastTenantSlug } from '@/lib/api';
+import { api, encerrarImpersonacao, setAccessToken, setLastTenantSlug } from '@/lib/api';
+import { EmptyState } from '@/components/empty-state';
 import { TelaSessao, useSessao } from '@/components/shell/sessao';
 import { isDesktopApp } from '@/lib/desktop-bridge';
 import { cn } from '@/lib/cn';
@@ -166,6 +169,12 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
     },
   ];
 
+  // Telas desligadas pelo superadmin somem do menu e mostram aviso se abertas pelo endereco.
+  const desligados = new Set(usuario?.menusDesligados ?? []);
+  const groupsVisiveis = groups
+    .map((g) => ({ ...g, items: g.items.filter((i) => !desligados.has(i.href.slice(base.length + 1))) }))
+    .filter((g) => g.items.length > 0);
+
   const segmento = pathname.slice(base.length + 1).split('/')[0] ?? '';
   const titulo = TITULOS[segmento] ?? { title: 'jDoc' };
 
@@ -176,6 +185,13 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
   }, [trocaObrigatoria, router, base]);
 
   const sair = async () => {
+    // "Entrar como": so encerra esta aba (o logout revogaria o cookie de outra sessao).
+    if (usuario?.impersonacao) {
+      encerrarImpersonacao(slug);
+      window.close();
+      router.replace(`/${slug}/login`);
+      return;
+    }
     try {
       await api(`/t/${slug}/auth/logout`, { method: 'POST' });
     } finally {
@@ -193,7 +209,7 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
       appName="jDoc"
       subtitle={nomeExibido ?? usuario?.orgao ?? 'Gestão de documentos'}
       icon={FileStack}
-      groups={groups}
+      groups={groupsVisiveis}
       user={usuario ? { nome: usuario.nome, papel: PAPEL[usuario.role] } : null}
       onLogout={sair}
       contaHref={`${base}/conta`}
@@ -206,7 +222,31 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
           <ContaMenu />
         </>
       }
-      banner={<DesktopUpdateBanner />}
+      banner={
+        <>
+          {usuario?.impersonacao && (
+            <div
+              role="status"
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-warning-300 bg-warning-50 px-4 py-2.5 text-sm text-warning-600 sm:px-6 lg:px-8"
+            >
+              <EyeOff className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="min-w-0 flex-1">
+                <strong>Você está vendo o sistema como {usuario.nome}.</strong> Sessão aberta por {usuario.impersonacao.adminNome} (equipe JEOS) —
+                motivo: {usuario.impersonacao.motivo}. Tudo fica registrado.
+              </span>
+              <button
+                type="button"
+                onClick={() => void sair()}
+                className="inline-flex items-center gap-1.5 rounded-[8px] px-2 py-1 font-semibold hover:bg-warning-500/10"
+              >
+                <LogOut className="h-4 w-4" aria-hidden />
+                Encerrar
+              </button>
+            </div>
+          )}
+          <DesktopUpdateBanner />
+        </>
+      }
       switcher={
         ambos && ativo
           ? (compacta) => (
@@ -224,7 +264,11 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
           : undefined
       }
     >
-      {children}
+      {desligados.has(segmento) ? (
+        <EmptyState icon={EyeOff} title="Tela indisponível" description="Esta tela foi desligada para o seu órgão. Fale com o administrador." />
+      ) : (
+        children
+      )}
     </AppShell>
   );
 }

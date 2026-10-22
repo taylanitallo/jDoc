@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
-import { SCHEMA_NAME_REGEX } from '@jdoc/shared';
+import { HEX_COR, SCHEMA_NAME_REGEX } from '@jdoc/shared';
 import type {
+  Ambiente,
+  Contrato,
   CreateTenantInput,
+  MenuOverrides,
   SetQuotaInput,
   SetTenantStatusInput,
   TenantOverview,
@@ -33,6 +36,21 @@ interface TenantRow {
   schema_name: string;
   criado_em: Date;
   modulos: Sistema[];
+  cnpj: string | null;
+  ambiente: Ambiente;
+  contrato: Contrato;
+  menu_overrides: MenuOverrides;
+  motivo_status: string | null;
+}
+
+const COLUNAS = `id, slug, nome, cidade, uf, responsavel, email, status, quota_disco_mb, brasao_url, schema_name,
+  criado_em, modulos, cnpj, ambiente, contrato, menu_overrides, motivo_status`;
+
+/** Uso do orgao que nao esta no catalogo: usuarios ativos, ultimo acesso e cor da marca. */
+interface ResumoOrgao {
+  usuariosAtivos: number;
+  ultimoAcesso: Date | null;
+  corMarca: string | null;
 }
 
 @Injectable()
@@ -47,7 +65,22 @@ export class SuperadminTenantsService {
     private readonly storage: StorageService,
   ) {}
 
-  private toOverview(row: TenantRow, usoBytes: number, brasaoUrl: string | null): TenantOverview {
+  /** Le do schema do orgao o que o painel mostra (falha = zeros, nao derruba a lista). */
+  async resumo(schemaName: string): Promise<ResumoOrgao> {
+    try {
+      const sql = this.db.tenant(schemaName);
+      const [u] = await sql<Array<{ ativos: number; ultimo: Date | null }>>`
+        SELECT count(*) FILTER (WHERE ativo)::int AS ativos, max(ultimo_acesso) AS ultimo FROM users
+      `;
+      const [c] = await sql<Array<{ valor: unknown }>>`SELECT valor FROM tenant_settings WHERE chave = 'corDestaque'`;
+      const cor = typeof c?.valor === 'string' && HEX_COR.test(c.valor) ? c.valor : null;
+      return { usuariosAtivos: u?.ativos ?? 0, ultimoAcesso: u?.ultimo ?? null, corMarca: cor };
+    } catch {
+      return { usuariosAtivos: 0, ultimoAcesso: null, corMarca: null };
+    }
+  }
+
+  private toOverview(row: TenantRow, usoBytes: number, brasaoUrl: string | null, r: ResumoOrgao): TenantOverview {
     const quotaBytes = row.quota_disco_mb * 1024 * 1024;
     return {
       id: row.id,
@@ -64,22 +97,27 @@ export class SuperadminTenantsService {
       criadoEm: row.criado_em.toISOString(),
       usoBytes,
       usoPercent: quotaBytes > 0 ? Math.round((usoBytes / quotaBytes) * 1000) / 10 : 0,
+      cnpj: row.cnpj,
+      ambiente: row.ambiente ?? 'producao',
+      contrato: row.contrato ?? {},
+      menuOverrides: row.menu_overrides ?? {},
+      motivoStatus: row.motivo_status,
+      corMarca: r.corMarca,
+      usuariosAtivos: r.usuariosAtivos,
+      ultimoAcesso: r.ultimoAcesso?.toISOString() ?? null,
     };
   }
 
   async list(): Promise<TenantOverview[]> {
     const sql = this.db.catalog();
-    const rows = await sql<TenantRow[]>`
-      SELECT id, slug, nome, cidade, uf, responsavel, email, status,
-             quota_disco_mb, brasao_url, schema_name, criado_em, modulos
-      FROM public.tenants ORDER BY nome
-    `;
+    const rows = await sql<TenantRow[]>`SELECT ${sql.unsafe(COLUNAS)} FROM public.tenants ORDER BY nome`;
     return Promise.all(
       rows.map(async (r) =>
         this.toOverview(
           r,
           await this.storage.usageBytes(r.slug),
           await resolveBrasaoUrl(this.db, this.storage, r.schema_name, r.slug),
+          await this.resumo(r.schema_name),
         ),
       ),
     );
@@ -87,11 +125,7 @@ export class SuperadminTenantsService {
 
   async getById(id: string): Promise<TenantRow> {
     const sql = this.db.catalog();
-    const rows = await sql<TenantRow[]>`
-      SELECT id, slug, nome, cidade, uf, responsavel, email, status,
-             quota_disco_mb, brasao_url, schema_name, criado_em, modulos
-      FROM public.tenants WHERE id = ${id} LIMIT 1
-    `;
+    const rows = await sql<TenantRow[]>`SELECT ${sql.unsafe(COLUNAS)} FROM public.tenants WHERE id = ${id} LIMIT 1`;
     const row = rows[0];
     if (!row) throw new NotFoundException('Orgao nao encontrado');
     return row;
@@ -103,6 +137,7 @@ export class SuperadminTenantsService {
       row,
       await this.storage.usageBytes(row.slug),
       await resolveBrasaoUrl(this.db, this.storage, row.schema_name, row.slug),
+      await this.resumo(row.schema_name),
     );
   }
 
@@ -112,13 +147,18 @@ export class SuperadminTenantsService {
     ip: string,
   ): Promise<{ id: string; schemaName: string }> {
     const result = await this.provisioning.provisionTenant(input);
+    await this.db.catalog()`
+      UPDATE public.tenants SET cnpj = ${input.cnpj ?? null}, ambiente = ${input.ambiente} WHERE id = ${result.id}
+    `;
     await this.audit.logGlobal({
       actorType: 'superadmin',
       actorId,
       action: 'tenant_created',
       targetTenantId: result.id,
+      entity: 'tenant',
+      entityId: result.id,
       ip,
-      metadata: { slug: input.slug, nome: input.nome },
+      changes: { depois: { slug: input.slug, nome: input.nome, cidade: input.cidade, uf: input.uf, modulos: input.modulos } },
     });
     return result;
   }
@@ -126,6 +166,7 @@ export class SuperadminTenantsService {
   async update(id: string, input: UpdateTenantInput, actorId: string, ip: string): Promise<void> {
     const row = await this.getById(id);
     const sql = this.db.catalog();
+    const { corMarca, ...cadastro } = input;
     await sql`
       UPDATE public.tenants SET
         nome = ${input.nome ?? row.nome},
@@ -135,17 +176,46 @@ export class SuperadminTenantsService {
         email = ${input.email ?? row.email},
         brasao_url = ${input.brasaoUrl === undefined ? row.brasao_url : input.brasaoUrl},
         modulos = ${input.modulos ?? row.modulos},
+        cnpj = ${input.cnpj === undefined ? row.cnpj : input.cnpj},
+        ambiente = ${input.ambiente ?? row.ambiente},
+        contrato = ${sql.json((input.contrato ?? row.contrato ?? {}) as Record<string, never>)},
+        menu_overrides = ${sql.json((input.menuOverrides ?? row.menu_overrides ?? {}) as Record<string, never>)},
         atualizado_em = now()
       WHERE id = ${id}
     `;
+    let corAntes: string | null | undefined;
+    if (corMarca !== undefined) {
+      const tsql = this.db.tenant(row.schema_name);
+      corAntes = (await this.resumo(row.schema_name)).corMarca;
+      if (corMarca === null) await tsql`DELETE FROM tenant_settings WHERE chave = 'corDestaque'`;
+      else
+        await tsql`
+          INSERT INTO tenant_settings (chave, valor) VALUES ('corDestaque', ${tsql.json(corMarca)})
+          ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = now()
+        `;
+    }
     await this.tenancy.invalidate(row.slug);
+    const antes: Record<string, unknown> = {};
+    const depois: Record<string, unknown> = {};
+    const atual = row as unknown as Record<string, unknown>;
+    const coluna: Record<string, string> = { quotaDiscoMb: 'quota_disco_mb', brasaoUrl: 'brasao_url', menuOverrides: 'menu_overrides' };
+    for (const [k, v] of Object.entries(cadastro)) {
+      antes[k] = atual[coluna[k] ?? k] ?? null;
+      depois[k] = v;
+    }
+    if (corMarca !== undefined) {
+      antes.corMarca = corAntes ?? null;
+      depois.corMarca = corMarca;
+    }
     await this.audit.logGlobal({
       actorType: 'superadmin',
       actorId,
       action: 'tenant_updated',
       targetTenantId: id,
+      entity: 'tenant',
+      entityId: id,
       ip,
-      metadata: { changes: input as Record<string, unknown> },
+      changes: { antes, depois },
     });
   }
 
@@ -158,8 +228,9 @@ export class SuperadminTenantsService {
   ): Promise<void> {
     const row = await this.getById(id);
     const sql = this.db.catalog();
+    const motivo = input.status === 'ativo' ? null : (input.motivo ?? null);
     await sql`
-      UPDATE public.tenants SET status = ${input.status}, atualizado_em = now()
+      UPDATE public.tenants SET status = ${input.status}, motivo_status = ${motivo}, atualizado_em = now()
       WHERE id = ${id}
     `;
     await this.tenancy.invalidate(row.slug);
@@ -168,7 +239,10 @@ export class SuperadminTenantsService {
       actorId,
       action: input.status === 'ativo' ? 'tenant_activated' : 'tenant_deactivated',
       targetTenantId: id,
+      entity: 'tenant',
+      entityId: id,
       ip,
+      changes: { antes: { status: row.status }, depois: { status: input.status, motivo } },
       metadata: { slug: row.slug },
     });
   }
@@ -180,7 +254,7 @@ export class SuperadminTenantsService {
    */
   async remove(id: string, confirmacao: string, actorId: string, ip: string): Promise<void> {
     const row = await this.getById(id);
-    if (row.status !== 'inativo') throw new ConflictException('Desative o órgão antes de excluir');
+    if (row.status !== 'inativo' && row.status !== 'arquivado') throw new ConflictException('Suspenda ou arquive o órgão antes de excluir');
     if (confirmacao.trim().toLowerCase() !== row.slug) throw new BadRequestException('Digite o slug do órgão para confirmar a exclusão');
     if (!SCHEMA_NAME_REGEX.test(row.schema_name)) throw new BadRequestException('Schema inválido');
 

@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ImpersonacaoInterceptor } from './impersonacao.interceptor';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
@@ -19,8 +21,10 @@ import { PermissionsGuard } from './permissions.guard';
     RefreshTokenService,
     TenantJwtGuard,
     PermissionsGuard,
+    { provide: APP_INTERCEPTOR, useClass: ImpersonacaoInterceptor },
   ],
   exports: [
+    AuthService,
     PasswordService,
     BruteForceService,
     RefreshTokenService,

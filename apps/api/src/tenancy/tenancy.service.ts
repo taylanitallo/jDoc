@@ -13,6 +13,7 @@ export interface ResolvedTenant {
   quotaDiscoMb: number;
   brasaoUrl: string | null;
   modulos: Sistema[];
+  menuOverrides: Record<string, boolean>;
 }
 
 const CACHE_TTL_S = 60;
@@ -41,7 +42,7 @@ export class TenancyService {
       if (cached) {
         const t = JSON.parse(cached) as ResolvedTenant;
         // Entrada de cache anterior aos modulos contratados: trata como so financeiro.
-        return { ...t, modulos: t.modulos ?? ['financeiro'] };
+        return { ...t, modulos: t.modulos ?? ['financeiro'], menuOverrides: t.menuOverrides ?? {} };
       }
     } catch (err) {
       // Cache indisponivel nao derruba a resolucao — segue pro banco.
@@ -50,7 +51,7 @@ export class TenancyService {
 
     const sql = this.db.catalog();
     const rows = await sql`
-      SELECT id, slug, nome, status, schema_name, quota_disco_mb, brasao_url, modulos
+      SELECT id, slug, nome, status, schema_name, quota_disco_mb, brasao_url, modulos, menu_overrides
       FROM public.tenants
       WHERE slug = ${slug}
       LIMIT 1
@@ -68,6 +69,7 @@ export class TenancyService {
       brasaoUrl: row.brasao_url === null ? null : String(row.brasao_url),
       // Valor fora da allowlist (nao deveria existir: ha CHECK no banco) e descartado.
       modulos: ((row.modulos as string[] | null) ?? []).filter((m): m is Sistema => sistemaSchema.safeParse(m).success),
+      menuOverrides: (row.menu_overrides as Record<string, boolean> | null) ?? {},
     };
 
     try {

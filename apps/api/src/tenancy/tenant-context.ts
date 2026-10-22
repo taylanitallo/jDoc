@@ -13,6 +13,8 @@ export interface TenantContext {
   quotaDiscoMb: number;
   /** Modulos contratados (financeiro/arquivo). */
   modulos: Sistema[];
+  /** Telas desligadas pelo superadmin (`{ "relatorios": false }`). */
+  menuOverrides: Record<string, boolean>;
 }
 
 export const tenantContextStorage = new AsyncLocalStorage<TenantContext>();

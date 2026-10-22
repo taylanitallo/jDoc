@@ -166,6 +166,11 @@ export async function api<T>(
   // sessao nenhuma ainda pra tentar renovar).
   const isAuthEntryPoint =
     path.endsWith('/auth/refresh') || path.endsWith('/auth/login') || path.endsWith('/auth/reauth');
+  if (res.status === 401 && impersonando && lastTenantSlug) {
+    encerrarImpersonacao(lastTenantSlug);
+    redirectToLogin();
+    throw new ApiError(401, 'A sessão de "entrar como" terminou');
+  }
   if (res.status === 401 && !options._skipRefresh && !isAuthEntryPoint) {
     const refreshed = await tryRefresh();
     if (refreshed) {
@@ -232,5 +237,61 @@ export async function apiBlobUrl(path: string, options: Omit<ApiOptions, '_skipR
  */
 export function bootstrapSession(slug: string | null): Promise<RefreshStatus> {
   lastTenantSlug = slug;
+  // Aba aberta pelo "Entrar como" do superadmin: token proprio, sem refresh.
+  const imp = slug ? lerImpersonacao(slug) : null;
+  if (imp) {
+    accessToken = imp;
+    impersonando = true;
+    return Promise.resolve('ok');
+  }
   return refreshStatus();
+}
+
+// ---- "Entrar como" (impersonacao) ----
+// O token fica so nesta aba (sessionStorage) e expira em 30 min; nao ha refresh.
+
+const CHAVE_IMP = (slug: string) => `jdoc-imp:${slug}`;
+/** Nesta aba ha uma sessao de "entrar como": 401 nao tenta refresh (o cookie seria de outra pessoa). */
+let impersonando = false;
+
+/** exp (segundos) do JWT, sem validar (a API valida). */
+function expiracaoJwt(token: string): number {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]!.replace(/-/g, '+').replace(/_/g, '/'))) as { exp?: number };
+    return payload.exp ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function iniciarImpersonacao(slug: string, token: string): void {
+  try {
+    sessionStorage.setItem(CHAVE_IMP(slug), token);
+  } catch {
+    // sem sessionStorage: vale so ate recarregar
+  }
+  accessToken = token;
+  lastTenantSlug = slug;
+  impersonando = true;
+}
+
+export function lerImpersonacao(slug: string): string | null {
+  try {
+    const t = sessionStorage.getItem(CHAVE_IMP(slug));
+    if (t && expiracaoJwt(t) * 1000 > Date.now()) return t;
+    if (t) sessionStorage.removeItem(CHAVE_IMP(slug));
+  } catch {
+    // ignora
+  }
+  return null;
+}
+
+export function encerrarImpersonacao(slug: string): void {
+  try {
+    sessionStorage.removeItem(CHAVE_IMP(slug));
+  } catch {
+    // ignora
+  }
+  accessToken = null;
+  impersonando = false;
 }

@@ -40,6 +40,16 @@ export const MODULES = [
   'descricao',
   /** Legislacao compilada (texto por dispositivo, alteracoes, portal publico). */
   'legislacao',
+  /** Midia legislativa (pacotes mensais para a Camara). */
+  'midia_legislativa',
+  // Cadastros de Configuracoes (ja usados pelas rotas; antes ficavam fora da matriz).
+  'orgaos',
+  'unidades_orcamentarias',
+  'projetos_atividades',
+  'elementos_despesa',
+  'tipos_documento',
+  'usuarios',
+  'layout',
 ] as const;
 export const moduleSchema = z.enum(MODULES);
 export type ModuleName = z.infer<typeof moduleSchema>;

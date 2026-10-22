@@ -69,7 +69,7 @@ export function TenantManageModal({
   );
 }
 
-function BackupTab({ tenant }: { tenant: TenantOverview }) {
+export function BackupTab({ tenant }: { tenant: TenantOverview }) {
   const qc = useQueryClient();
   const toast = useToast();
   const [error, setError] = useState<string | null>(null);
@@ -224,7 +224,7 @@ function BackupTab({ tenant }: { tenant: TenantOverview }) {
   );
 }
 
-function AgendamentoTab({ tenant }: { tenant: TenantOverview }) {
+export function AgendamentoTab({ tenant }: { tenant: TenantOverview }) {
   const toast = useToast();
   const [error, setError] = useState<string | null>(null);
   const { data, isLoading } = useQuery({
@@ -373,7 +373,7 @@ function LogsTab({ tenant }: { tenant: TenantOverview }) {
   );
 }
 
-function RestaurarTab({ tenant }: { tenant: TenantOverview }) {
+export function RestaurarTab({ tenant }: { tenant: TenantOverview }) {
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);

@@ -65,6 +65,10 @@ export const tenantAccessClaimsSchema = z.object({
   role: tenantRoleSchema,
   permissions: z.array(z.string()),
   realm: z.literal('tenant'),
+  /** "Entrar como": sessao aberta por um admin da plataforma (faixa de aviso, sem refresh). */
+  imp: z
+    .object({ adminId: z.string().uuid(), adminNome: z.string(), motivo: z.string() })
+    .optional(),
 });
 export type TenantAccessClaims = z.infer<typeof tenantAccessClaimsSchema>;
 
@@ -119,6 +123,10 @@ export interface UsuarioAtual {
   /** Cor da marca do orgao (Configuracoes > Aparencia), padrao dos usuarios. */
   corOrgao: string | null;
   mustChangePassword: boolean;
+  /** Telas desligadas pelo superadmin para este orgao. */
+  menusDesligados: string[];
+  /** Sessao de "entrar como" da equipe JEOS (faixa de aviso no topo). */
+  impersonacao: { adminNome: string; motivo: string } | null;
 }
 
 /** CPF so com digitos, 11 posicoes, com digitos verificadores validos. */

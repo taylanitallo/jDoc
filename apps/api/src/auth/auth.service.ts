@@ -174,7 +174,7 @@ export class AuthService {
   }
 
   /** Perfil minimo para o shell (nome no rodape do menu). Tenant vem do contexto validado. */
-  async me(userId: string): Promise<UsuarioAtual> {
+  async me(userId: string, imp?: TenantAccessClaims['imp']): Promise<UsuarioAtual> {
     const ctx = requireTenantContext();
     const sql = this.db.tenant(ctx.schemaName);
     const rows = await sql<
@@ -204,6 +204,10 @@ export class AuthService {
       uiTheme: u.ui_theme,
       corOrgao,
       mustChangePassword: u.must_change_password,
+      menusDesligados: Object.entries(ctx.menuOverrides ?? {})
+        .filter(([, ligado]) => ligado === false)
+        .map(([id]) => id),
+      impersonacao: imp ? { adminNome: imp.adminNome, motivo: imp.motivo } : null,
     };
   }
 
@@ -252,6 +256,29 @@ export class AuthService {
       SELECT permission_key FROM user_permissions WHERE user_id = ${userId}
     `;
     return rows.map((r) => r.permission_key);
+  }
+
+  /**
+   * "Entrar como": token de acesso do usuario do orgao, marcado como
+   * impersonacao, valido por 30 min e SEM refresh (acabou, acabou). Quem pede
+   * e o superadmin (reauth + motivo), que audita do lado dele.
+   */
+  async emitirImpersonacao(
+    alvo: { tenantId: string; slug: string; schemaName: string },
+    userId: string,
+    imp: NonNullable<TenantAccessClaims['imp']>,
+  ): Promise<{ accessToken: string; expiraEm: string }> {
+    const sql = this.db.tenant(alvo.schemaName);
+    const [u] = await sql<Array<{ role: string; ativo: boolean }>>`SELECT role, ativo FROM users WHERE id = ${userId}`;
+    if (!u) throw new UnauthorizedException('Usuário não encontrado');
+    if (!u.ativo) throw new BadRequestException('Usuário desativado: reative antes de entrar como ele');
+    const permissions = await this.loadPermissions(alvo.schemaName, userId);
+    const role = (TENANT_ROLES as readonly string[]).includes(u.role) ? (u.role as TenantRole) : 'consulta';
+    const accessToken = await this.jwt.signAsync(
+      { sub: userId, tenantId: alvo.tenantId, tenantSlug: alvo.slug, role, permissions, realm: 'tenant', imp } satisfies TenantAccessClaims,
+      { secret: loadEnv().JWT_ACCESS_SECRET, issuer: JWT_ISSUER.tenant, audience: JWT_AUDIENCE.tenant, expiresIn: '30m' },
+    );
+    return { accessToken, expiraEm: new Date(Date.now() + 30 * 60_000).toISOString() };
   }
 
   private signAccess(claims: TenantAccessClaims): Promise<string> {

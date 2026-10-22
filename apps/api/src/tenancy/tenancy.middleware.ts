@@ -1,4 +1,10 @@
-import { ForbiddenException, Injectable, NestMiddleware, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NestMiddleware,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
 import { TenancyService } from './tenancy.service';
 import { tenantContextStorage, type TenantContext } from './tenant-context';
@@ -22,8 +28,12 @@ export class TenancyMiddleware implements NestMiddleware {
     if (!tenant) {
       throw new NotFoundException('Recurso nao encontrado');
     }
+    if (tenant.status === 'manutencao') {
+      // Restauracao de backup em andamento: volta sozinho ao terminar.
+      throw new ServiceUnavailableException({ message: 'Órgão em manutenção. Tente novamente em alguns minutos.', code: 'manutencao' });
+    }
     if (tenant.status !== 'ativo') {
-      throw new ForbiddenException('Orgao suspenso, contate a JEOS');
+      throw new ForbiddenException({ message: 'Órgão suspenso, contate a JEOS', code: 'orgao_suspenso' });
     }
 
     const ctx: TenantContext = {
@@ -33,6 +43,7 @@ export class TenancyMiddleware implements NestMiddleware {
       nome: tenant.nome,
       quotaDiscoMb: tenant.quotaDiscoMb,
       modulos: tenant.modulos,
+      menuOverrides: tenant.menuOverrides,
     };
 
     // Disponibiliza tambem via req para guards/controllers.

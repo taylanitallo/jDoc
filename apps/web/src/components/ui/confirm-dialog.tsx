@@ -32,12 +32,13 @@ export function ConfirmDialog({
   loading?: boolean;
   /** Texto que precisa ser digitado igual para liberar o botao. */
   digitar?: string;
-  /** Pede um motivo (obrigatorio, minimo 5 caracteres). */
-  motivo?: { label: string; placeholder?: string };
+  /** Pede um motivo (obrigatorio; minimo de 5 caracteres, ou `minimo`). */
+  motivo?: { label: string; placeholder?: string; minimo?: number };
 }) {
   const [texto, setTexto] = useState('');
   const [razao, setRazao] = useState('');
-  const liberado = (!digitar || texto.trim() === digitar) && (!motivo || razao.trim().length >= 5);
+  const minimo = motivo?.minimo ?? 5;
+  const liberado = (!digitar || texto.trim() === digitar) && (!motivo || razao.trim().length >= minimo);
   const fechar = () => {
     setTexto('');
     setRazao('');
@@ -73,7 +74,7 @@ export function ConfirmDialog({
       <div className="space-y-4">
         {description && <div className="text-sm text-ink-600">{description}</div>}
         {motivo && (
-          <Field label={motivo.label} htmlFor="confirm-motivo" required hint="Mínimo de 5 caracteres. Fica registrado na auditoria.">
+          <Field label={motivo.label} htmlFor="confirm-motivo" required hint={`Mínimo de ${minimo} caracteres. Fica registrado na auditoria.`}>
             <Textarea id="confirm-motivo" value={razao} onChange={(e) => setRazao(e.target.value)} placeholder={motivo.placeholder} />
           </Field>
         )}

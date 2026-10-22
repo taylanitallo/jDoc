@@ -97,7 +97,7 @@ export class AuthController {
   @Permissions()
   @Get('me')
   me(@CurrentUser() user: TenantAccessClaims): Promise<UsuarioAtual> {
-    return this.auth.me(user.sub);
+    return this.auth.me(user.sub, user.imp);
   }
 
   @Permissions()

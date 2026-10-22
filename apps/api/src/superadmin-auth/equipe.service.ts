@@ -12,6 +12,7 @@ import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.module';
 import { PasswordService } from '../auth/password.service';
 import { AdminSessionsService, SESSAO_OCIOSA_H } from './admin-sessions.service';
+import { EmailService } from '../email/email.service';
 import type { AdminReq } from './decorators';
 
 type Origem = { ip: string; userAgent: string };
@@ -22,27 +23,15 @@ export function gerarSenhaProvisoria(tamanho = 12): string {
   return Array.from({ length: tamanho }, () => alfabeto[randomInt(alfabeto.length)]).join('');
 }
 
-/**
- * Envio do convite/nova senha por e-mail. O modulo de e-mail se registra aqui
- * ao subir; sem SMTP configurado (ou se o envio falhar), a senha provisoria
- * volta na resposta para o owner repassar.
- */
-export type EnvioSenhaAdmin = (p: { nome: string; email: string; senha: string; convite: boolean }) => Promise<boolean>;
-
 @Injectable()
 export class EquipeService {
-  private enviarSenha: EnvioSenhaAdmin | null = null;
-
   constructor(
     private readonly db: DatabaseService,
     private readonly passwords: PasswordService,
     private readonly sessions: AdminSessionsService,
     private readonly audit: AuditService,
+    private readonly email: EmailService,
   ) {}
-
-  registrarEnvio(fn: EnvioSenhaAdmin): void {
-    this.enviarSenha = fn;
-  }
 
   async listar(): Promise<AdminEquipe[]> {
     const rows = await this.db.catalog()<
@@ -86,9 +75,26 @@ export class EquipeService {
     return a;
   }
 
+  /**
+   * Convite/nova senha por e-mail (SMTP da plataforma). Sem SMTP, ou se o envio
+   * falhar, a senha provisoria volta na resposta para o owner repassar.
+   */
   private async entregarSenha(nome: string, email: string, senha: string, convite: boolean): Promise<SenhaProvisoriaResposta> {
-    const enviado = this.enviarSenha ? await this.enviarSenha({ nome, email, senha, convite }).catch(() => false) : false;
-    return enviado ? { emailEnviado: true } : { emailEnviado: false, senhaProvisoria: senha };
+    const r = await this.email.enviar({
+      tenantId: null,
+      para: email,
+      remetente: 'jDoc — Equipe JEOS',
+      assunto: convite ? 'Seu acesso à área restrita do jDoc' : 'Nova senha de acesso',
+      paragrafos: [
+        `Olá, ${nome}.`,
+        convite
+          ? 'Você foi convidado(a) para a equipe da plataforma jDoc. Use a senha provisória abaixo no primeiro acesso; em seguida o sistema pede uma senha pessoal e a configuração da verificação em 2 etapas.'
+          : 'Sua senha de acesso foi redefinida. Use a senha provisória abaixo e troque-a no primeiro acesso.',
+        `Senha provisória: ${senha}`,
+      ],
+      botao: { texto: 'Acessar', url: this.email.urlApp('/superadmin/login') },
+    });
+    return r.enviado ? { emailEnviado: true } : { emailEnviado: false, senhaProvisoria: senha };
   }
 
   async convidar(admin: AdminReq, input: AdminConviteInput, origem: Origem): Promise<SenhaProvisoriaResposta> {
