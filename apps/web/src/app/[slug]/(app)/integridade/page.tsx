@@ -16,9 +16,10 @@ import { EmptyState } from '@/components/empty-state';
 import { Colunas, Rosca } from '@/components/charts';
 import { useToast } from '@/components/toast';
 import { cn } from '@/lib/cn';
+import { fmtDate, fmtDateTime } from '@/lib/format';
 
 const fmtDataHora = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+  fmtDateTime(iso, '—');
 const MODULO_LABEL: Record<string, string> = {
   receitas: 'Receitas',
   despesas: 'Despesas',
@@ -145,7 +146,7 @@ export default function IntegridadePage() {
                   .slice(0, 14)
                   .reverse()
                   .map((v) => ({
-                    rotulo: new Date(v.iniciadaEm).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+                    rotulo: fmtDate(v.iniciadaEm).slice(0, 5),
                     valor: v.total,
                     extra: v.divergentes + v.ausentes > 0 ? `${v.divergentes + v.ausentes} problema(s)` : 'sem problemas',
                   }))}

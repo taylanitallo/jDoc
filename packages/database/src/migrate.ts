@@ -192,6 +192,10 @@ async function main(): Promise<void> {
       );
     });
 
+    const { aplicarMigracoesCatalogo } = await import('./versioned.js');
+    const novas = await aplicarMigracoesCatalogo(sql);
+    if (novas.length) console.warn(`[migrate] aplicadas: ${novas.join(', ')}`);
+
     // Re-provisiona schemas de tenants existentes (idempotente) —
     // garante que tabelas novas (Fase 3+) existam em todos.
     const { provisionTenantSchema } = await import('./tenant/provision.js');

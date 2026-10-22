@@ -7,6 +7,7 @@ import { Badge, btnPrimary, cardCls, formatBytes, inputCls, labelCls, SelectMenu
 import { RefreshCw, Download } from 'lucide-react';
 import type { BackupView, BackupsListResponse, TenantOverview } from '@jdoc/shared';
 import { useToast } from '@/components/toast';
+import { fmtDateTime } from '@/lib/format';
 
 export default function BackupsPage() {
   const qc = useQueryClient();
@@ -183,10 +184,10 @@ export default function BackupsPage() {
                   {b.sizeBytes ? formatBytes(b.sizeBytes) : '—'}
                 </td>
                 <td className="px-4 py-3 text-ink-500">
-                  {new Date(b.criadoEm).toLocaleString('pt-BR')}
+                  {fmtDateTime(b.criadoEm)}
                 </td>
                 <td className="px-4 py-3 text-ink-500">
-                  {b.concluidoEm ? new Date(b.concluidoEm).toLocaleString('pt-BR') : '—'}
+                  {b.concluidoEm ? fmtDateTime(b.concluidoEm) : '—'}
                 </td>
                 <td className="px-4 py-3">
                   <button

@@ -26,6 +26,7 @@ import {
   SelectMenu,
 } from '@/components/ui';
 import { useToast } from '@/components/toast';
+import { fmtDateTime } from '@/lib/format';
 
 interface TenantUserView {
   id: string;
@@ -181,7 +182,7 @@ export default function UsuariosPage() {
                     <Badge color={u.ativo ? 'green' : 'red'}>{u.ativo ? 'ATIVO' : 'INATIVO'}</Badge>
                   </td>
                   <td className="px-4 py-3 text-ink-500">
-                    {u.ultimoAcesso ? new Date(u.ultimoAcesso).toLocaleString('pt-BR') : '—'}
+                    {u.ultimoAcesso ? fmtDateTime(u.ultimoAcesso) : '—'}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1">

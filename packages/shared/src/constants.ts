@@ -85,7 +85,7 @@ export const JWT_AUDIENCE = {
 } as const;
 
 /** Fuso dos orgaos atendidos: "hoje" (prazos, datas padrao, nomes de arquivo) nunca em UTC. */
-export const FUSO_ORGAO = 'America/Sao_Paulo';
+export const FUSO_ORGAO = 'America/Fortaleza';
 
 /** Data de hoje (YYYY-MM-DD) no fuso do orgao. Em UTC, a partir das 21h ja seria o dia seguinte. */
 export function hojeIso(agora: Date = new Date()): string {

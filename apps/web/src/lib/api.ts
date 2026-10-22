@@ -33,9 +33,36 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    /** Codigo estavel da API (`reauth_required`, `mfa_required`, ...). */
+    public readonly code?: string,
   ) {
     super(message);
   }
+}
+
+/** Le `{ error | message, code }` do corpo de erro da API. */
+async function erroDaResposta(res: Response): Promise<ApiError> {
+  let message = 'Erro na requisição';
+  let code: string | undefined;
+  try {
+    const data = (await res.json()) as { message?: unknown; error?: unknown; code?: unknown };
+    if (typeof data.error === 'string' && data.error) message = data.error;
+    else if (typeof data.message === 'string' && data.message) message = data.message;
+    if (typeof data.code === 'string') code = data.code;
+  } catch {
+    // resposta sem corpo
+  }
+  return new ApiError(res.status, message, code);
+}
+
+/**
+ * Reautenticacao para acoes criticas do superadmin: quando a API responde
+ * `403 reauth_required`, o client chama este handler (o modal "Confirme sua
+ * identidade") e, se ele confirmar, repete a mesma requisicao uma vez.
+ */
+let reauthHandler: (() => Promise<boolean>) | null = null;
+export function setReauthHandler(fn: (() => Promise<boolean>) | null): void {
+  reauthHandler = fn;
 }
 
 /** Infere o slug do tenant a partir do path `/t/<slug>/...`. */
@@ -133,7 +160,8 @@ export async function api<T>(
   // Tenta refresh automatico em 401 (mas nao na propria requisicao de login/refresh —
   // um 401 de login e credencial/2FA invalidos, nao sessao expirada, e nao ha
   // sessao nenhuma ainda pra tentar renovar).
-  const isAuthEntryPoint = path.endsWith('/auth/refresh') || path.endsWith('/auth/login');
+  const isAuthEntryPoint =
+    path.endsWith('/auth/refresh') || path.endsWith('/auth/login') || path.endsWith('/auth/reauth');
   if (res.status === 401 && !options._skipRefresh && !isAuthEntryPoint) {
     const refreshed = await tryRefresh();
     if (refreshed) {
@@ -144,16 +172,15 @@ export async function api<T>(
     }
   }
 
-  if (!res.ok) {
-    let message = 'Erro na requisição';
-    try {
-      const data = (await res.json()) as { message?: string };
-      if (data.message) message = data.message;
-    } catch {
-      // resposta sem corpo
+  if (res.status === 403 && reauthHandler && !options._skipRefresh) {
+    const erro = await erroDaResposta(res.clone());
+    if (erro.code === 'reauth_required') {
+      if (!(await reauthHandler())) throw erro;
+      res = await doFetch();
     }
-    throw new ApiError(res.status, message);
   }
+
+  if (!res.ok) throw await erroDaResposta(res);
 
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -189,16 +216,7 @@ export async function apiBlobUrl(path: string, options: Omit<ApiOptions, '_skipR
       throw new ApiError(401, 'Sessao expirada');
     }
   }
-  if (!res.ok) {
-    let message = 'Erro na requisição';
-    try {
-      const data = (await res.json()) as { message?: string };
-      if (data.message) message = data.message;
-    } catch {
-      // resposta sem corpo
-    }
-    throw new ApiError(res.status, message);
-  }
+  if (!res.ok) throw await erroDaResposta(res);
   return URL.createObjectURL(await res.blob());
 }
 

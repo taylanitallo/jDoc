@@ -29,6 +29,7 @@ RUN pnpm --filter @jdoc/shared build \
  && pnpm --filter @jdoc/database build \
  && pnpm --filter @jdoc/api build
 
+ENV TZ=America/Fortaleza
 WORKDIR /app/apps/api
 EXPOSE 3333
 CMD ["node", "dist/main.js"]

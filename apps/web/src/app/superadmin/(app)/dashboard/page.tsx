@@ -25,6 +25,7 @@ import { EmptyState } from '@/components/empty-state';
 import { useToast } from '@/components/toast';
 import { EditModal, QuotaModal } from '@/components/superadmin/tenant-modals';
 import { TenantManageModal } from '@/components/superadmin/tenant-manage-modal';
+import { fmtDate } from '@/lib/format';
 
 export default function SuperadminDashboardPage() {
   const qc = useQueryClient();
@@ -148,7 +149,7 @@ export default function SuperadminDashboardPage() {
                 </div>
 
                 <p className="mb-2 text-[11px] text-ink-500">
-                  Criado em {new Date(t.criadoEm).toLocaleDateString('pt-BR')}
+                  Criado em {fmtDate(t.criadoEm)}
                 </p>
 
                 <UsageBar percent={t.usoPercent} />

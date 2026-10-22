@@ -50,7 +50,7 @@ async function carimbar(pdf: PDFDocument, d: DadosCarimbo): Promise<Buffer> {
   const qrPng = await QRCode.toBuffer(d.urlVerificacao, { errorCorrectionLevel: 'M', margin: 1, width: 256 });
   const qr = await pdf.embedPng(qrPng);
 
-  const dataBr = (dt: Date) => dt.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  const dataBr = (dt: Date) => dt.toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' });
   const linha1 = textoSeguro(
     bold,
     `Cópia autenticada — ${d.orgao} — documento arquivado em ${dataBr(d.arquivadoEm)} — emitida em ${dataBr(d.emitidaEm)}`,

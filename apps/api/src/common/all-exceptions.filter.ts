@@ -8,6 +8,22 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
+const CODIGOS: Record<number, string> = {
+  400: 'dados_invalidos',
+  401: 'nao_autenticado',
+  403: 'acesso_negado',
+  404: 'nao_encontrado',
+  409: 'conflito',
+  413: 'arquivo_grande',
+  423: 'conta_bloqueada',
+  429: 'muitas_tentativas',
+  503: 'indisponivel',
+};
+
+function codigoPadrao(status: number): string {
+  return CODIGOS[status] ?? (status >= 500 ? 'erro_interno' : 'erro');
+}
+
 /**
  * Filtro global de excecoes.
  * - Nao vaza stack trace nem detalhes internos ao cliente.
@@ -37,9 +53,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
       );
     }
 
+    // Formato do padrao: `{ error, code }` em pt-BR. `message` continua para
+    // nao quebrar quem ja le esse campo.
+    const message = Array.isArray(body.message) ? body.message.join('; ') : body.message;
     res.status(status).json({
       statusCode: status,
       ...body,
+      error: typeof message === 'string' ? message : 'Erro interno',
+      code: typeof body.code === 'string' ? body.code : codigoPadrao(status),
       timestamp: new Date().toISOString(),
     });
   }

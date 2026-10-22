@@ -6,6 +6,7 @@ import { ShieldAlert } from 'lucide-react';
 import type { TenantOverview } from '@jdoc/shared';
 import { api } from '@/lib/api';
 import { Badge, cardCls, inputCls, labelCls, Pagination, SelectMenu } from '@/components/ui';
+import { fmtDateTime } from '@/lib/format';
 
 interface LogItem {
   id: string;
@@ -197,7 +198,7 @@ export default function LogsPage() {
                   }`}
                 >
                   <td className="whitespace-nowrap px-4 py-3 text-ink-500">
-                    {new Date(log.criado_em).toLocaleString('pt-BR')}
+                    {fmtDateTime(log.criado_em)}
                   </td>
                   <td className="px-4 py-3">
                     <span className="flex items-center gap-1.5">

@@ -140,7 +140,7 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
       {
         repeat: {
           pattern: cronPatternFor(settings.frequencia, settings.hora),
-          tz: 'America/Sao_Paulo',
+          tz: 'America/Fortaleza',
           key: repeatableJobId(tenantId),
         },
         jobId: repeatableJobId(tenantId),

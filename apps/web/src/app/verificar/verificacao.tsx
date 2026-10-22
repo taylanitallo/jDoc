@@ -14,6 +14,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { Button, inputClasses, labelClasses } from '@/components/ui';
+import { fmtDate } from '@/lib/format';
 
 /** Moldura publica: tela clara do Design System, sem login. */
 export function MolduraPublica({ children }: { children: ReactNode }) {
@@ -100,7 +101,7 @@ async function sha256(file: File): Promise<string> {
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-const fmtData = (iso: string | null) => (iso ? new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('pt-BR') : '—');
+const fmtData = (iso: string | null) => fmtDate(iso, '—');
 
 export function ResultadoVerificacao({ codigo }: { codigo: string }) {
   const [dados, setDados] = useState<VerificacaoPublica | null>(null);

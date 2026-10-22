@@ -41,6 +41,14 @@ const envSchema = z.object({
     .transform((v) => v === '1' || v === 'true'),
   /** Base publica da API (para montar signed URLs locais). */
   API_PUBLIC_URL: z.string().url().default('http://localhost:3333'),
+
+  /**
+   * Chave (32 bytes em base64) que cifra os segredos guardados no banco.
+   * Ausente = chave derivada do COOKIE_SECRET (ver common/crypto.ts).
+   */
+  ENCRYPTION_KEY: z.string().min(1).optional(),
+  /** Requisicoes acima disto (ms) entram no monitoramento de lentidao. */
+  SLOW_REQUEST_MS: z.coerce.number().int().positive().default(1000),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;

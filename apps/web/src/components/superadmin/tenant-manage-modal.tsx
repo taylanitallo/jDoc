@@ -24,6 +24,7 @@ import { api, ApiError } from '@/lib/api';
 import { restoreTenantBackup } from '@/lib/upload';
 import { Badge, Modal, btnGhost, btnPrimary, cardCls, formatBytes, inputCls, labelCls, SelectMenu } from '@/components/ui';
 import { useToast } from '@/components/toast';
+import { fmtDateTime } from '@/lib/format';
 
 const TABS = [
   { key: 'backup', label: 'Backup', icon: DatabaseBackup },
@@ -147,7 +148,7 @@ function BackupTab({ tenant }: { tenant: TenantOverview }) {
         </div>
         <div className={`${cardCls} p-3 text-center`}>
           <p className="text-sm font-bold text-ink-800">
-            {ultimo ? new Date(ultimo.concluidoEm ?? ultimo.criadoEm).toLocaleString('pt-BR') : '—'}
+            {ultimo ? fmtDateTime(ultimo.concluidoEm ?? ultimo.criadoEm) : '—'}
           </p>
           <p className="label-caps">Último backup</p>
         </div>
@@ -194,7 +195,7 @@ function BackupTab({ tenant }: { tenant: TenantOverview }) {
                 </span>
               </div>
               <p className="mt-0.5 text-[11px] text-ink-500">
-                {new Date(b.criadoEm).toLocaleString('pt-BR')}
+                {fmtDateTime(b.criadoEm)}
               </p>
             </div>
             <div className="flex shrink-0 gap-1">
@@ -265,7 +266,7 @@ function AgendamentoTab({ tenant }: { tenant: TenantOverview }) {
         <div className="space-y-1 text-xs text-ink-500">
           <p>
             <span className="font-bold text-ink-800">Próximo backup: </span>
-            {data?.proximoBackup ? new Date(data.proximoBackup).toLocaleString('pt-BR') : '—'}
+            {data?.proximoBackup ? fmtDateTime(data.proximoBackup) : '—'}
           </p>
         </div>
         <button type="button" className={btnGhost} disabled={gerarAgora.isPending} onClick={() => gerarAgora.mutate()}>
@@ -360,7 +361,7 @@ function LogsTab({ tenant }: { tenant: TenantOverview }) {
           <div className="flex items-center gap-2">
             <Badge color="blue">{l.action.toUpperCase()}</Badge>
             <span className="text-[11px] text-ink-500">
-              {new Date(l.criado_em).toLocaleString('pt-BR')}
+              {fmtDateTime(l.criado_em)}
             </span>
           </div>
           {l.metadata && (
