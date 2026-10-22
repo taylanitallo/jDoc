@@ -2,236 +2,232 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ShieldAlert } from 'lucide-react';
-import type { TenantOverview } from '@jdoc/shared';
+import { ScrollText } from 'lucide-react';
+import {
+  ROTULOS_ACAO,
+  descreverLog,
+  mudancasDoLog,
+  valorLegivel,
+  type AdminEquipe,
+  type LogRegistro,
+  type TenantOverview,
+} from '@jdoc/shared';
 import { api } from '@/lib/api';
-import { Badge, cardCls, inputCls, labelCls, Pagination, SelectMenu } from '@/components/ui';
-import { fmtDateTime } from '@/lib/format';
+import { fmtDateTime, todayFortaleza } from '@/lib/format';
+import { Field, Input, Modal, PageHeader, Pagination, Select, Tabs, Card } from '@/components/ui';
+import { SkeletonTable } from '@/components/skeleton';
+import { EmptyState } from '@/components/empty-state';
+import { usePode } from '@/components/platform/admin-context';
 
-interface LogItem {
-  id: string;
-  actor_id: string | null;
-  actor_type?: string;
-  action: string;
-  target_tenant_id?: string | null;
-  resource_type?: string | null;
-  ip: string | null;
-  metadata: Record<string, unknown> | null;
-  criado_em: string;
-}
+const POR_PAGINA = 30;
+type Escopo = 'plataforma' | 'orgao';
 
-interface LogPage {
-  items: LogItem[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+/** Dia de Fortaleza -> inicio/fim do dia (Fortaleza) em ISO. */
+const limite = (d: string, fim: boolean) => new Date(`${d}T${fim ? '23:59:59' : '00:00:00'}-03:00`).toISOString();
 
-const SECURITY_ACTIONS = new Set([
-  'cross_tenant_attempt',
-  'cross_tenant_refresh_attempt',
-  'refresh_reuse_or_invalid',
-  'superadmin_login_failed',
-  'superadmin_refresh_reuse_or_invalid',
-  'login_failed',
-]);
+/** Metadados legiveis (motivo, quantidades...), nunca o JSON cru. */
+const META_LABEL: Record<string, string> = {
+  motivo: 'Motivo',
+  email: 'E-mail informado',
+  reason: 'Motivo da recusa',
+  quantidade: 'Quantidade',
+  orgaosAlterados: 'Órgãos alterados',
+  aplicadas: 'Correções aplicadas',
+  falhas: 'Falhas',
+  emailEnviado: 'E-mail enviado',
+  porEmail: 'Por e-mail',
+  expiraEm: 'Válido até',
+  sessoesEncerradas: 'Sessões encerradas',
+  encerradas: 'Sessões encerradas',
+  maisAntigosQueDias: 'Mais antigos que (dias)',
+  via: 'Por meio de',
+  origem: 'Origem',
+};
+const RAZAO: Record<string, string> = { credentials: 'e-mail ou senha incorretos', totp_invalid: 'código do autenticador errado' };
 
 export default function LogsPage() {
-  const [scope, setScope] = useState<'global' | 'tenant'>('global');
+  const owner = usePode('owner');
+  const [escopo, setEscopo] = useState<Escopo>('plataforma');
   const [tenantId, setTenantId] = useState('');
-  const [de, setDe] = useState('');
-  const [ate, setAte] = useState('');
-  const [action, setAction] = useState('');
-  const [ip, setIp] = useState('');
-  const [page, setPage] = useState(1);
+  const [acao, setAcao] = useState('');
+  const [adminId, setAdminId] = useState('');
+  const [de, setDe] = useState(() => todayFortaleza(new Date(Date.now() - 7 * 86_400_000)));
+  const [ate, setAte] = useState(todayFortaleza());
+  const [pagina, setPagina] = useState(1);
+  const [aberto, setAberto] = useState<LogRegistro | null>(null);
 
-  const { data: tenants } = useQuery({
-    queryKey: ['sa-tenants'],
-    queryFn: () => api<TenantOverview[]>('/superadmin/tenants'),
+  const { data: orgaos } = useQuery({ queryKey: ['sa-tenants'], queryFn: () => api<TenantOverview[]>('/superadmin/tenants') });
+  const { data: equipe } = useQuery({ queryKey: ['superadmin', 'equipe'], queryFn: () => api<AdminEquipe[]>('/superadmin/admins'), enabled: owner });
+
+  const qs = new URLSearchParams({
+    page: String(pagina),
+    pageSize: String(POR_PAGINA),
+    de: limite(de, false),
+    ate: limite(ate, true),
+    ...(acao ? { action: acao } : {}),
+    ...(escopo === 'plataforma' && tenantId ? { tenantId } : {}),
+    ...(escopo === 'plataforma' && adminId ? { actorId: adminId } : {}),
   });
-
-  const params = new URLSearchParams();
-  if (de) params.set('de', new Date(de).toISOString());
-  if (ate) params.set('ate', new Date(ate).toISOString());
-  if (action) params.set('action', action);
-  if (ip) params.set('ip', ip);
-  params.set('page', String(page));
-  params.set('pageSize', '25');
-
-  const path =
-    scope === 'global'
-      ? `/superadmin/logs/global?${params}`
-      : `/superadmin/tenants/${tenantId}/logs?${params}`;
-
+  const url = escopo === 'plataforma' ? `/superadmin/logs/global?${qs}` : `/superadmin/tenants/${tenantId}/logs?${qs}`;
   const { data, isLoading } = useQuery({
-    queryKey: ['sa-logs', scope, tenantId, de, ate, action, ip, page],
-    queryFn: () => api<LogPage>(path),
-    enabled: scope === 'global' || !!tenantId,
+    queryKey: ['sa-logs', url],
+    queryFn: () => api<{ items: LogRegistro[]; total: number }>(url),
+    enabled: escopo === 'plataforma' || !!tenantId,
   });
-
+  const filtro = <T,>(f: (v: T) => void) => (v: T) => {
+    f(v);
+    setPagina(1);
+  };
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-extrabold tracking-tight text-ink-900 sm:text-2xl">Logs de Auditoria</h1>
+      <PageHeader
+        title="Logs"
+        description="Tudo o que a equipe fez na plataforma e o que aconteceu dentro de cada órgão, em português claro."
+        actions={
+          <Tabs<Escopo>
+            value={escopo}
+            onChange={filtro(setEscopo)}
+            items={[
+              { id: 'plataforma', label: 'Plataforma' },
+              { id: 'orgao', label: 'Dentro de um órgão' },
+            ]}
+          />
+        }
+      />
 
-      {/* Filtros */}
-      <div className={`${cardCls} p-4`}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:grid-cols-6">
-          <div>
-            <label className={labelCls} htmlFor="l-scope">Escopo</label>
-            <SelectMenu
-              id="l-scope"
-              className={inputCls}
-              value={scope}
-              onChange={(e) => {
-                setScope(e.target.value as 'global' | 'tenant');
-                setPage(1);
-              }}
-            >
-              <option value="global">Global (segurança)</option>
-              <option value="tenant">Por órgão</option>
-            </SelectMenu>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <Field label="Órgão" htmlFor="lg-org">
+          <Select id="lg-org" value={tenantId} onChange={(e) => filtro(setTenantId)(e.target.value)}>
+            <option value="">{escopo === 'plataforma' ? 'Todos' : 'Escolha o órgão'}</option>
+            {(orgaos ?? []).map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.nome}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {escopo === 'plataforma' && (
+          <Field label="Ação" htmlFor="lg-acao">
+            <Select id="lg-acao" value={acao} onChange={(e) => filtro(setAcao)(e.target.value)}>
+              <option value="">Todas</option>
+              {Object.entries(ROTULOS_ACAO).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {escopo === 'plataforma' && owner && (
+          <Field label="Pessoa da equipe" htmlFor="lg-adm">
+            <Select id="lg-adm" value={adminId} onChange={(e) => filtro(setAdminId)(e.target.value)}>
+              <option value="">Todas</option>
+              {(equipe ?? []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.nome}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        <Field label="De" htmlFor="lg-de">
+          <Input id="lg-de" type="date" value={de} max={ate} onChange={(e) => filtro(setDe)(e.target.value)} />
+        </Field>
+        <Field label="Até" htmlFor="lg-ate">
+          <Input id="lg-ate" type="date" value={ate} min={de} onChange={(e) => filtro(setAte)(e.target.value)} />
+        </Field>
+      </div>
+
+      {escopo === 'orgao' && !tenantId ? (
+        <EmptyState icon={ScrollText} title="Escolha um órgão" description="Os registros de cada órgão ficam no banco dele." />
+      ) : isLoading ? (
+        <SkeletonTable rows={8} columns={3} label="Carregando registros" />
+      ) : !data?.items.length ? (
+        <EmptyState icon={ScrollText} title="Nenhum registro" description="Ajuste os filtros ou o período." />
+      ) : (
+        <Card className="overflow-hidden">
+          <ul className="divide-y divide-ink-100">
+            {data.items.map((l) => (
+              <li key={l.id}>
+                <button type="button" onClick={() => setAberto(l)} className="flex w-full flex-col gap-0.5 px-5 py-3 text-left transition hover:bg-ink-50/60 sm:flex-row sm:items-center sm:gap-4">
+                  <span className="w-36 shrink-0 text-xs tabular-nums text-ink-500">{fmtDateTime(l.criadoEm)}</span>
+                  <span className="min-w-0 flex-1 text-sm text-ink-800">{descreverLog(l)}</span>
+                  {escopo === 'plataforma' && l.orgao && <span className="shrink-0 text-xs text-ink-500">{l.orgao}</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="border-t border-ink-100 px-4 py-3">
+            <Pagination page={pagina} pageSize={POR_PAGINA} total={data.total} onPageChange={setPagina} />
           </div>
-          {scope === 'tenant' && (
-            <div>
-              <label className={labelCls} htmlFor="l-tenant">Órgão</label>
-              <SelectMenu
-                id="l-tenant"
-                className={inputCls}
-                value={tenantId}
-                onChange={(e) => {
-                  setTenantId(e.target.value);
-                  setPage(1);
-                }}
-              >
-                <option value="">Selecione…</option>
-                {tenants?.map((t) => (
-                  <option key={t.id} value={t.id}>{t.nome}</option>
+        </Card>
+      )}
+
+      <DetalheLog log={aberto} onFechar={() => setAberto(null)} />
+    </div>
+  );
+}
+
+function DetalheLog({ log, onFechar }: { log: LogRegistro | null; onFechar: () => void }) {
+  if (!log) return null;
+  const mudancas = mudancasDoLog(log);
+  const meta = Object.entries(log.metadata ?? {}).filter(([k, v]) => k in META_LABEL && v !== null && v !== '' && typeof v !== 'object');
+  const imp = (log.metadata?.impersonacao ?? null) as { adminNome?: string; motivo?: string } | null;
+  return (
+    <Modal open onClose={onFechar} title="Detalhe do registro" subtitle={fmtDateTime(log.criadoEm)} size="lg">
+      <div className="space-y-4">
+        <p className="text-sm font-semibold text-ink-900">{descreverLog(log)}</p>
+        {imp && (
+          <p className="rounded-[10px] bg-warning-50 px-3 py-2 text-sm text-warning-600">
+            Feito em "entrar como" por {imp.adminNome} — motivo: {imp.motivo}
+          </p>
+        )}
+        {mudancas.length > 0 && (
+          <div className="overflow-x-auto rounded-[12px] border border-ink-200">
+            <table className="w-full text-sm">
+              <thead className="border-b border-ink-200 bg-ink-50/60 text-left">
+                <tr>
+                  <th className="px-3 py-2 label-caps">Campo</th>
+                  <th className="px-3 py-2 label-caps">Antes</th>
+                  <th className="px-3 py-2 label-caps">Depois</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-100">
+                {mudancas.map((m) => (
+                  <tr key={m.campo}>
+                    <td className="px-3 py-2 font-medium text-ink-700">{m.campo}</td>
+                    <td className="px-3 py-2 text-ink-500 line-through decoration-ink-300">{m.antes}</td>
+                    <td className="px-3 py-2 text-ink-900">{m.depois}</td>
+                  </tr>
                 ))}
-              </SelectMenu>
+              </tbody>
+            </table>
+          </div>
+        )}
+        <dl className="grid gap-3 text-sm sm:grid-cols-2">
+          {log.orgao && (
+            <div>
+              <dt className="label-caps">Órgão</dt>
+              <dd className="text-ink-800">{log.orgao}</dd>
             </div>
           )}
-          <div>
-            <label className={labelCls} htmlFor="l-de">De</label>
-            <input
-              id="l-de"
-              type="date"
-              className={inputCls}
-              value={de}
-              onChange={(e) => {
-                setDe(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
-          <div>
-            <label className={labelCls} htmlFor="l-ate">Até</label>
-            <input
-              id="l-ate"
-              type="date"
-              className={inputCls}
-              value={ate}
-              onChange={(e) => {
-                setAte(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
-          <div>
-            <label className={labelCls} htmlFor="l-action">Ação</label>
-            <input
-              id="l-action"
-              className={inputCls}
-              placeholder="ex.: login_failed"
-              value={action}
-              onChange={(e) => {
-                setAction(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
-          <div>
-            <label className={labelCls} htmlFor="l-ip">IP</label>
-            <input
-              id="l-ip"
-              className={inputCls}
-              placeholder="ex.: 10.0.0.1"
-              value={ip}
-              onChange={(e) => {
-                setIp(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
-        </div>
+          {log.ip && (
+            <div>
+              <dt className="label-caps">IP</dt>
+              <dd className="font-mono text-xs text-ink-800">{log.ip}</dd>
+            </div>
+          )}
+          {meta.map(([k, v]) => (
+            <div key={k}>
+              <dt className="label-caps">{META_LABEL[k]}</dt>
+              <dd className="text-ink-800">
+                {k === 'reason' ? (RAZAO[String(v)] ?? 'recusado') : k === 'expiraEm' ? fmtDateTime(String(v)) : valorLegivel(k, v)}
+              </dd>
+            </div>
+          ))}
+        </dl>
       </div>
-
-      {/* Tabela */}
-      <div className={`${cardCls} overflow-x-auto`}>
-        <table className="w-full text-left text-sm">
-          <thead className="bg-ink-50/60">
-            <tr className="border-b border-ink-200 label-caps">
-              <th className="px-4 py-3">Quando</th>
-              <th className="px-4 py-3">Ação</th>
-              <th className="px-4 py-3">Ator</th>
-              <th className="px-4 py-3">IP</th>
-              <th className="px-4 py-3">Detalhes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && (
-              <tr>
-                <td colSpan={5} className="px-4 py-3">
-                  <div className="h-6 animate-pulse rounded bg-ink-100" />
-                </td>
-              </tr>
-            )}
-            {data?.items.map((log) => {
-              const isSecurity = SECURITY_ACTIONS.has(log.action);
-              return (
-                <tr
-                  key={log.id}
-                  className={`border-b border-ink-200 ${
-                    isSecurity
-                      ? 'bg-danger-50/60'
-                      : 'hover:bg-ink-50'
-                  }`}
-                >
-                  <td className="whitespace-nowrap px-4 py-3 text-ink-500">
-                    {fmtDateTime(log.criado_em)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="flex items-center gap-1.5">
-                      {isSecurity && (
-                        <ShieldAlert className="h-4 w-4 text-danger-500" aria-hidden />
-                      )}
-                      <Badge color={isSecurity ? 'red' : 'blue'}>{log.action}</Badge>
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-ink-500">
-                    {log.actor_type ? `${log.actor_type}: ` : ''}
-                    {log.actor_id ? `${log.actor_id.slice(0, 8)}…` : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-ink-500">{log.ip ?? '—'}</td>
-                  <td className="max-w-xs truncate px-4 py-3 text-xs text-ink-500">
-                    {log.metadata ? JSON.stringify(log.metadata) : '—'}
-                  </td>
-                </tr>
-              );
-            })}
-            {data?.items.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-ink-500">
-                  Nenhum log encontrado com esses filtros.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Paginacao */}
-      {data && <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPageChange={setPage} />}
-    </div>
+    </Modal>
   );
 }

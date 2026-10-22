@@ -140,6 +140,7 @@ export const logsQuerySchema = z
     ate: z.coerce.date().optional(),
     action: z.string().max(80).optional(),
     actorId: z.string().uuid().optional(),
+    tenantId: z.string().uuid().optional(),
     ip: z.string().max(45).optional(),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(25),

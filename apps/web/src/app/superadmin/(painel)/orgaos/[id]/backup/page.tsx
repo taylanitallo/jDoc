@@ -4,7 +4,8 @@ import { useParams } from 'next/navigation';
 import { CalendarClock, DatabaseBackup, Upload } from 'lucide-react';
 import { Card, CardHeader } from '@/components/ui';
 import { Skeleton } from '@/components/skeleton';
-import { AgendamentoTab, BackupTab, RestaurarTab } from '@/components/superadmin/tenant-manage-modal';
+import { AgendamentoTab, BackupTab } from '@/components/superadmin/tenant-manage-modal';
+import { RestaurarArquivo } from '@/components/platform/restauracao';
 import { useOrgao } from '@/components/platform/orgao-ui';
 import { usePode } from '@/components/platform/admin-context';
 
@@ -29,9 +30,9 @@ export default function OrgaoBackupPage() {
       </Card>
       {owner && (
         <Card>
-          <CardHeader icon={Upload} title="Restaurar" description="Só proprietário, com confirmação de identidade. Antes é feito um backup de segurança." />
+          <CardHeader icon={Upload} title="Restaurar" description="Enviando um arquivo próprio. Para voltar a um backup da lista, use a tela Backups." />
           <div className="p-5">
-            <RestaurarTab tenant={t} />
+            <RestaurarArquivo tenantId={t.id} nomeOrgao={t.nome} />
           </div>
         </Card>
       )}

@@ -139,7 +139,7 @@ export function restoreTenantBackup(
   tenantId: string,
   file: File,
   onProgress: (percent: number) => void,
-): Promise<{ ok: true; body: unknown } | { ok: false; status: number; message: string }> {
+): Promise<{ ok: true; body: unknown } | { ok: false; status: number; message: string; code?: string }> {
   return new Promise((resolvePromise) => {
     const form = new FormData();
     form.append('tenantId', tenantId);
@@ -164,9 +164,9 @@ export function restoreTenantBackup(
       if (xhr.status >= 200 && xhr.status < 300) {
         resolvePromise({ ok: true, body });
       } else {
-        const message =
-          (body as { message?: string } | null)?.message ?? 'Falha ao enviar arquivo de restauração';
-        resolvePromise({ ok: false, status: xhr.status, message });
+        const b = body as { message?: string; error?: string; code?: string } | null;
+        const message = b?.error ?? b?.message ?? 'Falha ao enviar arquivo de restauração';
+        resolvePromise({ ok: false, status: xhr.status, message, code: b?.code });
       }
     };
     xhr.onerror = () =>

@@ -65,6 +65,11 @@ export function setReauthHandler(fn: (() => Promise<boolean>) | null): void {
   reauthHandler = fn;
 }
 
+/** Para envios fora do `api()` (upload com progresso): abre o "Confirme sua identidade". */
+export function pedirReauth(): Promise<boolean> {
+  return reauthHandler ? reauthHandler() : Promise.resolve(false);
+}
+
 /** Infere o slug do tenant a partir do path `/t/<slug>/...`. */
 function inferTenantSlug(path: string): string | null {
   const match = path.match(/^\/t\/([^/]+)\//);

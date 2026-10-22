@@ -59,6 +59,9 @@ function codigoPadrao(status: number): string {
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('Exception');
 
+  /** Monitoramento de erros (o MetricasService se registra aqui ao subir). */
+  static aoErroInterno: ((req: Request, e: unknown) => void) | null = null;
+
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const res = ctx.getResponse<Response>();
@@ -83,6 +86,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
     // nao quebrar quem ja le esse campo.
     const bruta = Array.isArray(body.message) ? body.message.join('; ') : body.message;
     const message = typeof bruta === 'string' ? traduzir(bruta) : bruta;
+    if (status >= 500) AllExceptionsFilter.aoErroInterno?.(req, exception);
+
     res.status(status).json({
       statusCode: status,
       ...body,

@@ -31,6 +31,8 @@ import { LegislacaoModule } from './legislacao/legislacao.module';
 import { ThrottlerConfigModule } from './common/throttler.module';
 import { IntegracoesModule } from './integracoes/integracoes.module';
 import { EmailModule } from './email/email.service';
+import { JobsModule } from './operacao/jobs.module';
+import { OperacaoModule } from './operacao/operacao.module';
 import { HealthController } from './health.controller';
 import { TenantsPublicController } from './tenants-public.controller';
 
@@ -42,12 +44,14 @@ import { TenantsPublicController } from './tenants-public.controller';
     AuditModule,
     IntegracoesModule,
     EmailModule,
+    JobsModule,
     TenancyModule,
     ProvisioningModule,
     AuthModule,
     SuperadminAuthModule,
     SuperadminModule,
     BackupsModule,
+    OperacaoModule,
     StorageModule,
     DocumentsModule,
     SignatureModule,

@@ -29,3 +29,5 @@ export * from './tema.js';
 export * from './plataforma.js';
 export * from './catalogo.js';
 export * from './integracoes.js';
+export * from './operacao.js';
+export * from './logs.js';

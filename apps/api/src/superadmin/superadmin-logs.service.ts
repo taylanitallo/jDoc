@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import type { LogsQuery, MasterDashboard } from '@jdoc/shared';
+import type { LogRegistro, LogsQuery, MasterDashboard } from '@jdoc/shared';
 import { DatabaseService } from '../database/database.service';
 import { SuperadminTenantsService } from './superadmin-tenants.service';
 
 export interface LogPage {
-  items: Array<Record<string, unknown>>;
+  items: LogRegistro[];
   total: number;
   page: number;
   pageSize: number;
@@ -17,71 +17,112 @@ export class SuperadminLogsService {
     private readonly tenants: SuperadminTenantsService,
   ) {}
 
-  /** Logs globais (public.global_audit_logs) com filtros parametrizados. */
+  /** Auditoria da plataforma (public.global_audit_logs), ja no formato que a tela descreve. */
   async globalLogs(q: LogsQuery): Promise<LogPage> {
     const sql = this.db.catalog();
-    const offset = (q.page - 1) * q.pageSize;
-
-    const items = await sql`
-      SELECT id, actor_id, actor_type, action, target_tenant_id, ip, user_agent, metadata, criado_em
-      FROM public.global_audit_logs
-      WHERE (${q.de ?? null}::timestamptz IS NULL OR criado_em >= ${q.de ?? null})
-        AND (${q.ate ?? null}::timestamptz IS NULL OR criado_em <= ${q.ate ?? null})
-        AND (${q.action ?? null}::varchar IS NULL OR action = ${q.action ?? null})
-        AND (${q.actorId ?? null}::uuid IS NULL OR actor_id = ${q.actorId ?? null})
-        AND (${q.ip ?? null}::varchar IS NULL OR ip = ${q.ip ?? null})
-      ORDER BY criado_em DESC
-      LIMIT ${q.pageSize} OFFSET ${offset}
+    const filtro = sql`
+      WHERE (${q.de ?? null}::timestamptz IS NULL OR g.criado_em >= ${q.de ?? null})
+        AND (${q.ate ?? null}::timestamptz IS NULL OR g.criado_em <= ${q.ate ?? null})
+        AND (${q.action ?? null}::varchar IS NULL OR g.action = ${q.action ?? null})
+        AND (${q.actorId ?? null}::uuid IS NULL OR g.actor_id = ${q.actorId ?? null})
+        AND (${q.tenantId ?? null}::uuid IS NULL OR g.target_tenant_id = ${q.tenantId ?? null})
+        AND (${q.ip ?? null}::varchar IS NULL OR g.ip = ${q.ip ?? null})
     `;
-    const totalRows = await sql<Array<{ total: string }>>`
-      SELECT COUNT(*)::bigint AS total
-      FROM public.global_audit_logs
-      WHERE (${q.de ?? null}::timestamptz IS NULL OR criado_em >= ${q.de ?? null})
-        AND (${q.ate ?? null}::timestamptz IS NULL OR criado_em <= ${q.ate ?? null})
-        AND (${q.action ?? null}::varchar IS NULL OR action = ${q.action ?? null})
-        AND (${q.actorId ?? null}::uuid IS NULL OR actor_id = ${q.actorId ?? null})
-        AND (${q.ip ?? null}::varchar IS NULL OR ip = ${q.ip ?? null})
+    const rows = await sql<
+      Array<{
+        id: string;
+        criado_em: Date;
+        action: string;
+        actor_type: string;
+        admin_name: string | null;
+        orgao: string | null;
+        entity: string | null;
+        entity_id: string | null;
+        changes: unknown;
+        metadata: unknown;
+        ip: string | null;
+      }>
+    >`
+      SELECT g.id::text, g.criado_em, g.action, g.actor_type, coalesce(g.admin_name, a.nome) AS admin_name, t.nome AS orgao,
+        g.entity, g.entity_id, g.changes, g.metadata, g.ip
+      FROM public.global_audit_logs g
+      LEFT JOIN public.tenants t ON t.id = g.target_tenant_id
+      LEFT JOIN public.superadmins a ON a.id = g.actor_id
+      ${filtro}
+      ORDER BY g.criado_em DESC LIMIT ${q.pageSize} OFFSET ${(q.page - 1) * q.pageSize}
     `;
+    const [t] = await sql<Array<{ n: number }>>`SELECT count(*)::int AS n FROM public.global_audit_logs g ${filtro}`;
     return {
-      items: items as unknown as Array<Record<string, unknown>>,
-      total: Number(totalRows[0]?.total ?? 0),
+      items: rows.map((r) => ({
+        id: r.id,
+        criadoEm: r.criado_em.toISOString(),
+        action: r.action,
+        actorType: r.actor_type,
+        adminName: r.admin_name,
+        orgao: r.orgao,
+        entity: r.entity,
+        entityId: r.entity_id,
+        changes: json(r.changes) as LogRegistro['changes'],
+        metadata: json(r.metadata) as LogRegistro['metadata'],
+        ip: r.ip,
+      })),
+      total: t?.n ?? 0,
       page: q.page,
       pageSize: q.pageSize,
     };
   }
 
-  /** Logs de um tenant especifico (schema do tenant). */
+  /** Auditoria de um orgao (schema dele): o "quem" e o usuario do orgao. */
   async tenantLogs(tenantId: string, q: LogsQuery): Promise<LogPage> {
     const tenant = await this.tenants.getById(tenantId);
     const sql = this.db.tenant(tenant.schema_name);
-    const offset = (q.page - 1) * q.pageSize;
-
-    const items = await sql`
-      SELECT id, actor_id, action, resource_type, resource_id, ip, user_agent, metadata, criado_em
-      FROM audit_logs
-      WHERE (${q.de ?? null}::timestamptz IS NULL OR criado_em >= ${q.de ?? null})
-        AND (${q.ate ?? null}::timestamptz IS NULL OR criado_em <= ${q.ate ?? null})
-        AND (${q.action ?? null}::varchar IS NULL OR action = ${q.action ?? null})
-        AND (${q.actorId ?? null}::uuid IS NULL OR actor_id = ${q.actorId ?? null})
-        AND (${q.ip ?? null}::varchar IS NULL OR ip = ${q.ip ?? null})
-      ORDER BY criado_em DESC
-      LIMIT ${q.pageSize} OFFSET ${offset}
+    const filtro = sql`
+      WHERE (${q.de ?? null}::timestamptz IS NULL OR l.criado_em >= ${q.de ?? null})
+        AND (${q.ate ?? null}::timestamptz IS NULL OR l.criado_em <= ${q.ate ?? null})
+        AND (${q.action ?? null}::varchar IS NULL OR l.action = ${q.action ?? null})
+        AND (${q.actorId ?? null}::uuid IS NULL OR l.actor_id = ${q.actorId ?? null})
+        AND (${q.ip ?? null}::varchar IS NULL OR l.ip = ${q.ip ?? null})
     `;
-    const totalRows = await sql<Array<{ total: string }>>`
-      SELECT COUNT(*)::bigint AS total
-      FROM audit_logs
-      WHERE (${q.de ?? null}::timestamptz IS NULL OR criado_em >= ${q.de ?? null})
-        AND (${q.ate ?? null}::timestamptz IS NULL OR criado_em <= ${q.ate ?? null})
-        AND (${q.action ?? null}::varchar IS NULL OR action = ${q.action ?? null})
-        AND (${q.actorId ?? null}::uuid IS NULL OR actor_id = ${q.actorId ?? null})
-        AND (${q.ip ?? null}::varchar IS NULL OR ip = ${q.ip ?? null})
+    const rows = await sql<
+      Array<{ id: string; criado_em: Date; action: string; nome: string | null; resource_type: string | null; resource_id: string | null; metadata: unknown; ip: string | null }>
+    >`
+      SELECT l.id::text, l.criado_em, l.action, u.nome, l.resource_type, l.resource_id, l.metadata, l.ip
+      FROM audit_logs l LEFT JOIN users u ON u.id = l.actor_id
+      ${filtro}
+      ORDER BY l.criado_em DESC LIMIT ${q.pageSize} OFFSET ${(q.page - 1) * q.pageSize}
     `;
+    const [t] = await sql<Array<{ n: number }>>`SELECT count(*)::int AS n FROM audit_logs l ${filtro}`;
     return {
-      items: items as unknown as Array<Record<string, unknown>>,
-      total: Number(totalRows[0]?.total ?? 0),
+      items: rows.map((r) => {
+        const meta = json(r.metadata) as Record<string, unknown> | null;
+        return {
+          id: r.id,
+          criadoEm: r.criado_em.toISOString(),
+          action: r.action,
+          actorType: 'usuario',
+          adminName: r.nome,
+          orgao: tenant.nome,
+          entity: r.resource_type,
+          entityId: r.resource_id,
+          changes: null,
+          metadata: meta,
+          ip: r.ip,
+        };
+      }),
+      total: t?.n ?? 0,
       page: q.page,
       pageSize: q.pageSize,
     };
+  }
+}
+
+/** jsonb gravado como texto (versoes antigas) ou objeto. */
+function json(v: unknown): unknown {
+  if (typeof v !== 'string') return v ?? null;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return null;
   }
 }
 
