@@ -7,7 +7,7 @@ Adaptações do padrão já decididas para este projeto:
 - Sessão do superadmin: JWT de acesso + refresh rotativo no Redis; `platform.admin_sessions` guarda uma linha por família de refresh (listar/encerrar sessões e `reauth_until`).
 - Gráficos usam `apps/web/src/components/charts.tsx` (SVG próprio), não recharts.
 - Mudanças de banco: novo arquivo em `packages/database/migrations/catalogo/` (catálogo e schema `platform`) ou `packages/database/migrations/orgao/` (roda em cada schema de órgão). Nunca editar migração já aplicada.
-- Datas no front sempre por `apps/web/src/lib/format.ts`; na API, `FUSO_ORGAO` de `@jdoc/shared` (America/Fortaleza).
+- Datas no front sempre por `apps/web/src/lib/format.ts`; na API, `FUSO_ORGAO` de `@jdoc/shared` (America/Fortaleza). No SQL, use `AT TIME ZONE 'America/Fortaleza'` explícito: a conexão fica no fuso padrão do banco, porque mudar o fuso da sessão desloca datas gravadas a partir de `Date` do Node.
 
 Commits e push sempre como o usuário git `taylanitallo` (a Vercel bloqueia deploy de outro autor).
 Instalar dependências com `npx pnpm@11.9.0 install` (o lockfile exige pnpm 11).

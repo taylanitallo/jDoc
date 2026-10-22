@@ -100,6 +100,9 @@ describe('Equipe da plataforma', () => {
     expect(r.body.error).toBe('Conta bloqueada temporariamente.');
     const ttl = await redis.ttl(`bf:acct:sa:${BLOQUEAR}:lock`);
     expect(ttl).toBeGreaterThan(14 * 60);
+    // O IP do teste tambem foi bloqueado pelas 5 falhas: libera para os proximos testes.
+    const ips = await redis.keys('bf:ip:*');
+    if (ips.length) await redis.del(...ips);
   });
 
   it('acao critica pede reautenticacao e funciona depois dela', async () => {

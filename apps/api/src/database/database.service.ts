@@ -1,6 +1,6 @@
 import { Global, Module, Injectable, type OnModuleDestroy } from '@nestjs/common';
 import postgres, { type Sql } from 'postgres';
-import { FUSO_ORGAO, SCHEMA_NAME_REGEX } from '@jdoc/shared';
+import { SCHEMA_NAME_REGEX } from '@jdoc/shared';
 import { loadEnv } from '../config/env';
 
 /**
@@ -27,12 +27,18 @@ export class DatabaseService implements OnModuleDestroy {
     this.directString = env.DIRECT_URL ?? env.DATABASE_URL;
   }
 
+  /*
+   * Sem `TimeZone` na conexao, de proposito: datas chegam do Node como
+   * instantes UTC e, com a sessao em Fortaleza, `2024-05-02` gravado numa
+   * coluna `date` virava `2024-05-01`. "Hoje" e prazos usam
+   * `AT TIME ZONE 'America/Fortaleza'` explicito no SQL (FUSO_ORGAO).
+   */
   catalog(): Sql {
     if (!this.catalogPool) {
       this.catalogPool = postgres(this.connString, {
         max: 10,
         prepare: true,
-        connection: { search_path: 'public', TimeZone: FUSO_ORGAO },
+        connection: { search_path: 'public' },
       });
     }
     return this.catalogPool;
@@ -42,7 +48,7 @@ export class DatabaseService implements OnModuleDestroy {
    * Conexao direta (sem pooler) para DDL / provisioning de schema.
    */
   direct(): Sql {
-    return postgres(this.directString, { max: 1, connection: { TimeZone: FUSO_ORGAO } });
+    return postgres(this.directString, { max: 1 });
   }
 
   /**
@@ -59,7 +65,7 @@ export class DatabaseService implements OnModuleDestroy {
       max: 5,
       prepare: true,
       // schemaName ja validado por regex allowlist [a-z0-9_].
-      connection: { search_path: `"${schemaName}"`, TimeZone: FUSO_ORGAO },
+      connection: { search_path: `"${schemaName}"` },
     });
     this.tenantPools.set(schemaName, pool);
     return pool;

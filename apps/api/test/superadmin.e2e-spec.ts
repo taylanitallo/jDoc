@@ -223,7 +223,7 @@ describe('Superadmin — Fase 2', () => {
     await request(app.getHttpServer())
       .patch(`/superadmin/tenants/${t.id}/status`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ status: 'inativo' })
+      .send({ status: 'inativo', motivo: 'teste de suspensao' })
       .expect(204);
 
     // bloqueado imediatamente (403 orgao suspenso)
@@ -248,12 +248,20 @@ describe('Superadmin — Fase 2', () => {
       .set('Authorization', `Bearer ${token}`);
     const t = (list.body as Array<{ id: string; slug: string }>).find((x) => x.slug === TENANT_X)!;
 
+    // Usuario novo entra com um perfil; sem SMTP, a senha provisoria volta na resposta.
+    const perfis = await request(app.getHttpServer())
+      .get(`/superadmin/tenants/${t.id}/roles`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    const consulta = (perfis.body as Array<{ id: string; chave: string }>).find((p) => p.chave === 'consulta')!;
     const created = await request(app.getHttpServer())
       .post(`/superadmin/tenants/${t.id}/users`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ email: 'novo@x.gov.br', nome: 'Novo Usuario', senha: 'senha-nova-1234', role: 'consulta' })
+      .send({ email: 'novo@x.gov.br', nome: 'Novo Usuario', perfilId: consulta.id })
       .expect(201);
     const userId = created.body.id as string;
+    expect(created.body.emailEnviado).toBe(false);
+    expect(created.body.senhaProvisoria).toMatch(/^\S{12}$/);
 
     await request(app.getHttpServer())
       .patch(`/superadmin/tenants/${t.id}/users/${userId}/password`)

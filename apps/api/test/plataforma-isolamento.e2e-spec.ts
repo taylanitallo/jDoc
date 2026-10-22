@@ -62,7 +62,7 @@ beforeAll(async () => {
     `;
     const [u] = await sql.unsafe<Array<{ id: string }>>(
       `INSERT INTO "tenant_${s}".users (email, nome, senha_hash, role, must_change_password) VALUES ($1, 'Usuario', $2, 'operador', false) RETURNING id`,
-      [`user@${s}.gov.br`, uh],
+      [`user-${s.slice(-1)}@iso.gov.br`, uh],
     );
     ids[s] = { tenant: t!.id, user: u!.id };
   }
@@ -89,7 +89,7 @@ async function owner(): Promise<string> {
 
 describe('Isolamento e "entrar como"', () => {
   it('usuario de orgao nao entra em nenhuma rota do superadmin', async () => {
-    const r = await request(app.getHttpServer()).post(`/t/${A}/auth/login`).send({ email: `user@${A}.gov.br`, senha: USER_PASS }).expect(200);
+    const r = await request(app.getHttpServer()).post(`/t/${A}/auth/login`).send({ email: 'user-a@iso.gov.br', senha: USER_PASS }).expect(200);
     const auth = { Authorization: `Bearer ${r.body.accessToken as string}` };
     for (const rota of ['/superadmin/me', '/superadmin/tenants', '/superadmin/overview', '/superadmin/performance']) {
       await request(app.getHttpServer()).get(rota).set(auth).expect(401);
@@ -137,7 +137,7 @@ describe('Isolamento e "entrar como"', () => {
     const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
     await redis.del(`tenant:slug:${B}`);
     await redis.quit();
-    const r = await request(app.getHttpServer()).post(`/t/${B}/auth/login`).send({ email: `user@${B}.gov.br`, senha: USER_PASS }).expect(503);
+    const r = await request(app.getHttpServer()).post(`/t/${B}/auth/login`).send({ email: 'user-b@iso.gov.br', senha: USER_PASS }).expect(503);
     expect(r.body.code).toBe('manutencao');
   });
 });
