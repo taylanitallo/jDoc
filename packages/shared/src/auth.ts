@@ -74,6 +74,8 @@ export type TenantAccessClaims = z.infer<typeof tenantAccessClaimsSchema>;
 export const superadminAccessClaimsSchema = z.object({
   sub: z.string().uuid(),
   realm: z.literal('superadmin'),
+  /** Sessao (familia do refresh) — revogavel e com a janela de reautenticacao. */
+  sid: z.string().min(1).max(64),
 });
 export type SuperadminAccessClaims = z.infer<typeof superadminAccessClaimsSchema>;
 

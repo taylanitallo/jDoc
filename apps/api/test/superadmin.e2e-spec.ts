@@ -51,8 +51,8 @@ beforeAll(async () => {
   // Superadmin de teste com TOTP habilitado.
   const hash = await argon2.hash(SA_PASS, { type: argon2.argon2id });
   await sql`
-    INSERT INTO public.superadmins (email, nome, senha_hash, must_change_password, totp_secret, totp_enabled)
-    VALUES (${SA_EMAIL}, 'SA E2E', ${hash}, false, ${SA_TOTP_SECRET}, true)
+    INSERT INTO public.superadmins (email, nome, senha_hash, must_change_password, totp_secret, totp_enabled, role)
+    VALUES (${SA_EMAIL}, 'SA E2E', ${hash}, false, ${SA_TOTP_SECRET}, true, 'owner')
   `;
 
   // Tenant X com usuario (para teste de token de tenant + desativacao).
@@ -118,12 +118,20 @@ describe('Superadmin — Fase 2', () => {
       .expect(401);
   });
 
-  it('login superadmin SEM totp = 401 generico', async () => {
+  it('login superadmin com senha certa e SEM codigo = 401 mfa_required', async () => {
     const res = await request(app.getHttpServer())
       .post('/superadmin/auth/login')
       .send({ email: SA_EMAIL, senha: SA_PASS })
       .expect(401);
-    expect(res.body.message).toBe('Credenciais invalidas');
+    expect(res.body.code).toBe('mfa_required');
+  });
+
+  it('senha errada = 401 com mensagem generica', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/superadmin/auth/login')
+      .send({ email: SA_EMAIL, senha: 'senha-errada-123' })
+      .expect(401);
+    expect(res.body.error).toBe('E-mail ou senha incorretos.');
   });
 
   it('cria orgao (provisiona schema) e lista com uso de disco', async () => {

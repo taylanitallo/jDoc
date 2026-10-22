@@ -123,8 +123,12 @@ function redirectToLogin(): void {
   if (typeof window === 'undefined') return;
   const slug = lastTenantSlug;
   accessToken = null;
-  const target = slug ? `/${slug}/login` : '/superadmin/login';
-  if (window.location.pathname !== target) {
+  const atual = window.location.pathname;
+  // Superadmin volta para onde estava depois de entrar de novo (?next=).
+  const target = slug
+    ? `/${slug}/login`
+    : `/superadmin/login${atual.startsWith('/superadmin') && atual !== '/superadmin/login' ? `?next=${encodeURIComponent(atual)}` : ''}`;
+  if (atual !== target.split('?')[0]) {
     window.location.replace(target);
   }
 }

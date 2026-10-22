@@ -78,8 +78,8 @@ beforeAll(async () => {
   await writeFile(join(STORAGE, `jdoc-${T_SAI}`, 'x.pdf'), '%PDF-1.4');
 
   const saHash = await argon2.hash(SA_PASS, { type: argon2.argon2id });
-  await sql`INSERT INTO public.superadmins (email, nome, senha_hash, must_change_password, totp_secret, totp_enabled)
-            VALUES (${SA_EMAIL}, 'SA Excl', ${saHash}, false, ${SA_TOTP}, true)`;
+  await sql`INSERT INTO public.superadmins (email, nome, senha_hash, must_change_password, totp_secret, totp_enabled, role)
+            VALUES (${SA_EMAIL}, 'SA Excl', ${saHash}, false, ${SA_TOTP}, true, 'owner')`;
 
   const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
   for (const padrao of ['bf:*', 'tenant:slug:*']) {

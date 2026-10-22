@@ -1,203 +1,143 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { loginSchema, type LoginInput } from '@jdoc/shared';
-import { ShieldCheck, ArrowLeft, Lock } from 'lucide-react';
+import { Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { AlertCircle, ArrowLeft, Lock } from 'lucide-react';
 import { api, setAccessToken, ApiError } from '@/lib/api';
-import { AuthLayout } from '@/components/shell/auth-layout';
-import { Card, inputCls, labelCls, btnPrimary } from '@/components/ui';
+import { removerTemaMarca } from '@/lib/brand-theme';
+import { Button, Field, Input } from '@/components/ui';
+import { JeosFooter } from '@/components/brand/jeos';
+
+type Resposta = { accessToken: string; mustChangePassword: boolean; must2FASetup: boolean };
 
 /**
- * Login em 2 telas distintas: email/senha primeiro, so avanca pra tela de
- * 2FA se as credenciais realmente baterem (checagem real no backend via
- * /check-credentials, nao so validacao de formato). O codigo TOTP fica FORA
- * do react-hook-form — e obrigatorio so quando o superadmin ja tem 2FA
- * habilitado, e no primeiro login (sem 2FA ainda) o campo pode ir vazio.
+ * Login minimo da area restrita: so o cartao centralizado, sem foto, sem nome
+ * do sistema e sem texto explicando o que e. Etapa 1 (e-mail e senha) e etapa
+ * 2 (codigo do autenticador) no mesmo endpoint: a API responde `mfa_required`
+ * quando a senha confere e o 2FA esta ligado.
  */
-export default function SuperadminLoginPage() {
+function Login() {
   const router = useRouter();
-  const [step, setStep] = useState<1 | 2>(1);
-  const [totpRequired, setTotpRequired] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [creds, setCreds] = useState<LoginInput | null>(null);
-  const [totp, setTotp] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<LoginInput>({ resolver: zodResolver(loginSchema) });
+  const destino = useSearchParams().get('next');
+  const [etapa, setEtapa] = useState<1 | 2>(1);
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const [codigo, setCodigo] = useState('');
+  const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const codigoRef = useRef<HTMLInputElement>(null);
 
-  const onCheckCredentials = async (data: LoginInput) => {
-    setError(null);
-    setChecking(true);
-    try {
-      const clean = { email: data.email.trim(), senha: data.senha.trim() };
-      const { totpRequired: required } = await api<{ totpRequired: boolean }>(
-        '/superadmin/auth/check-credentials',
-        { method: 'POST', body: clean },
-      );
-      setCreds(clean);
-      setTotpRequired(required);
-      setStep(2);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha ao entrar.');
-    } finally {
-      setChecking(false);
-    }
-  };
+  useEffect(() => removerTemaMarca(), []);
+  useEffect(() => {
+    if (etapa === 2) codigoRef.current?.focus();
+  }, [etapa]);
 
-  const [verifying, setVerifying] = useState(false);
-  const onVerify = async () => {
-    if (!creds) return;
-    setError(null);
-    setVerifying(true);
+  const entrar = async (e: FormEvent) => {
+    e.preventDefault();
+    setErro(null);
+    setEnviando(true);
     try {
-      const result = await api<{ accessToken: string; must2FASetup: boolean }>(
-        '/superadmin/auth/login',
-        { method: 'POST', body: { ...creds, ...(totp ? { totp: totp.trim() } : {}) } },
-      );
-      setAccessToken(result.accessToken);
-      router.push(result.must2FASetup ? '/superadmin/2fa-setup' : '/superadmin/dashboard');
+      const r = await api<Resposta>('/superadmin/auth/login', {
+        method: 'POST',
+        body: { email: email.trim(), senha, ...(etapa === 2 ? { totp: codigo } : {}) },
+      });
+      setAccessToken(r.accessToken);
+      const seguro = destino && destino.startsWith('/superadmin') && !destino.startsWith('//') ? destino : '/superadmin';
+      router.replace(r.must2FASetup || r.mustChangePassword ? '/superadmin/conta' : seguro);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha ao entrar.');
+      if (err instanceof ApiError && err.code === 'mfa_required') {
+        setEtapa(2);
+      } else {
+        setErro(err instanceof ApiError ? err.message : 'Não foi possível entrar.');
+        if (etapa === 2) setCodigo('');
+      }
     } finally {
-      setVerifying(false);
+      setEnviando(false);
     }
   };
 
   return (
-    <AuthLayout>
-      <Card className="p-5 sm:p-6">
-        {step === 1 ? (
-          <>
-            <div className="mb-6 flex flex-col items-center text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-[12px] bg-brand-50 text-brand-600 ring-1 ring-inset ring-brand-600/15">
-                <ShieldCheck className="h-6 w-6" aria-hidden />
-              </div>
-              <h1 className="mt-3 text-xl font-extrabold tracking-tight text-ink-900">SuperAdmin</h1>
-              <p className="mt-0.5 text-sm text-ink-500">Acesso restrito ao administrador geral</p>
-            </div>
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-canvas px-4">
+      {/* Manchas de cor suaves, sem imagem. */}
+      <div aria-hidden className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-brand-500/10 blur-3xl" />
+      <div aria-hidden className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full bg-brand-300/15 blur-3xl" />
 
-            <form onSubmit={handleSubmit(onCheckCredentials)} noValidate className="space-y-4">
-              <div>
-                <label htmlFor="email" className={labelCls}>
-                  E-mail
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="admin@exemplo.com"
-                  className={inputCls}
-                  {...register('email')}
-                />
-                {errors.email && <p className="mt-1 text-xs text-danger-600">{errors.email.message}</p>}
-              </div>
+      <div className="relative w-full max-w-sm animate-slide-up rounded-[16px] border border-ink-200/70 bg-surface p-6 shadow-md">
+        <div className="mb-5 flex flex-col items-center text-center">
+          <span className="flex h-11 w-11 items-center justify-center rounded-[12px] bg-brand-600 text-white shadow-sm">
+            <Lock className="h-5 w-5" aria-hidden />
+          </span>
+          <h1 className="mt-3 text-lg font-bold text-ink-900">Área restrita</h1>
+        </div>
 
-              <div>
-                <label htmlFor="senha" className={labelCls}>
-                  Senha
-                </label>
-                <input
-                  id="senha"
-                  type="password"
-                  autoComplete="current-password"
-                  className={inputCls}
-                  {...register('senha')}
-                />
-                {errors.senha && <p className="mt-1 text-xs text-danger-600">{errors.senha.message}</p>}
-              </div>
+        <form onSubmit={entrar} noValidate className="space-y-4">
+          {etapa === 1 ? (
+            <>
+              <Field label="E-mail" htmlFor="email">
+                <Input id="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
+              </Field>
+              <Field label="Senha" htmlFor="senha">
+                <Input id="senha" type="password" autoComplete="current-password" value={senha} onChange={(e) => setSenha(e.target.value)} />
+              </Field>
+            </>
+          ) : (
+            <Field label="Código" htmlFor="codigo" hint="Digite o código de 6 dígitos do aplicativo autenticador.">
+              <Input
+                ref={codigoRef}
+                id="codigo"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder="000000"
+                value={codigo}
+                onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                className="text-center text-lg tracking-[0.3em]"
+              />
+            </Field>
+          )}
 
-              {error && (
-                <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2.5 text-sm text-danger-600 ring-1 ring-inset ring-danger-600/15">
-                  {error}
-                </p>
-              )}
+          {erro && (
+            <p role="alert" className="flex items-center gap-2 rounded-[10px] bg-danger-50 px-3 py-2.5 text-sm text-danger-600 ring-1 ring-inset ring-danger-600/15">
+              <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
+              {erro}
+            </p>
+          )}
 
-              <button type="submit" disabled={checking} className={`${btnPrimary} h-12 w-full rounded-[12px]`}>
-                {checking ? 'Verificando…' : 'Continuar'}
-              </button>
-            </form>
-          </>
-        ) : (
-          <>
-            <div className="mb-6 flex flex-col items-center text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-[12px] bg-warning-50 text-warning-600 ring-1 ring-inset ring-warning-600/15">
-                <Lock className="h-6 w-6" aria-hidden />
-              </div>
-              <h1 className="mt-3 text-xl font-extrabold tracking-tight text-ink-900">Verificação em 2 etapas</h1>
-              <p className="mt-0.5 text-sm text-ink-500">
-                Digite o código de 6 dígitos do seu aplicativo autenticador
-              </p>
-            </div>
+          <Button
+            type="submit"
+            className="w-full"
+            loading={enviando}
+            disabled={etapa === 1 ? !email || !senha : codigo.length !== 6}
+          >
+            {etapa === 1 ? 'Continuar' : 'Entrar'}
+          </Button>
+          {etapa === 2 && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              leftIcon={<ArrowLeft aria-hidden />}
+              onClick={() => {
+                setEtapa(1);
+                setCodigo('');
+                setErro(null);
+              }}
+            >
+              Voltar
+            </Button>
+          )}
+        </form>
 
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="totp" className={labelCls}>
-                  Código TOTP
-                </label>
-                <input
-                  id="totp"
-                  inputMode="numeric"
-                  maxLength={6}
-                  placeholder="000 000"
-                  autoComplete="one-time-code"
-                  autoFocus
-                  value={totp}
-                  onChange={(e) => setTotp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className={`${inputCls} text-center text-lg tracking-[0.3em]`}
-                />
-                {!totpRequired && (
-                  <p className="mt-1 text-[11px] text-ink-500">
-                    Ainda não configurou? Deixe em branco e configure depois de entrar.
-                  </p>
-                )}
-              </div>
+        <JeosFooter className="mt-6" />
+      </div>
+    </div>
+  );
+}
 
-              {error && (
-                <p role="alert" className="rounded-[10px] bg-danger-50 px-3 py-2.5 text-sm text-danger-600 ring-1 ring-inset ring-danger-600/15">
-                  {error}
-                </p>
-              )}
-
-              <button
-                type="button"
-                disabled={verifying}
-                onClick={() => void onVerify()}
-                className={`${btnPrimary} h-12 w-full rounded-[12px]`}
-              >
-                {verifying ? 'Verificando…' : 'Verificar'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setError(null);
-                  setTotp('');
-                  setStep(1);
-                }}
-                className="flex w-full items-center justify-center gap-1 text-sm font-medium text-ink-500 hover:text-ink-800"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-                Voltar ao login
-              </button>
-            </div>
-          </>
-        )}
-
-        <Link
-          href="/"
-          className="mt-6 flex items-center justify-center gap-1 text-sm font-medium text-ink-500 hover:text-ink-800"
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden />
-          Voltar ao início
-        </Link>
-      </Card>
-    </AuthLayout>
+export default function SuperadminLoginPage() {
+  return (
+    <Suspense>
+      <Login />
+    </Suspense>
   );
 }

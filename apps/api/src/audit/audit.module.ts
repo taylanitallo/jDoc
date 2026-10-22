@@ -15,6 +15,24 @@ export interface AuditEntry {
 export interface GlobalAuditEntry extends AuditEntry {
   actorType: 'superadmin' | 'system' | 'security';
   targetTenantId?: string | null;
+  /** Nome do admin no momento (o registro sobrevive a exclusao do admin). */
+  adminName?: string | null;
+  /** O que foi alterado (ex.: 'tenant', 'perfil', 'admin') e o id. */
+  entity?: string | null;
+  entityId?: string | null;
+  /** Antes/depois, para o detalhe do log. */
+  changes?: { antes?: unknown; depois?: unknown } | null;
+}
+
+/** Acao de um admin da equipe, com antes/depois. */
+export interface AdminAuditEntry {
+  action: string;
+  tenantId?: string | null;
+  entity?: string | null;
+  entityId?: string | null;
+  antes?: unknown;
+  depois?: unknown;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -59,7 +77,8 @@ export class AuditService {
     try {
       const sql = this.db.catalog();
       await sql`
-        INSERT INTO public.global_audit_logs (actor_id, actor_type, action, target_tenant_id, ip, user_agent, metadata)
+        INSERT INTO public.global_audit_logs
+          (actor_id, actor_type, action, target_tenant_id, ip, user_agent, metadata, admin_name, entity, entity_id, changes)
         VALUES (
           ${entry.actorId ?? null},
           ${entry.actorType},
@@ -67,7 +86,11 @@ export class AuditService {
           ${entry.targetTenantId ?? null},
           ${entry.ip ?? null},
           ${entry.userAgent ?? null},
-          ${entry.metadata ? JSON.stringify(entry.metadata) : null}
+          ${entry.metadata ? JSON.stringify(entry.metadata) : null},
+          ${entry.adminName ?? null},
+          ${entry.entity ?? null},
+          ${entry.entityId ?? null},
+          ${entry.changes ? JSON.stringify(entry.changes) : null}
         )
       `;
     } catch (err) {
@@ -75,6 +98,28 @@ export class AuditService {
         `Falha ao gravar global_audit_log (${entry.action}): ${(err as Error).message}`,
       );
     }
+  }
+
+  /** Escrita feita por um admin da equipe (Padrao JEOS: toda escrita auditada com antes/depois). */
+  logAdmin(
+    admin: { id: string; nome: string },
+    origem: { ip: string; userAgent: string },
+    e: AdminAuditEntry,
+  ): Promise<void> {
+    const temMudanca = e.antes !== undefined || e.depois !== undefined;
+    return this.logGlobal({
+      actorType: 'superadmin',
+      actorId: admin.id,
+      adminName: admin.nome,
+      action: e.action,
+      targetTenantId: e.tenantId ?? null,
+      entity: e.entity ?? null,
+      entityId: e.entityId ?? null,
+      changes: temMudanca ? { antes: e.antes ?? null, depois: e.depois ?? null } : null,
+      metadata: e.metadata,
+      ip: origem.ip,
+      userAgent: origem.userAgent,
+    });
   }
 }
 

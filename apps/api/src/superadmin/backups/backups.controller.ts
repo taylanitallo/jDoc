@@ -30,6 +30,7 @@ import {
   updateBackupSettingsSchema,
 } from '@jdoc/shared';
 import { ZodValidationPipe } from '../../common/zod-validation.pipe';
+import { Critico, Papeis } from '../../superadmin-auth/decorators';
 import { SuperadminJwtGuard } from '../../superadmin-auth/superadmin-jwt.guard';
 import { BackupsService } from './backups.service';
 
@@ -50,6 +51,7 @@ function actorAndIp(req: Request): { actorId: string; ip: string } {
 export class BackupsController {
   constructor(private readonly backups: BackupsService) {}
 
+  @Papeis('owner', 'support')
   @Get()
   list(@Query('tenantId') tenantId?: string): Promise<BackupsListResponse> {
     const parsed = tenantId ? uuidSchema.safeParse(tenantId) : null;
@@ -68,6 +70,7 @@ export class BackupsController {
     return { id: result.id, status: 'pendente' };
   }
 
+  @Papeis('owner', 'support')
   @Get('settings/:tenantId')
   getSettings(
     @Param('tenantId', new ZodValidationPipe(uuidSchema)) tenantId: string,
@@ -86,6 +89,7 @@ export class BackupsController {
   }
 
   @Post('restore')
+  @Critico()
   @HttpCode(201)
   @UseInterceptors(FileInterceptor('file'))
   async restore(
@@ -101,6 +105,7 @@ export class BackupsController {
     return this.backups.triggerRestore(tenantId, file.buffer, actorId);
   }
 
+  @Papeis('owner', 'support')
   @Get('restore/:id')
   restoreDetail(@Param('id', new ZodValidationPipe(uuidSchema)) id: string): Promise<RestoreJobView> {
     return this.backups.restoreDetail(id);
@@ -116,6 +121,7 @@ export class BackupsController {
     return this.backups.clearHistory(tenantId, actorId, ip);
   }
 
+  @Papeis('owner', 'support')
   @Get(':id')
   detail(@Param('id', new ZodValidationPipe(uuidSchema)) id: string): Promise<BackupView> {
     return this.backups.detail(id);

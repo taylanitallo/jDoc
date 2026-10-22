@@ -179,7 +179,13 @@ export class RefreshTokenService {
     await this.redis.del(setKey);
   }
 
-  private async revokeFamily(realm: AuthRealm, familyId: string, userId?: string): Promise<void> {
+  /** Id da familia (sessao) de um token, sem validar o segredo. */
+  familia(token: string): string | null {
+    return this.parse(token)?.familyId ?? null;
+  }
+
+  /** Revoga uma sessao especifica (encerrar sessao na tela de sessoes ativas). */
+  async revokeFamily(realm: AuthRealm, familyId: string, userId?: string): Promise<void> {
     await this.redis.del(this.famKey(realm, familyId));
     if (userId) await this.redis.srem(this.userSetKey(realm, userId), familyId);
   }

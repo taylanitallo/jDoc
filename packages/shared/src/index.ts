@@ -26,3 +26,4 @@ export * from './dossies.js';
 export * from './descricao.js';
 export * from './legislacao.js';
 export * from './tema.js';
+export * from './plataforma.js';

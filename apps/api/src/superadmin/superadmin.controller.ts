@@ -42,6 +42,7 @@ import {
 } from '@jdoc/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { SuperadminJwtGuard } from '../superadmin-auth/superadmin-jwt.guard';
+import { Critico, Papeis } from '../superadmin-auth/decorators';
 import { SuperadminTenantsService } from './superadmin-tenants.service';
 import { SuperadminUsersService, type TenantUserView } from './superadmin-users.service';
 import {
@@ -60,6 +61,7 @@ function actor(req: Request): { id: string; ip: string } {
 /**
  * Painel superadmin — TODAS as rotas exigem JWT do realm superadmin
  * (issuer/audience proprios) + allowlist de IP opcional. Nenhuma e publica.
+ * Rota sem @Papeis e so do owner.
  */
 @Controller('superadmin')
 @UseGuards(SuperadminJwtGuard)
@@ -73,6 +75,7 @@ export class SuperadminController {
 
   // ---- Dashboard master ----
 
+  @Papeis('owner', 'support', 'implantacao')
   @Get('dashboard')
   dashboard(): Promise<MasterDashboard> {
     return this.dash.dashboard();
@@ -80,16 +83,19 @@ export class SuperadminController {
 
   // ---- Orgaos (tenants) ----
 
+  @Papeis('owner', 'support', 'implantacao')
   @Get('tenants')
   listTenants(): Promise<TenantOverview[]> {
     return this.tenants.list();
   }
 
+  @Papeis('owner', 'support', 'implantacao')
   @Get('tenants/:id')
   getTenant(@Param('id', new ZodValidationPipe(uuidSchema)) id: string): Promise<TenantOverview> {
     return this.tenants.overview(id);
   }
 
+  @Papeis('owner', 'implantacao')
   @Post('tenants')
   @HttpCode(201)
   async createTenant(
@@ -100,6 +106,7 @@ export class SuperadminController {
     return this.tenants.create(body, a.id, a.ip);
   }
 
+  @Papeis('owner', 'implantacao')
   @Patch('tenants/:id')
   @HttpCode(204)
   async updateTenant(
@@ -111,6 +118,7 @@ export class SuperadminController {
     await this.tenants.update(id, body, a.id, a.ip);
   }
 
+  @Papeis('owner', 'implantacao')
   @Patch('tenants/:id/status')
   @HttpCode(204)
   async setTenantStatus(
@@ -122,6 +130,7 @@ export class SuperadminController {
     await this.tenants.setStatus(id, body, a.id, a.ip);
   }
 
+  @Papeis('owner', 'implantacao')
   @Patch('tenants/:id/quota')
   @HttpCode(204)
   async setTenantQuota(
@@ -133,6 +142,7 @@ export class SuperadminController {
     await this.tenants.setQuota(id, body, a.id, a.ip);
   }
 
+  @Papeis('owner', 'implantacao')
   @Post('tenants/:id/brasao')
   @UseInterceptors(FileInterceptor('file'))
   async uploadTenantBrasao(
@@ -145,6 +155,7 @@ export class SuperadminController {
     return this.tenants.uploadBrasao(id, file, a.id, a.ip);
   }
 
+  @Papeis('owner', 'implantacao')
   @Delete('tenants/:id/brasao')
   @HttpCode(204)
   async deleteTenantBrasao(
@@ -156,6 +167,7 @@ export class SuperadminController {
   }
 
   @Delete('tenants/:id')
+  @Critico()
   @HttpCode(204)
   async deleteTenant(
     @Param('id', new ZodValidationPipe(uuidSchema)) id: string,
@@ -168,6 +180,7 @@ export class SuperadminController {
 
   // ---- Usuarios de tenant ----
 
+  @Papeis('owner', 'support', 'implantacao')
   @Get('tenants/:id/users')
   listUsers(
     @Param('id', new ZodValidationPipe(uuidSchema)) id: string,
@@ -175,6 +188,7 @@ export class SuperadminController {
     return this.users.list(id);
   }
 
+  @Papeis('owner', 'support', 'implantacao')
   @Post('tenants/:id/users')
   @HttpCode(201)
   createUser(
@@ -186,6 +200,7 @@ export class SuperadminController {
     return this.users.create(id, body, a.id, a.ip);
   }
 
+  @Papeis('owner', 'support', 'implantacao')
   @Patch('tenants/:id/users/:userId/password')
   @HttpCode(204)
   async resetUserPassword(
@@ -198,6 +213,7 @@ export class SuperadminController {
     await this.users.resetPassword(id, userId, body, a.id, a.ip);
   }
 
+  @Papeis('owner', 'support', 'implantacao')
   @Patch('tenants/:id/users/:userId/ativo')
   @HttpCode(204)
   async setUserActive(
@@ -210,6 +226,7 @@ export class SuperadminController {
     await this.users.setActive(id, userId, body, a.id, a.ip);
   }
 
+  @Papeis('owner', 'implantacao')
   @Delete('tenants/:id/users/:userId')
   @HttpCode(204)
   async deleteUser(
@@ -223,11 +240,13 @@ export class SuperadminController {
 
   // ---- Logs ----
 
+  @Papeis('owner', 'support')
   @Get('logs/global')
   globalLogs(@Query(new ZodValidationPipe(logsQuerySchema)) q: LogsQuery): Promise<LogPage> {
     return this.logs.globalLogs(q);
   }
 
+  @Papeis('owner', 'support')
   @Get('tenants/:id/logs')
   tenantLogs(
     @Param('id', new ZodValidationPipe(uuidSchema)) id: string,

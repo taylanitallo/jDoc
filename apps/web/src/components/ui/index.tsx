@@ -24,6 +24,7 @@ export { Tabs, TabButton } from './tabs';
 export { Pagination } from './pagination';
 export { DropdownMenu, type DropdownItem } from './dropdown-menu';
 export { Switch } from './switch';
+export { ConfirmDialog } from './confirm-dialog';
 
 // ---- Helpers de transicao (telas antigas) ----
 export const inputCls = inputClasses;
