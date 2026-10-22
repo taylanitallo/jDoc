@@ -24,6 +24,7 @@ import {
   inputCls,
   labelCls,
   SelectMenu,
+  Input,
 } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { fmtDateTime } from '@/lib/format';
@@ -308,7 +309,7 @@ function CreateUserModal({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelCls} htmlFor="u-senha">Senha inicial<span className="ml-0.5 text-danger-600">*</span></label>
-            <input id="u-senha" type="password" className={inputCls} {...register('senha')} />
+            <Input id="u-senha" type="password" {...register('senha')} />
             {errors.senha && <p className="mt-1 text-xs text-danger-600">{errors.senha.message}</p>}
           </div>
           <div>
@@ -425,10 +426,10 @@ function ResetPasswordModal({
         <div className="space-y-4">
           <div>
             <label className={labelCls} htmlFor="r-senha">Nova senha (mín. 6 caracteres)</label>
-            <input
+            <Input
               id="r-senha"
               type="password"
-              className={inputCls}
+              
               value={senha}
               onChange={(e) => setSenha(e.target.value)}
             />

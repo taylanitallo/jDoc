@@ -10,7 +10,7 @@ import { useBranding } from '@/components/branding';
 import { useToast } from '@/components/toast';
 import { Pencil, Key, Plus, Trash2, Users as UsersIcon } from 'lucide-react';
 import { EmptyState } from '@/components/empty-state';
-import { Avatar, Badge, Modal, btnGhost, btnPrimary, cardCls, inputCls, labelCls, type Tone, SelectMenu } from '@/components/ui';
+import { Avatar, Badge, Modal, btnGhost, btnPrimary, cardCls, inputCls, labelCls, type Tone, SelectMenu, Input } from '@/components/ui';
 
 const PERFIL_TOM: Record<string, Tone> = { admin: 'violet', operador: 'info', consulta: 'neutral' };
 const PERFIL_ROTULO: Record<string, string> = { admin: 'Administrador', operador: 'Operador', consulta: 'Consulta' };
@@ -290,10 +290,10 @@ function UsuarioModal({
           {!usuario && (
             <div>
               <label className={labelCls} htmlFor="usuario-senha">Senha provisória<span className="ml-0.5 text-danger-600">*</span></label>
-              <input
+              <Input
                 id="usuario-senha"
                 type="password"
-                className={inputCls}
+                
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
                 placeholder="mínimo 6 caracteres"
@@ -420,10 +420,10 @@ function ResetSenhaModal({
           <>
             <div>
               <label className={labelCls} htmlFor="nova-senha">Nova senha provisória<span className="ml-0.5 text-danger-600">*</span></label>
-              <input
+              <Input
                 id="nova-senha"
                 type="password"
-                className={inputCls}
+                
                 value={novaSenha}
                 onChange={(e) => setNovaSenha(e.target.value)}
                 placeholder="mínimo 6 caracteres"

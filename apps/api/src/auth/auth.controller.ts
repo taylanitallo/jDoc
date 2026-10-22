@@ -5,13 +5,25 @@ import {
   HttpCode,
   Param,
   Post,
+  Put,
   Req,
   Res,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import type { CookieOptions, Request, Response } from 'express';
-import { loginSchema, type LoginInput, type TenantAccessClaims, type UsuarioAtual } from '@jdoc/shared';
+import {
+  changePasswordSchema,
+  loginSchema,
+  minhaContaSchema,
+  preferenciasSchema,
+  type ChangePasswordInput,
+  type LoginInput,
+  type MinhaContaInput,
+  type PreferenciasInput,
+  type TenantAccessClaims,
+  type UsuarioAtual,
+} from '@jdoc/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { loadEnv } from '../config/env';
 import { AuthService } from './auth.service';
@@ -86,6 +98,38 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: TenantAccessClaims): Promise<UsuarioAtual> {
     return this.auth.me(user.sub);
+  }
+
+  @Permissions()
+  @Put('conta')
+  atualizarConta(
+    @CurrentUser() user: TenantAccessClaims,
+    @Body(new ZodValidationPipe(minhaContaSchema)) body: MinhaContaInput,
+    @Req() req: Request,
+  ): Promise<UsuarioAtual> {
+    return this.auth.atualizarConta(user.sub, body, req.ip ?? '');
+  }
+
+  @Permissions()
+  @Put('preferences')
+  @HttpCode(204)
+  async preferencias(
+    @CurrentUser() user: TenantAccessClaims,
+    @Body(new ZodValidationPipe(preferenciasSchema)) body: PreferenciasInput,
+  ): Promise<void> {
+    await this.auth.salvarPreferencias(user.sub, body.uiTheme);
+  }
+
+  @Permissions()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('password')
+  @HttpCode(204)
+  async trocarSenha(
+    @CurrentUser() user: TenantAccessClaims,
+    @Body(new ZodValidationPipe(changePasswordSchema)) body: ChangePasswordInput,
+    @Req() req: Request,
+  ): Promise<void> {
+    await this.auth.trocarSenha(user.sub, body, req.ip ?? '');
   }
 
   @Permissions()

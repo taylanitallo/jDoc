@@ -4,6 +4,7 @@ import { useEffect, useState, type DragEvent, type FormEvent, type ReactNode } f
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CircleAlert, CircleCheck, CircleX, FileSearch, Loader2, ShieldCheck, Upload } from 'lucide-react';
+import { JeosFooter } from '@/components/brand/jeos';
 import {
   CODIGO_REGEX,
   formatarCodigo,
@@ -33,7 +34,7 @@ export function MolduraPublica({ children }: { children: ReactNode }) {
       </header>
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-6 sm:py-10">
         <div className="animate-slide-up rounded-[16px] border border-ink-200/70 bg-surface p-5 shadow-xs sm:p-6">{children}</div>
-        <p className="mt-6 text-center text-xs text-ink-500">© 2026 JEOS Sistemas e Assessorias Ltda</p>
+        <JeosFooter className="mt-6" />
       </main>
     </div>
   );

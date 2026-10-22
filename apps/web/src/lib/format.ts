@@ -86,3 +86,12 @@ export function fmtDuracao(ms: number | null | undefined): string {
   const s = Math.round((ms % 60_000) / 1000);
   return s ? `${min} min ${s} s` : `${min} min`;
 }
+
+/** 12345678901 -> 123.456.789-01 (aceita parcial, para mascara de digitacao). */
+export function fmtCpf(v: string | null | undefined): string {
+  const d = (v ?? '').replace(/\D/g, '').slice(0, 11);
+  return d
+    .replace(/^(\d{3})(\d)/, '$1.$2')
+    .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d{1,2})$/, '.$1-$2');
+}

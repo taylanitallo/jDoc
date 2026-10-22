@@ -1,9 +1,13 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
+  HEX_COR,
   JWT_AUDIENCE,
   JWT_ISSUER,
   TENANT_ROLES,
+  type ChangePasswordInput,
+  type MinhaContaInput,
+  type UiTheme,
   type LoginInput,
   type TenantAccessClaims,
   type TenantRole,
@@ -172,13 +176,69 @@ export class AuthService {
   /** Perfil minimo para o shell (nome no rodape do menu). Tenant vem do contexto validado. */
   async me(userId: string): Promise<UsuarioAtual> {
     const ctx = requireTenantContext();
-    const rows = await this.db.tenant(ctx.schemaName)<Array<{ nome: string; email: string; role: UsuarioAtual['role'] }>>`
-      SELECT nome, email, role FROM users WHERE id = ${userId} AND ativo = true
+    const sql = this.db.tenant(ctx.schemaName);
+    const rows = await sql<
+      Array<{
+        nome: string;
+        email: string;
+        cpf: string | null;
+        role: UsuarioAtual['role'];
+        ui_theme: UiTheme | null;
+        must_change_password: boolean;
+      }>
+    >`
+      SELECT nome, email, cpf, role, ui_theme, must_change_password FROM users WHERE id = ${userId} AND ativo = true
     `;
     const u = rows[0];
     if (!u) throw new UnauthorizedException('Sessao invalida');
     const podeVerRestrito = u.role === 'admin' || (await this.loadPermissions(ctx.schemaName, userId)).includes('acervo_restrito:read');
-    return { nome: u.nome, email: u.email, role: u.role, orgao: ctx.nome, podeVerRestrito };
+    const [cor] = await sql<Array<{ valor: unknown }>>`SELECT valor FROM tenant_settings WHERE chave = 'corDestaque'`;
+    const corOrgao = typeof cor?.valor === 'string' && HEX_COR.test(cor.valor) ? cor.valor : null;
+    return {
+      nome: u.nome,
+      email: u.email,
+      cpf: u.cpf,
+      role: u.role,
+      orgao: ctx.nome,
+      podeVerRestrito,
+      uiTheme: u.ui_theme,
+      corOrgao,
+      mustChangePassword: u.must_change_password,
+    };
+  }
+
+  /** Minha conta: nome e CPF do proprio usuario. */
+  async atualizarConta(userId: string, input: MinhaContaInput, ip: string): Promise<UsuarioAtual> {
+    const ctx = requireTenantContext();
+    const sql = this.db.tenant(ctx.schemaName);
+    if (input.cpf) {
+      const [outro] = await sql`SELECT 1 FROM users WHERE cpf = ${input.cpf} AND id <> ${userId}`;
+      if (outro) throw new ConflictException('Este CPF já está em uso por outro usuário');
+    }
+    await sql`UPDATE users SET nome = ${input.nome}, cpf = ${input.cpf}, atualizado_em = now() WHERE id = ${userId}`;
+    await this.audit.logTenant({ actorId: userId, action: 'conta_atualizada', ip, resourceType: 'user', resourceId: userId });
+    return this.me(userId);
+  }
+
+  /** Tema de cor/modo escolhido em Minha conta > Aparencia (null = usar a cor do orgao). */
+  async salvarPreferencias(userId: string, tema: UiTheme | null): Promise<void> {
+    const ctx = requireTenantContext();
+    const sql = this.db.tenant(ctx.schemaName);
+    await sql`UPDATE users SET ui_theme = ${tema ? sql.json(tema) : null} WHERE id = ${userId}`;
+  }
+
+  /** Troca da propria senha; encerra as outras sessoes do usuario. */
+  async trocarSenha(userId: string, input: ChangePasswordInput, ip: string): Promise<void> {
+    const ctx = requireTenantContext();
+    const sql = this.db.tenant(ctx.schemaName);
+    const [u] = await sql<Array<{ senha_hash: string }>>`SELECT senha_hash FROM users WHERE id = ${userId} AND ativo = true`;
+    if (!u || !(await this.passwords.verify(u.senha_hash, input.senhaAtual))) {
+      throw new BadRequestException('Senha atual incorreta');
+    }
+    if (input.senhaAtual === input.novaSenha) throw new BadRequestException('A nova senha deve ser diferente da atual');
+    const hash = await this.passwords.hash(input.novaSenha);
+    await sql`UPDATE users SET senha_hash = ${hash}, must_change_password = false, atualizado_em = now() WHERE id = ${userId}`;
+    await this.audit.logTenant({ actorId: userId, action: 'senha_alterada', ip, resourceType: 'user', resourceId: userId });
   }
 
   async logoutAll(userId: string, ip: string): Promise<void> {

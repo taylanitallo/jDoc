@@ -39,6 +39,7 @@ import { isDesktopApp } from '@/lib/desktop-bridge';
 import { cn } from '@/lib/cn';
 import { MODULO_VISUAL, ModuloAtivoProvider, moduloDaRota, useModuloAtivo } from '@/components/modulo-ativo';
 import { EscolhaModulo } from '@/components/escolha-modulo';
+import { useTemaUsuario } from '@/components/theme/use-tema-usuario';
 
 const PAPEL: Record<UsuarioAtual['role'], string> = { admin: 'Administrador', operador: 'Operador', consulta: 'Consulta' };
 
@@ -65,6 +66,7 @@ const TITULOS: Record<string, { title: string; description: string }> = {
   sigilo: { title: 'Sigilo', description: 'Informações classificadas pela LAI' },
   busca: { title: 'Busca no conteúdo', description: 'Procure dentro do texto dos PDFs' },
   configuracoes: { title: 'Configurações', description: 'Cadastros, usuários e personalização' },
+  conta: { title: 'Minha conta', description: 'Seus dados, senha e aparência' },
 };
 
 export default function TenantLayout({ children }: { children: ReactNode }) {
@@ -108,6 +110,9 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
     queryFn: () => api<UsuarioAtual>(`/t/${slug}/auth/me`),
     staleTime: 5 * 60_000,
   });
+
+  // Tema de cor do usuario (ou a cor do orgao), reaplicado com a versao do servidor.
+  useTemaUsuario(slug, usuario?.uiTheme, usuario?.corOrgao, !!usuario);
 
   const base = `/${slug}`;
   const { ativo, ambos, trocar } = useModuloAtivo();
@@ -164,6 +169,12 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
   const segmento = pathname.slice(base.length + 1).split('/')[0] ?? '';
   const titulo = TITULOS[segmento] ?? { title: 'jDoc' };
 
+  // Senha provisoria: nada alem de Minha conta ate trocar.
+  const trocaObrigatoria = !!usuario?.mustChangePassword && segmento !== 'conta';
+  useEffect(() => {
+    if (trocaObrigatoria) router.replace(`${base}/conta?trocar=1`);
+  }, [trocaObrigatoria, router, base]);
+
   const sair = async () => {
     try {
       await api(`/t/${slug}/auth/logout`, { method: 'POST' });
@@ -185,6 +196,7 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
       groups={groups}
       user={usuario ? { nome: usuario.nome, papel: PAPEL[usuario.role] } : null}
       onLogout={sair}
+      contaHref={`${base}/conta`}
       corAtiva={ativo ? MODULO_VISUAL[ativo].solido : undefined}
       titulo={titulo}
       headerActions={

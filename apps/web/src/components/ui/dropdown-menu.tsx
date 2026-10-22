@@ -22,11 +22,14 @@ export function DropdownMenu({
   trigger,
   items,
   align = 'end',
+  side = 'bottom',
   className,
 }: {
   trigger: (p: { aberto: boolean; alternar: () => void }) => ReactNode;
   items: DropdownItem[];
   align?: 'start' | 'end';
+  /** 'top' abre para cima (ex.: menu do avatar no rodape da sidebar). */
+  side?: 'bottom' | 'top';
   className?: string;
 }) {
   const [aberto, setAberto] = useState(false);
@@ -53,7 +56,8 @@ export function DropdownMenu({
         <div
           role="menu"
           className={cn(
-            'absolute z-40 mt-2 w-64 animate-fade-in overflow-hidden rounded-[12px] border border-ink-200/70 bg-surface p-1.5 shadow-xl',
+            'absolute z-40 w-64 animate-fade-in overflow-hidden rounded-[12px] border border-ink-200/70 bg-surface p-1.5 shadow-xl',
+            side === 'top' ? 'bottom-full mb-2' : 'mt-2',
             align === 'end' ? 'right-0' : 'left-0',
           )}
         >

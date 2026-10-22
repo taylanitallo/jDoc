@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { tenantRoleSchema, type TenantRole } from './constants.js';
+import type { UiTheme } from './tema.js';
 
 /**
  * Politica de senha: minimo 6 caracteres (pedido do cliente).
@@ -106,8 +107,41 @@ export interface ResolveLoginResponse {
 export interface UsuarioAtual {
   nome: string;
   email: string;
+  cpf: string | null;
   role: TenantRole;
   orgao: string;
   /** Admin ou acervo_restrito:read: enxerga documentos de acesso restrito. */
   podeVerRestrito: boolean;
+  /** Tema escolhido pelo usuario (null = nunca escolheu). */
+  uiTheme: UiTheme | null;
+  /** Cor da marca do orgao (Configuracoes > Aparencia), padrao dos usuarios. */
+  corOrgao: string | null;
+  mustChangePassword: boolean;
 }
+
+/** CPF so com digitos, 11 posicoes, com digitos verificadores validos. */
+export function cpfValido(cpf: string): boolean {
+  const d = cpf.replace(/\D/g, '');
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  const dv = (n: number) => {
+    let soma = 0;
+    for (let i = 0; i < n; i++) soma += Number(d[i]) * (n + 1 - i);
+    const r = (soma * 10) % 11;
+    return r === 10 ? 0 : r;
+  };
+  return dv(9) === Number(d[9]) && dv(10) === Number(d[10]);
+}
+
+export const cpfSchema = z
+  .string()
+  .transform((v) => v.replace(/\D/g, ''))
+  .refine(cpfValido, 'CPF inválido');
+
+/** Minha conta: dados que o proprio usuario pode mudar. */
+export const minhaContaSchema = z
+  .object({
+    nome: z.string().trim().min(2, 'Informe o nome').max(200),
+    cpf: cpfSchema.nullable(),
+  })
+  .strict();
+export type MinhaContaInput = z.infer<typeof minhaContaSchema>;
