@@ -86,7 +86,7 @@ export default function EsqueciSenhaPage() {
         {etapa === 'pedir' && (
           <form onSubmit={pedir} className="space-y-4" noValidate>
             <Field label="CPF ou e-mail" htmlFor="ident" required error={erro ?? undefined}>
-              <Input id="ident" autoComplete="username" value={identificador} onChange={(e) => setIdentificador(e.target.value)} placeholder="000.000.000-00 ou seu@email.gov.br" autoFocus />
+              <Input id="ident" autoComplete="username" value={identificador} onChange={(e) => setIdentificador(e.target.value)} placeholder="Seu CPF ou e-mail" autoFocus />
             </Field>
             <Button type="submit" size="lg" className="w-full" loading={enviando} disabled={identificador.trim().length < 3}>
               Enviar

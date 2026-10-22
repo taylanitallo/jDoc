@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
   HEX_COR,
@@ -270,7 +270,8 @@ export class AuthService {
   ): Promise<{ accessToken: string; expiraEm: string }> {
     const sql = this.db.tenant(alvo.schemaName);
     const [u] = await sql<Array<{ role: string; ativo: boolean }>>`SELECT role, ativo FROM users WHERE id = ${userId}`;
-    if (!u) throw new UnauthorizedException('Usuário não encontrado');
+    // 404, nao 401: um 401 faria o painel achar que a sessao do admin caiu.
+    if (!u) throw new NotFoundException('Usuário não encontrado neste órgão');
     if (!u.ativo) throw new BadRequestException('Usuário desativado: reative antes de entrar como ele');
     const permissions = await this.loadPermissions(alvo.schemaName, userId);
     const role = (TENANT_ROLES as readonly string[]).includes(u.role) ? (u.role as TenantRole) : 'consulta';
