@@ -23,6 +23,8 @@ import {
   ShieldAlert,
   EyeOff,
   LogOut,
+  LifeBuoy,
+  Megaphone,
   TrendingDown,
   TrendingUp,
   Warehouse,
@@ -43,6 +45,7 @@ import { cn } from '@/lib/cn';
 import { MODULO_VISUAL, ModuloAtivoProvider, moduloDaRota, useModuloAtivo } from '@/components/modulo-ativo';
 import { EscolhaModulo } from '@/components/escolha-modulo';
 import { useTemaUsuario } from '@/components/theme/use-tema-usuario';
+import { useNovidadesNaoLidas } from '@/components/chamados/novidades';
 
 const PAPEL: Record<UsuarioAtual['role'], string> = { admin: 'Administrador', operador: 'Operador', consulta: 'Consulta' };
 
@@ -70,6 +73,8 @@ const TITULOS: Record<string, { title: string; description: string }> = {
   busca: { title: 'Busca no conteúdo', description: 'Procure dentro do texto dos PDFs' },
   configuracoes: { title: 'Configurações', description: 'Cadastros, usuários e personalização' },
   conta: { title: 'Minha conta', description: 'Seus dados, senha e aparência' },
+  suporte: { title: 'Suporte', description: 'Chamados com a equipe JEOS' },
+  novidades: { title: 'Novidades', description: 'O que mudou no sistema' },
 };
 
 export default function TenantLayout({ children }: { children: ReactNode }) {
@@ -118,6 +123,7 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
   useTemaUsuario(slug, usuario?.uiTheme, usuario?.corOrgao, !!usuario);
 
   const base = `/${slug}`;
+  const naoLidas = useNovidadesNaoLidas(slug);
   const { ativo, ambos, trocar } = useModuloAtivo();
   const temFinanceiro = ativo === 'financeiro' && modulos.includes('financeiro');
   const temArquivo = ativo === 'arquivo' && modulos.includes('arquivo');
@@ -164,6 +170,8 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
       title: 'Geral',
       items: [
         { href: `${base}/busca`, label: 'Busca no conteúdo', icon: ScanSearch },
+        { href: `${base}/suporte`, label: 'Suporte', icon: LifeBuoy },
+        { href: `${base}/novidades`, label: 'Novidades', icon: Megaphone, badge: naoLidas },
         { href: `${base}/configuracoes`, label: 'Configurações', icon: Settings },
       ],
     },

@@ -259,3 +259,19 @@ export function addExtraDocumentFile(
     xhr.send(form);
   });
 }
+
+/** Envia um arquivo (multipart, campo `file`) e devolve o JSON da resposta. */
+export async function enviarArquivo<T>(path: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append('file', file);
+  const token = getAccessToken();
+  const res = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  const body = (await res.json().catch(() => null)) as { error?: string; message?: string } | null;
+  if (!res.ok) throw new Error(body?.error ?? body?.message ?? 'Falha ao enviar o arquivo');
+  return body as T;
+}

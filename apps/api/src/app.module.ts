@@ -33,6 +33,7 @@ import { IntegracoesModule } from './integracoes/integracoes.module';
 import { EmailModule } from './email/email.service';
 import { JobsModule } from './operacao/jobs.module';
 import { OperacaoModule } from './operacao/operacao.module';
+import { ChamadosModule } from './chamados/chamados.module';
 import { HealthController } from './health.controller';
 import { TenantsPublicController } from './tenants-public.controller';
 
@@ -52,6 +53,7 @@ import { TenantsPublicController } from './tenants-public.controller';
     SuperadminModule,
     BackupsModule,
     OperacaoModule,
+    ChamadosModule,
     StorageModule,
     DocumentsModule,
     SignatureModule,

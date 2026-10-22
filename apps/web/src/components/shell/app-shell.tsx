@@ -15,6 +15,8 @@ export interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  /** Selo de contagem (ex.: novidades nao lidas). */
+  badge?: number;
 }
 export interface NavGroup {
   title: string | null;
@@ -202,7 +204,7 @@ function Sidebar({
                   <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white/35">{g.title}</p>
                 ))}
               <ul className="space-y-1">
-                {g.items.map(({ href, label, icon: Icon }) => {
+                {g.items.map(({ href, label, icon: Icon, badge }) => {
                   const ativo = pathname === href || pathname.startsWith(`${href}/`);
                   return (
                     <li key={href}>
@@ -216,8 +218,16 @@ function Sidebar({
                           ativo ? cn(corAtiva, 'text-white shadow-sm') : 'text-white/65 hover:bg-white/10 hover:text-white',
                         )}
                       >
-                        <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
+                        <span className="relative">
+                          <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
+                          {!!badge && compacta && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-danger-500" aria-hidden />}
+                        </span>
                         {!compacta && <span className="truncate">{label}</span>}
+                        {!!badge && !compacta && (
+                          <span className="ml-auto rounded-full bg-danger-500 px-1.5 text-[11px] font-bold tabular-nums text-white" aria-label={`${badge} não lida(s)`}>
+                            {badge}
+                          </span>
+                        )}
                       </Link>
                     </li>
                   );
