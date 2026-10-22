@@ -20,6 +20,32 @@ const CODIGOS: Record<number, string> = {
   503: 'indisponivel',
 };
 
+/** Mensagens padrao do Nest/Express (em ingles) traduzidas: nada em ingles chega a tela. */
+const TRADUCAO: Record<string, string> = {
+  'Bad Request': 'Requisição inválida',
+  Unauthorized: 'Não autenticado',
+  Forbidden: 'Acesso negado',
+  'Forbidden resource': 'Acesso negado',
+  'Not Found': 'Não encontrado',
+  'Method Not Allowed': 'Operação não permitida',
+  Conflict: 'Conflito com dados existentes',
+  'Payload Too Large': 'Arquivo grande demais',
+  'File too large': 'Arquivo grande demais',
+  'Unsupported Media Type': 'Tipo de arquivo não suportado',
+  'Too Many Requests': 'Muitas tentativas. Aguarde um minuto e tente de novo.',
+  'ThrottlerException: Too Many Requests': 'Muitas tentativas. Aguarde um minuto e tente de novo.',
+  'Internal Server Error': 'Erro interno',
+  'Service Unavailable': 'Serviço indisponível no momento',
+  'Validation failed (uuid is expected)': 'Identificador inválido',
+};
+
+function traduzir(m: string): string {
+  if (TRADUCAO[m]) return TRADUCAO[m]!;
+  if (/^Cannot (GET|POST|PUT|PATCH|DELETE) /.test(m)) return 'Não encontrado';
+  if (/^Unexpected field/.test(m)) return 'Campo de arquivo inesperado';
+  return m;
+}
+
 function codigoPadrao(status: number): string {
   return CODIGOS[status] ?? (status >= 500 ? 'erro_interno' : 'erro');
 }
@@ -55,10 +81,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     // Formato do padrao: `{ error, code }` em pt-BR. `message` continua para
     // nao quebrar quem ja le esse campo.
-    const message = Array.isArray(body.message) ? body.message.join('; ') : body.message;
+    const bruta = Array.isArray(body.message) ? body.message.join('; ') : body.message;
+    const message = typeof bruta === 'string' ? traduzir(bruta) : bruta;
     res.status(status).json({
       statusCode: status,
       ...body,
+      message,
       error: typeof message === 'string' ? message : 'Erro interno',
       code: typeof body.code === 'string' ? body.code : codigoPadrao(status),
       timestamp: new Date().toISOString(),

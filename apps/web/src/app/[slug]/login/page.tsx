@@ -116,6 +116,11 @@ export default function LoginPage() {
               />
               <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" aria-hidden />
             </div>
+            <div className="mt-2 text-right">
+              <Link href={`/${slug}/esqueci-senha`} className="text-[13px] font-semibold text-brand-600 hover:text-brand-700">
+                Esqueci minha senha
+              </Link>
+            </div>
           </Field>
 
           {error && (

@@ -12,7 +12,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { CookieOptions, Request, Response } from 'express';
+import { z } from 'zod';
 import {
+  MENSAGEM_ESQUECI_SENHA,
+  esqueciSenhaSchema,
+  redefinirSenhaSchema,
+  type EsqueciSenhaInput,
+  type RedefinirSenhaInput,
   changePasswordSchema,
   loginSchema,
   minhaContaSchema,
@@ -27,12 +33,14 @@ import {
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { loadEnv } from '../config/env';
 import { AuthService } from './auth.service';
+import { RecuperacaoSenhaService } from './recuperacao-senha.service';
 import { CurrentUser, Permissions, Public } from './decorators';
 import { TenantJwtGuard } from './tenant-jwt.guard';
 import { PermissionsGuard } from './permissions.guard';
 import { Throttle } from '@nestjs/throttler';
 
 const REFRESH_COOKIE = 'jdoc_rt';
+const validarLinkSchema = z.object({ token: z.string().regex(/^[0-9a-f]{64}$/) }).strict();
 
 function cookieOptions(slug: string): CookieOptions {
   return {
@@ -48,7 +56,10 @@ function cookieOptions(slug: string): CookieOptions {
 @Controller('t/:slug/auth')
 @UseGuards(TenantJwtGuard, PermissionsGuard)
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly recuperacao: RecuperacaoSenhaService,
+  ) {}
 
   @Public()
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
@@ -130,6 +141,38 @@ export class AuthController {
     @Req() req: Request,
   ): Promise<void> {
     await this.auth.trocarSenha(user.sub, body, req.ip ?? '');
+  }
+
+  /** "Esqueci a senha": CPF ou e-mail; resposta sempre igual. */
+  @Public()
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @Post('esqueci-senha')
+  @HttpCode(200)
+  async esqueciSenha(
+    @Body(new ZodValidationPipe(esqueciSenhaSchema)) body: EsqueciSenhaInput,
+    @Req() req: Request,
+  ): Promise<{ mensagem: string }> {
+    await this.recuperacao.solicitar(body, req.ip ?? '', req.headers['user-agent'] ?? '');
+    return { mensagem: MENSAGEM_ESQUECI_SENHA };
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('redefinir-senha/validar')
+  @HttpCode(200)
+  async validarLink(@Body(new ZodValidationPipe(validarLinkSchema)) body: { token: string }): Promise<{ valido: boolean }> {
+    return { valido: await this.recuperacao.validarToken(body.token) };
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('redefinir-senha')
+  @HttpCode(204)
+  async redefinirSenha(
+    @Body(new ZodValidationPipe(redefinirSenhaSchema)) body: RedefinirSenhaInput,
+    @Req() req: Request,
+  ): Promise<void> {
+    await this.recuperacao.redefinir(body, req.ip ?? '', req.headers['user-agent'] ?? '');
   }
 
   @Permissions()
