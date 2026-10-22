@@ -1,73 +1,20 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+/** Backups e agendamento de um orgao (aba Backup do detalhe do orgao). */
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  DatabaseBackup,
-  CalendarClock,
-  ScrollText,
-  Upload,
-  Download,
-  Trash2,
-  RefreshCw,
-  AlertTriangle,
-} from 'lucide-react';
+import { Download, Trash2, RefreshCw } from 'lucide-react';
 import type {
   BackupsListResponse,
   BackupView,
   TenantBackupSettings,
   TenantOverview,
   UpdateBackupSettingsInput,
-  RestoreJobView,
 } from '@jdoc/shared';
 import { api, ApiError } from '@/lib/api';
-import { restoreTenantBackup } from '@/lib/upload';
-import { Badge, Modal, btnGhost, btnPrimary, cardCls, formatBytes, inputCls, labelCls, SelectMenu } from '@/components/ui';
+import { Badge, btnGhost, btnPrimary, cardCls, formatBytes, inputCls, labelCls, SelectMenu } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { fmtDateTime } from '@/lib/format';
-
-const TABS = [
-  { key: 'backup', label: 'Backup', icon: DatabaseBackup },
-  { key: 'agendamento', label: 'Agendamento', icon: CalendarClock },
-  { key: 'logs', label: 'Logs', icon: ScrollText },
-  { key: 'restaurar', label: 'Restaurar', icon: Upload },
-] as const;
-type TabKey = (typeof TABS)[number]['key'];
-
-export function TenantManageModal({
-  tenant,
-  onClose,
-}: {
-  tenant: TenantOverview;
-  onClose: () => void;
-}) {
-  const [tab, setTab] = useState<TabKey>('backup');
-
-  return (
-    <Modal title={tenant.nome} subtitle={`/${tenant.slug}`} open onClose={onClose}>
-      <div className="mb-4 flex gap-1 rounded-[10px] bg-surface p-1">
-        {TABS.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-[8px] px-2 py-2 text-[13px] font-semibold transition ${
-              tab === key ? 'bg-surface text-ink-800 shadow-sm' : 'text-ink-500 hover:text-ink-800'
-            }`}
-          >
-            <Icon className="h-3.5 w-3.5" aria-hidden />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'backup' && <BackupTab tenant={tenant} />}
-      {tab === 'agendamento' && <AgendamentoTab tenant={tenant} />}
-      {tab === 'logs' && <LogsTab tenant={tenant} />}
-      {tab === 'restaurar' && <RestaurarTab tenant={tenant} />}
-    </Modal>
-  );
-}
 
 export function BackupTab({ tenant }: { tenant: TenantOverview }) {
   const qc = useQueryClient();
@@ -332,134 +279,6 @@ export function AgendamentoTab({ tenant }: { tenant: TenantOverview }) {
       <button type="button" className={`${btnPrimary} w-full`} disabled={save.isPending} onClick={() => save.mutate(form)}>
         {save.isPending ? 'Salvando…' : 'Salvar configurações'}
       </button>
-    </div>
-  );
-}
-
-interface TenantLogEntry {
-  id: string;
-  action: string;
-  metadata: Record<string, unknown> | null;
-  criado_em: string;
-}
-
-function LogsTab({ tenant }: { tenant: TenantOverview }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['sa-tenant-logs', tenant.id],
-    queryFn: () =>
-      api<{ items: TenantLogEntry[]; total: number }>(`/superadmin/tenants/${tenant.id}/logs?page=1&pageSize=50`),
-  });
-
-  return (
-    <div className={`${cardCls} max-h-96 overflow-y-auto`}>
-      {isLoading && <p className="p-4 text-sm text-ink-500">Carregando…</p>}
-      {!isLoading && (data?.items.length ?? 0) === 0 && (
-        <p className="p-6 text-center text-sm text-ink-500">Nenhum registro de log.</p>
-      )}
-      {data?.items.map((l) => (
-        <div key={l.id} className="border-b border-ink-200 px-3 py-2 last:border-0">
-          <div className="flex items-center gap-2">
-            <Badge color="blue">{l.action.toUpperCase()}</Badge>
-            <span className="text-[11px] text-ink-500">
-              {fmtDateTime(l.criado_em)}
-            </span>
-          </div>
-          {l.metadata && (
-            <p className="mt-1 truncate text-[11px] text-ink-500">{JSON.stringify(l.metadata)}</p>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-export function RestaurarTab({ tenant }: { tenant: TenantOverview }) {
-  const toast = useToast();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<RestoreJobView | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function pollRestore(id: string): Promise<void> {
-    for (let i = 0; i < 60; i++) {
-      const r = await api<RestoreJobView>(`/superadmin/backups/restore/${id}`);
-      setStatus(r);
-      if (r.status === 'concluido' || r.status === 'erro') return;
-      await new Promise((res) => setTimeout(res, 3000));
-    }
-  }
-
-  async function onFile(file: File) {
-    setError(null);
-    setBusy(true);
-    setStatus(null);
-    try {
-      const result = await restoreTenantBackup(tenant.id, file, () => undefined);
-      if (!result.ok) {
-        setError(result.message);
-        toast.error(result.message);
-        return;
-      }
-      const { id } = result.body as { id: string };
-      toast.success('Restauração iniciada. Acompanhe o status abaixo.');
-      await pollRestore(id);
-    } finally {
-      setBusy(false);
-      if (fileRef.current) fileRef.current.value = '';
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-2 rounded-[10px] bg-warning-50 p-3 text-xs text-warning-600">
-        <AlertTriangle className="h-8 w-8 shrink-0" aria-hidden />
-        <p>
-          <strong>Restaurar — use com cautela.</strong> Substitui TODOS os dados atuais de{' '}
-          <strong>{tenant.nome}</strong>. Um backup de segurança é criado automaticamente antes.
-          Somente arquivos <code>.dump.gz</code> gerados por este sistema são compatíveis.
-        </p>
-      </div>
-
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".gz"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void onFile(f);
-        }}
-      />
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => fileRef.current?.click()}
-        className={`${cardCls} flex w-full flex-col items-center gap-2 border-2 border-dashed p-8 text-center hover:border-brand-500`}
-      >
-        <Upload className="h-8 w-8 text-ink-500" aria-hidden />
-        <p className="text-sm font-semibold text-ink-800">Clique para selecionar o arquivo de backup</p>
-        <p className="text-xs text-ink-500">Apenas arquivos .dump.gz gerados por este sistema</p>
-      </button>
-
-      {error && <p className="rounded-[10px] bg-danger-50 px-3 py-2 text-xs text-danger-600">{error}</p>}
-
-      {status && (
-        <div className={`${cardCls} p-4`}>
-          <div className="flex items-center gap-2">
-            <Badge
-              color={status.status === 'concluido' ? 'green' : status.status === 'erro' ? 'red' : 'blue'}
-            >
-              {status.status.toUpperCase()}
-            </Badge>
-            <span className="text-xs text-ink-500">
-              {status.status === 'concluido' && 'Restauração concluída.'}
-              {status.status === 'processando' && 'Restaurando… isso pode levar alguns instantes.'}
-              {status.status === 'pendente' && 'Na fila…'}
-              {status.status === 'erro' && (status.erroMensagem ?? 'Falha na restauração.')}
-            </span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

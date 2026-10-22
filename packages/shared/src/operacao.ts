@@ -180,3 +180,35 @@ export interface ResultadoCorrecoes {
   falhas: Array<{ id: string; titulo: string; erro: string }>;
   ignoradas: number;
 }
+
+// ---------------- Painel (visao geral) ----------------
+
+export interface PainelPlataforma {
+  kpis: {
+    orgaosAtivos: number;
+    orgaosTotal: number;
+    usuariosAtivos: number;
+    acessos24h: number;
+    chamadosAbertos: number;
+    chamadosAtrasados: number;
+    ultimoBackup: { status: 'concluido' | 'erro' | 'processando' | 'pendente'; em: string; orgao: string | null } | null;
+    backupsComFalha24h: number;
+    jobsComFalha24h: number;
+  };
+  falhasLogin: {
+    porOrgao: Array<{ orgao: string; tenantId: string | null; qtd: number }>;
+    porIp: Array<{ ip: string; qtd: number }>;
+  };
+  rotasLentas: Array<{ method: string; route: string; qtd: number; mediaMs: number; maxMs: number }>;
+  orgaos: Array<{
+    id: string;
+    nome: string;
+    slug: string;
+    cidade: string | null;
+    uf: string | null;
+    status: string;
+    brasaoUrl: string | null;
+    usuariosAtivos: number;
+    ultimoAcesso: string | null;
+  }>;
+}

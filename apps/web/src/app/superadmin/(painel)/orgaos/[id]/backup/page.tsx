@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { CalendarClock, DatabaseBackup, Upload } from 'lucide-react';
 import { Card, CardHeader } from '@/components/ui';
 import { Skeleton } from '@/components/skeleton';
-import { AgendamentoTab, BackupTab } from '@/components/superadmin/tenant-manage-modal';
+import { AgendamentoTab, BackupTab } from '@/components/platform/backup-orgao';
 import { RestaurarArquivo } from '@/components/platform/restauracao';
 import { useOrgao } from '@/components/platform/orgao-ui';
 import { usePode } from '@/components/platform/admin-context';

@@ -2,242 +2,203 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
-  Landmark,
-  CheckCircle2,
-  XCircle,
-  HardDrive,
-  FileText,
-  Upload,
-  Plus,
+  AlertTriangle,
+  Building2,
+  Clock,
+  DatabaseBackup,
+  ExternalLink,
+  LifeBuoy,
   LogIn,
-  Sliders,
+  ShieldAlert,
   Users,
-  Pencil,
-  Power,
-  Settings2,
+  XCircle,
 } from 'lucide-react';
-import type { MasterDashboard, TenantOverview } from '@jdoc/shared';
-import { api, ApiError } from '@/lib/api';
-import { cardCls, formatBytes, Badge, StatCard, UsageBar, btnGhost } from '@/components/ui';
+import { STATUS_BACKUP_LABEL, TENANT_STATUS_LABEL, type PainelPlataforma, type TenantStatus } from '@jdoc/shared';
+import { api } from '@/lib/api';
+import { fmtDuracao, fmtRelative } from '@/lib/format';
+import { Badge, Button, Card, CardHeader, PageHeader, StatCard, buttonClasses } from '@/components/ui';
+import { Skeleton } from '@/components/skeleton';
 import { EmptyState } from '@/components/empty-state';
-import { useToast } from '@/components/toast';
-import { EditModal, QuotaModal } from '@/components/superadmin/tenant-modals';
-import { TenantManageModal } from '@/components/superadmin/tenant-manage-modal';
-import { fmtDate } from '@/lib/format';
+import { STATUS_TOM } from '@/components/platform/orgao-ui';
+import { RequisicoesLentasModal } from '@/components/platform/requisicoes-lentas';
+import { useAdmin } from '@/components/platform/admin-context';
 
-export default function SuperadminDashboardPage() {
-  const qc = useQueryClient();
-  const toast = useToast();
-  const { data, isLoading } = useQuery({
-    queryKey: ['sa-dashboard'],
-    queryFn: () => api<MasterDashboard>('/superadmin/dashboard'),
+/** Painel: situacao da plataforma e de cada orgao num relance. */
+export default function PainelPage() {
+  const eu = useAdmin();
+  const { data: p, isLoading } = useQuery({
+    queryKey: ['sa-overview'],
+    queryFn: () => api<PainelPlataforma>('/superadmin/overview'),
+    refetchInterval: 60_000,
   });
-  const { data: tenants, isLoading: loadingTenants } = useQuery({
-    queryKey: ['sa-tenants'],
-    queryFn: () => api<TenantOverview[]>('/superadmin/tenants'),
-  });
-
-  const [editing, setEditing] = useState<TenantOverview | null>(null);
-  const [quotaEditing, setQuotaEditing] = useState<TenantOverview | null>(null);
-  const [managing, setManaging] = useState<TenantOverview | null>(null);
-
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['sa-tenants'] });
-
-  const toggleStatus = useMutation({
-    mutationFn: (t: TenantOverview) =>
-      api(`/superadmin/tenants/${t.id}/status`, {
-        method: 'PATCH',
-        body: { status: t.status === 'ativo' ? 'inativo' : 'ativo' },
-      }),
-    onSuccess: () => {
-      invalidate();
-      toast.success('Status do órgão atualizado.');
-    },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Erro ao alterar status'),
-  });
-
-  if (isLoading || !data) {
-    return (
-      <div className="space-y-6">
-        <h1 className="text-xl font-extrabold tracking-tight text-ink-900 sm:text-2xl">Visão geral</h1>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-24 animate-pulse rounded-[16px] bg-ink-100" aria-hidden />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  const cards = [
-    { label: 'Total de órgãos', value: data.totalOrgaos, icon: Landmark, tone: 'brand' },
-    { label: 'Ativos', value: data.orgaosAtivos, icon: CheckCircle2, tone: 'success' },
-    { label: 'Inativos', value: data.orgaosInativos, icon: XCircle, tone: 'orange' },
-    {
-      label: 'Armazenamento total',
-      value: formatBytes(data.armazenamentoTotalBytes),
-      icon: HardDrive,
-      tone: 'info',
-    },
-    { label: 'Documentos indexados', value: data.documentosIndexados, icon: FileText, tone: 'brand' },
-    { label: 'Uploads no mês', value: data.uploadsNoMes, icon: Upload, tone: 'success' },
-  ] as const;
-
-  const maxGrowth = Math.max(1, ...data.crescimento.map((g) => g.total));
+  const [verLentas, setVerLentas] = useState(false);
+  const k = p?.kpis;
+  const ub = k?.ultimoBackup;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-extrabold tracking-tight text-ink-900 sm:text-2xl">Visão geral</h1>
-        <Link href="/superadmin/orgaos" className="flex items-center gap-2 rounded-[10px] bg-brand-600 px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-brand-700">
-          <Plus className="h-4 w-4" aria-hidden />
-          Novo órgão
-        </Link>
+      <PageHeader title={eu ? `Olá, ${eu.nome.split(' ')[0]}` : 'Painel'} description="Situação da plataforma nas últimas 24 horas." />
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+        <StatCard label="Órgãos ativos" value={k ? `${k.orgaosAtivos}` : '—'} hint={k ? `de ${k.orgaosTotal} cadastrados` : undefined} icon={Building2} tone="brand" loading={isLoading} href="/superadmin/orgaos" />
+        <StatCard label="Usuários ativos" value={k ? k.usuariosAtivos.toLocaleString('pt-BR') : '—'} icon={Users} tone="teal" loading={isLoading} href="/superadmin/usuarios" />
+        <StatCard label="Acessos (24 h)" value={k ? k.acessos24h.toLocaleString('pt-BR') : '—'} icon={LogIn} tone="info" loading={isLoading} />
+        <StatCard
+          label="Chamados abertos"
+          value={k ? `${k.chamadosAbertos}` : '—'}
+          hint={k ? (k.chamadosAtrasados ? `${k.chamadosAtrasados} atrasado(s)` : 'nenhum atrasado') : undefined}
+          icon={LifeBuoy}
+          tone={k?.chamadosAtrasados ? 'danger' : 'success'}
+          loading={isLoading}
+          href="/superadmin/chamados"
+        />
+        <StatCard
+          label="Último backup"
+          value={ub ? STATUS_BACKUP_LABEL[ub.status] : 'Nenhum'}
+          hint={ub ? `${ub.orgao ?? 'completo'} · ${fmtRelative(ub.em)}` : undefined}
+          icon={DatabaseBackup}
+          tone={!ub || ub.status === 'erro' || (k?.backupsComFalha24h ?? 0) > 0 ? 'danger' : ub.status === 'concluido' ? 'success' : 'info'}
+          loading={isLoading}
+          href="/superadmin/backups"
+        />
+        <StatCard
+          label="Jobs com falha"
+          value={k ? `${k.jobsComFalha24h}` : '—'}
+          icon={XCircle}
+          tone={k?.jobsComFalha24h ? 'danger' : 'success'}
+          loading={isLoading}
+          href="/superadmin/jobs"
+        />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.map(({ label, value, icon, tone }) => (
-          <StatCard key={label} label={label} value={value} icon={icon} tone={tone} />
-        ))}
-      </div>
-
-      <div>
-        <div className="mb-3 flex items-center justify-between">
-          <p className="label-caps">
-            Órgãos cadastrados{tenants ? ` (${tenants.length})` : ''}
-          </p>
-          <Link href="/superadmin/orgaos" className="text-xs font-semibold text-accent hover:underline">
-            Ver todos →
-          </Link>
-        </div>
-
-        {loadingTenants ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-40 animate-pulse rounded-[16px] bg-ink-100" aria-hidden />
-            ))}
-          </div>
-        ) : !tenants || tenants.length === 0 ? (
-          <div className={`${cardCls} p-5`}>
-            <EmptyState
-              icon={Landmark}
-              title="Nenhum órgão cadastrado"
-              description="Cadastre o primeiro órgão para começar a usar o jDoc."
-            />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {tenants.map((t) => (
-              <div key={t.id} className={`${cardCls} border-t-4 ${t.status === 'ativo' ? 'border-t-success-500' : 'border-t-danger-500'} p-4`}>
-                <div className="mb-3 flex items-start justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-600">
-                      {t.brasaoUrl ? (
-                        <img src={t.brasaoUrl} alt={t.nome} className="h-full w-full object-cover" />
-                      ) : (
-                        <Landmark className="h-4 w-4 text-white" aria-hidden />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-ink-800">{t.nome}</p>
-                      <p className="truncate text-[11px] text-ink-500">/{t.slug}</p>
-                    </div>
-                  </div>
-                  <Badge color={t.status === 'ativo' ? 'green' : 'red'}>{t.status.toUpperCase()}</Badge>
+      {!p ? (
+        <Skeleton rows={6} />
+      ) : (
+        <>
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Card>
+              <CardHeader icon={ShieldAlert} title="Falhas de login (24 h)" description="Muitas falhas de um mesmo IP podem indicar tentativa de invasão." />
+              {p.falhasLogin.porOrgao.length === 0 ? (
+                <div className="p-5">
+                  <EmptyState icon={ShieldAlert} title="Nenhuma falha de login" />
                 </div>
-
-                <p className="mb-2 text-[11px] text-ink-500">
-                  Criado em {fmtDate(t.criadoEm)}
-                </p>
-
-                <UsageBar percent={t.usoPercent} />
-                <p className="mb-3 mt-1 text-[11px] text-ink-500">
-                  {formatBytes(t.usoBytes)} de {(t.quotaDiscoMb / 1024).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GB
-                </p>
-
-                <div className="space-y-1.5">
-                  <a
-                    href={`/${t.slug}/login`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-brand-600 py-2 text-[13px] font-semibold text-white transition hover:bg-brand-700"
-                  >
-                    <LogIn className="h-3.5 w-3.5" aria-hidden />
-                    Acessar Sistema
-                  </a>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                    <button type="button" onClick={() => setQuotaEditing(t)} className={`${btnGhost} text-[11px]`}>
-                      <Sliders className="mr-1 inline h-3.5 w-3.5" aria-hidden />
-                      Configurar
-                    </button>
-                    <Link
-                      href={`/superadmin/usuarios?tenantId=${t.id}`}
-                      className={`${btnGhost} text-center text-[11px]`}
-                    >
-                      <Users className="mr-1 inline h-3.5 w-3.5" aria-hidden />
-                      Usuários
-                    </Link>
-                    <button type="button" onClick={() => setEditing(t)} className={`${btnGhost} text-[11px]`}>
-                      <Pencil className="mr-1 inline h-3.5 w-3.5" aria-hidden />
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleStatus.mutate(t)}
-                      className={`${btnGhost} text-[11px]`}
-                    >
-                      <Power className="mr-1 inline h-3.5 w-3.5" aria-hidden />
-                      {t.status === 'ativo' ? 'Desativar' : 'Ativar'}
-                    </button>
+              ) : (
+                <div className="grid gap-6 p-5 sm:grid-cols-2">
+                  <div>
+                    <p className="label-caps mb-2">Por órgão</p>
+                    <ul className="space-y-1.5 text-sm">
+                      {p.falhasLogin.porOrgao.map((o) => (
+                        <li key={o.orgao} className="flex justify-between gap-2">
+                          <span className="truncate text-ink-700">{o.orgao}</span>
+                          <Badge tone={o.qtd >= 10 ? 'danger' : 'warning'}>{o.qtd}</Badge>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setManaging(t)}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-[10px] border border-ink-200 py-2 text-[13px] font-semibold text-accent transition hover:bg-ink-50"
-                  >
-                    <Settings2 className="h-3.5 w-3.5" aria-hidden />
-                    Gerenciar (Backup &amp; Logs)
-                  </button>
+                  <div>
+                    <p className="label-caps mb-2">Por IP</p>
+                    <ul className="space-y-1.5 text-sm">
+                      {p.falhasLogin.porIp.map((i) => (
+                        <li key={i.ip} className="flex justify-between gap-2">
+                          <span className="font-mono text-xs text-ink-700">{i.ip}</span>
+                          <Badge tone={i.qtd >= 10 ? 'danger' : 'warning'}>{i.qtd}</Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )}
+            </Card>
+            <Card>
+              <CardHeader
+                icon={Clock}
+                title="Requisições lentas (24 h)"
+                description="Rotas com tempo médio e máximo mais altos."
+                action={
+                  <Button size="sm" variant="outline" onClick={() => setVerLentas(true)}>
+                    Ver todas
+                  </Button>
+                }
+              />
+              {p.rotasLentas.length === 0 ? (
+                <div className="p-5">
+                  <EmptyState icon={Clock} title="Nenhuma requisição lenta" />
+                </div>
+              ) : (
+                <ul className="divide-y divide-ink-100">
+                  {p.rotasLentas.map((r) => (
+                    <li key={`${r.method}${r.route}`} className="flex items-center gap-3 px-5 py-2.5">
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-700" title={r.route}>
+                        <strong className="font-sans text-ink-500">{r.method}</strong> {r.route}
+                      </span>
+                      <span className="shrink-0 text-right text-xs text-ink-500">
+                        média <strong className="text-ink-900">{fmtDuracao(r.mediaMs)}</strong> · máx. {fmtDuracao(r.maxMs)} · {r.qtd}x
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
           </div>
-        )}
-      </div>
 
-      <div className={`${cardCls} p-5`}>
-        <p className="mb-4 label-caps">
-          Crescimento — órgãos cadastrados (12 meses)
-        </p>
-        {data.crescimento.length === 0 ? (
-          <EmptyState
-            icon={Landmark}
-            title="Sem dados no período"
-            description="Não há registros de crescimento dos órgãos nos últimos 12 meses."
-          />
-        ) : (
-          <div className="flex h-32 items-end gap-2">
-            {data.crescimento.map((g) => (
-              <div key={g.mes} className="flex flex-1 flex-col items-center gap-1">
-                <span className="text-[10px] font-bold text-ink-800">{g.total}</span>
-                <div
-                  className="w-full rounded-t bg-brand-600"
-                  style={{ height: `${(g.total / maxGrowth) * 100}%`, minHeight: 4 }}
-                />
-                <span className="text-[9px] text-ink-500">{g.mes}</span>
+          <section>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-ink-900">Órgãos</h2>
+              <Link href="/superadmin/orgaos" className="text-[13px] font-semibold text-brand-600 hover:text-brand-700">
+                Ver todos
+              </Link>
+            </div>
+            {p.orgaos.length === 0 ? (
+              <EmptyState icon={Building2} title="Nenhum órgão cadastrado" />
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {p.orgaos.map((o) => (
+                  <Card key={o.id} className="flex flex-col p-5">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-[12px] border border-ink-200 bg-ink-50">
+                        {o.brasaoUrl ? <img src={o.brasaoUrl} alt="" className="h-full w-full object-cover" /> : <Building2 className="h-5 w-5 text-ink-400" aria-hidden />}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <Link href={`/superadmin/orgaos/${o.id}`} className="block truncate font-semibold text-ink-900 hover:text-brand-600">
+                          {o.nome}
+                        </Link>
+                        <p className="text-xs text-ink-500">
+                          {o.cidade ?? '—'}
+                          {o.uf ? `/${o.uf}` : ''}
+                        </p>
+                      </div>
+                      <Badge tone={STATUS_TOM[o.status as TenantStatus] ?? 'neutral'}>{TENANT_STATUS_LABEL[o.status as TenantStatus] ?? o.status}</Badge>
+                    </div>
+                    <dl className="mt-4 grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <dt className="label-caps">Usuários</dt>
+                        <dd className="font-semibold text-ink-900">{o.usuariosAtivos}</dd>
+                      </div>
+                      <div>
+                        <dt className="label-caps">Último acesso</dt>
+                        <dd className="text-ink-700">{o.ultimoAcesso ? fmtRelative(o.ultimoAcesso) : 'Nunca'}</dd>
+                      </div>
+                    </dl>
+                    <a href={`/${o.slug}/login`} target="_blank" rel="noopener noreferrer" className={buttonClasses('outline', 'sm', 'mt-4 w-full')}>
+                      <ExternalLink aria-hidden />
+                      Acessar sistema
+                    </a>
+                  </Card>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {editing && <EditModal tenant={editing} onClose={() => setEditing(null)} onDone={invalidate} />}
-      {quotaEditing && (
-        <QuotaModal tenant={quotaEditing} onClose={() => setQuotaEditing(null)} onDone={invalidate} />
+            )}
+          </section>
+          {p.kpis.chamadosAtrasados > 0 && (
+            <p className="flex items-center gap-2 text-sm text-danger-600">
+              <AlertTriangle className="h-4 w-4" aria-hidden />
+              Há chamados fora do prazo. <Link href="/superadmin/chamados" className="font-semibold underline">Abrir a fila</Link>
+            </p>
+          )}
+        </>
       )}
-      {managing && <TenantManageModal tenant={managing} onClose={() => setManaging(null)} />}
+      <RequisicoesLentasModal aberto={verLentas} onFechar={() => setVerLentas(false)} />
     </div>
   );
 }

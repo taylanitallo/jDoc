@@ -46,6 +46,7 @@ import {
   type IntegracaoView,
   type LogsQuery,
   type MasterDashboard,
+  type PainelPlataforma,
   type ModeloPerfilInput,
   type ModeloPerfilView,
   type PerfilCreateInput,
@@ -75,6 +76,7 @@ import { SuperadminTenantsService } from './superadmin-tenants.service';
 import { SuperadminUsersService } from './superadmin-users.service';
 import { PerfisService } from './perfis.service';
 import { IbgeService } from './ibge.service';
+import { PainelService } from './painel.service';
 import { SuperadminLogsService, SuperadminDashboardService, type LogPage } from './superadmin-logs.service';
 
 const uuidSchema = z.string().uuid();
@@ -115,11 +117,19 @@ export class SuperadminController {
     private readonly dash: SuperadminDashboardService,
     private readonly integracoes: IntegracoesService,
     private readonly ibge: IbgeService,
+    private readonly painelService: PainelService,
     private readonly auth: AuthService,
     private readonly audit: AuditService,
   ) {}
 
   // ---- Painel e catalogo ----
+
+  /** Painel: KPIs, falhas de login, rotas lentas e cartoes dos orgaos. */
+  @Papeis(...TODOS)
+  @Get('overview')
+  overview(): Promise<PainelPlataforma> {
+    return this.painelService.painel();
+  }
 
   @Papeis(...TODOS)
   @Get('dashboard')
