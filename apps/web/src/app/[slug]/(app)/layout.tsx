@@ -18,6 +18,7 @@ import {
   MessagesSquare,
   Scale,
   ScanSearch,
+  ScrollText,
   Settings,
   ShieldCheck,
   ShieldAlert,
@@ -71,6 +72,7 @@ const TITULOS: Record<string, { title: string; description: string }> = {
   atendimento: { title: 'Atendimento', description: 'Pedidos de consulta e acesso ao acervo (LAI)' },
   sigilo: { title: 'Sigilo', description: 'Informações classificadas pela LAI' },
   busca: { title: 'Busca no conteúdo', description: 'Procure dentro do texto dos PDFs' },
+  auditoria: { title: 'Auditoria', description: 'Quem fez o quê, quando e de onde' },
   configuracoes: { title: 'Configurações', description: 'Cadastros, usuários e personalização' },
   conta: { title: 'Minha conta', description: 'Seus dados, senha e aparência' },
   suporte: { title: 'Suporte', description: 'Chamados com a equipe JEOS' },
@@ -170,6 +172,7 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
       title: 'Geral',
       items: [
         { href: `${base}/busca`, label: 'Busca no conteúdo', icon: ScanSearch },
+        ...(usuario?.podeAuditar ? [{ href: `${base}/auditoria`, label: 'Auditoria', icon: ScrollText }] : []),
         { href: `${base}/suporte`, label: 'Suporte', icon: LifeBuoy },
         { href: `${base}/novidades`, label: 'Novidades', icon: Megaphone, badge: naoLidas },
         { href: `${base}/configuracoes`, label: 'Configurações', icon: Settings },
@@ -186,8 +189,8 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
   const segmento = pathname.slice(base.length + 1).split('/')[0] ?? '';
   const titulo = TITULOS[segmento] ?? { title: 'jDoc' };
 
-  // Senha provisoria: nada alem de Minha conta ate trocar.
-  const trocaObrigatoria = !!usuario?.mustChangePassword && segmento !== 'conta';
+  // Senha provisoria ou 2 etapas exigida e nao configurada: nada alem de Minha conta ate resolver.
+  const trocaObrigatoria = (!!usuario?.mustChangePassword || !!usuario?.mfaPendente) && segmento !== 'conta';
   useEffect(() => {
     if (trocaObrigatoria) router.replace(`${base}/conta?trocar=1`);
   }, [trocaObrigatoria, router, base]);

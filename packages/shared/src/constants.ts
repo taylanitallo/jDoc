@@ -50,6 +50,8 @@ export const MODULES = [
   'tipos_documento',
   'usuarios',
   'layout',
+  /** Trilha de auditoria do orgao (quem fez o que, quando e de onde). */
+  'auditoria',
 ] as const;
 export const moduleSchema = z.enum(MODULES);
 export type ModuleName = z.infer<typeof moduleSchema>;

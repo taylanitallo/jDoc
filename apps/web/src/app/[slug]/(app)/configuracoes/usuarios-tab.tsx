@@ -4,19 +4,80 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
-import type { PerfilOrgaoResumo, UnidadeOrcamentaria, UsuarioTenant } from '@jdoc/shared';
+import type { Orgao, PerfilOrgaoResumo, SegurancaOrgao, UsuarioTenant } from '@jdoc/shared';
 import { fmtCpf } from '@/lib/format';
 import { PermissionMatrix } from '@/components/platform/permission-matrix';
 import { useBranding } from '@/components/branding';
 import { useToast } from '@/components/toast';
-import { Pencil, Key, Plus, Trash2, Users as UsersIcon } from 'lucide-react';
+import { Pencil, Key, Plus, ShieldCheck, ShieldOff, Trash2, Users as UsersIcon } from 'lucide-react';
 import { EmptyState } from '@/components/empty-state';
 import { Avatar, Badge, Modal, btnGhost, btnPrimary, cardCls, inputCls, labelCls, type Tone, SelectMenu, Input } from '@/components/ui';
 
 const PERFIL_TOM: Record<string, Tone> = { admin: 'violet', operador: 'info', consulta: 'neutral' };
 const PERFIL_ROTULO: Record<string, string> = { admin: 'Administrador', operador: 'Operador', consulta: 'Consulta' };
 
+/** Secretaria do cadastro de orgaos, uma por codigo (o cadastro se repete a cada exercicio). */
+interface Secretaria {
+  codigo: string;
+  nome: string;
+}
 
+function secretariasDistintas(orgaos: Orgao[]): Secretaria[] {
+  const porCodigo = new Map<string, Orgao>();
+  for (const o of orgaos) {
+    const atual = porCodigo.get(o.codigo);
+    if (!atual || o.exercicio > atual.exercicio) porCodigo.set(o.codigo, o);
+  }
+  return [...porCodigo.values()]
+    .map((o) => ({ codigo: o.codigo, nome: o.descricao }))
+    .sort((a, b) => a.codigo.localeCompare(b.codigo, 'pt-BR', { numeric: true }));
+}
+
+/** Exigir verificacao em 2 etapas dos administradores (TR: autenticacao multifator para administradores). */
+function SegurancaCard({ slug }: { slug: string }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const { data } = useQuery({
+    queryKey: ['configuracoes', 'seguranca'],
+    queryFn: () => api<SegurancaOrgao>(`/t/${slug}/configuracoes/seguranca`),
+  });
+  const salvar = useMutation({
+    mutationFn: (mfaObrigatorioAdmin: boolean) =>
+      api<SegurancaOrgao>(`/t/${slug}/configuracoes/seguranca`, { method: 'PUT', body: { mfaObrigatorioAdmin } }),
+    onSuccess: async (s) => {
+      qc.setQueryData(['configuracoes', 'seguranca'], s);
+      await qc.invalidateQueries({ queryKey: ['auth', 'me', slug] });
+      toast.success(s.mfaObrigatorioAdmin ? 'Administradores agora precisam da verificação em 2 etapas.' : 'Verificação em 2 etapas deixou de ser obrigatória.');
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Não foi possível salvar.'),
+  });
+  if (!data) return null;
+  return (
+    <div className={`${cardCls} flex flex-col gap-3 p-4 sm:flex-row sm:items-center`}>
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
+        <ShieldCheck className="h-5 w-5" aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold text-ink-900">Verificação em 2 etapas para administradores</p>
+        <p className="text-xs text-ink-500">
+          {data.administradoresSemMfa === 0
+            ? `Todos os ${data.administradores} administrador(es) já usam o aplicativo autenticador.`
+            : `${data.administradoresSemMfa} de ${data.administradores} administrador(es) ainda sem verificação em 2 etapas.`}
+          {data.mfaObrigatorioAdmin ? ' Quem não tiver configurado é levado a configurar no próximo acesso.' : ''}
+        </p>
+      </div>
+      <label className="flex items-center gap-2 text-sm font-semibold text-ink-800">
+        <input
+          type="checkbox"
+          checked={data.mfaObrigatorioAdmin}
+          disabled={salvar.isPending}
+          onChange={(e) => salvar.mutate(e.target.checked)}
+        />
+        Exigir
+      </label>
+    </div>
+  );
+}
 
 export function UsuariosTab() {
   const { slug } = useParams<{ slug: string }>();
@@ -40,15 +101,28 @@ export function UsuariosTab() {
     queryFn: () => api(`/t/${slug}/configuracoes/usuarios?page=${page}&pageSize=20`),
   });
 
-  const { data: unidadesData } = useQuery<{ items: UnidadeOrcamentaria[]; total: number }>({
-    queryKey: ['configuracoes', 'unidades', 'all-para-usuario'],
-    queryFn: () => api(`/t/${slug}/configuracoes/unidades?pageSize=200`),
+  const { data: orgaosData } = useQuery<{ items: Orgao[]; total: number }>({
+    queryKey: ['configuracoes', 'orgaos', 'todos-para-lotacao'],
+    queryFn: () => api(`/t/${slug}/configuracoes/orgaos?pageSize=1000`),
+  });
+  const secretarias = secretariasDistintas(orgaosData?.items ?? []);
+  const nomeSecretaria = (codigo: string) => secretarias.find((s) => s.codigo === codigo)?.nome ?? codigo;
+
+  const resetMfa = useMutation({
+    mutationFn: (id: string) => api(`/t/${slug}/configuracoes/usuarios/${id}/reset-mfa`, { method: 'POST' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['configuracoes', 'usuarios'] });
+      qc.invalidateQueries({ queryKey: ['configuracoes', 'seguranca'] });
+      toast.success('Verificação em 2 etapas desligada. O usuário configura de novo no próximo acesso.');
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Não foi possível desligar.'),
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['configuracoes', 'usuarios'] });
 
   return (
     <div className="space-y-4">
+      <SegurancaCard slug={String(slug)} />
       <div className="flex items-center justify-between">
         <h2 className="text-base font-bold text-ink-900">Usuários e permissões</h2>
         <button type="button" onClick={() => setEditing('new')} className={btnPrimary}>
@@ -81,6 +155,9 @@ export function UsuariosTab() {
                   Perfil
                 </th>
                 <th className="px-4 py-3 text-left label-caps">
+                  Lotação
+                </th>
+                <th className="px-4 py-3 text-left label-caps">
                   Status
                 </th>
                 <th className="px-4 py-3 text-right label-caps">
@@ -101,8 +178,20 @@ export function UsuariosTab() {
                   <td className="whitespace-nowrap px-4 py-3">
                     <Badge tone={PERFIL_TOM[u.role] ?? 'neutral'}>{PERFIL_ROTULO[u.role] ?? u.role}</Badge>
                   </td>
+                  <td className="max-w-56 px-4 py-3 text-xs text-ink-600">
+                    {u.role === 'admin' || !u.orgaosCodigos?.length ? (
+                      <span className="text-ink-400">Todas as secretarias</span>
+                    ) : (
+                      <span title={u.orgaosCodigos.map(nomeSecretaria).join(', ')} className="line-clamp-2">
+                        {u.orgaosCodigos.map(nomeSecretaria).join(', ')}
+                      </span>
+                    )}
+                  </td>
                   <td className="whitespace-nowrap px-4 py-3">
-                    <Badge tone={u.ativo ? 'success' : 'danger'}>{u.ativo ? 'Ativo' : 'Inativo'}</Badge>
+                    <span className="flex flex-wrap gap-1">
+                      <Badge tone={u.ativo ? 'success' : 'danger'}>{u.ativo ? 'Ativo' : 'Inativo'}</Badge>
+                      {u.mfaEnabled && <Badge tone="brand">2 etapas</Badge>}
+                    </span>
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
                     <div className="flex justify-end gap-1">
@@ -124,6 +213,22 @@ export function UsuariosTab() {
                       >
                         <Key className="h-4 w-4" aria-hidden />
                       </button>
+                      {u.mfaEnabled && (
+                        <button
+                          type="button"
+                          aria-label={`Desligar verificação em 2 etapas de ${u.nome}`}
+                          title="Desligar 2 etapas (celular perdido)"
+                          disabled={resetMfa.isPending}
+                          onClick={() => {
+                            if (window.confirm(`Desligar a verificação em 2 etapas de ${u.nome}? Use quando a pessoa perdeu o celular; as sessões dela serão encerradas.`)) {
+                              resetMfa.mutate(u.id!);
+                            }
+                          }}
+                          className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-warning-50 hover:text-warning-600"
+                        >
+                          <ShieldOff className="h-4 w-4" aria-hidden />
+                        </button>
+                      )}
                       <button
                         type="button"
                         aria-label={`Excluir usuário ${u.nome}`}
@@ -149,7 +254,7 @@ export function UsuariosTab() {
         <UsuarioModal
           slug={String(slug)}
           usuario={editing === 'new' ? null : editing}
-          unidades={unidadesData?.items ?? []}
+          secretarias={secretarias}
           onClose={() => setEditing(null)}
           onDone={invalidate}
         />
@@ -169,13 +274,13 @@ export function UsuariosTab() {
 function UsuarioModal({
   slug,
   usuario,
-  unidades,
+  secretarias,
   onClose,
   onDone,
 }: {
   slug: string;
   usuario: UsuarioTenant | null;
-  unidades: UnidadeOrcamentaria[];
+  secretarias: Secretaria[];
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -195,11 +300,11 @@ function UsuarioModal({
   const [senha, setSenha] = useState('');
   const [ativo, setAtivo] = useState(usuario?.ativo ?? true);
   const [permissions, setPermissions] = useState<string[]>(usuario?.permissions ?? []);
-  const [unidadesIds, setUnidadesIds] = useState<string[]>(usuario?.unidadesIds ?? []);
+  const [orgaosCodigos, setOrgaosCodigos] = useState<string[]>(usuario?.orgaosCodigos ?? []);
   const [error, setError] = useState<string | null>(null);
 
-  const toggleUnidade = (id: string) => {
-    setUnidadesIds((cur) => (cur.includes(id) ? cur.filter((u) => u !== id) : [...cur, id]));
+  const toggleSecretaria = (codigo: string) => {
+    setOrgaosCodigos((cur) => (cur.includes(codigo) ? cur.filter((c) => c !== codigo) : [...cur, codigo]));
   };
 
   const save = useMutation({
@@ -212,12 +317,12 @@ function UsuarioModal({
       if (usuario) {
         return api(`/t/${slug}/configuracoes/usuarios/${usuario.id}`, {
           method: 'PATCH',
-          body: { nome, ativo, permissions, unidadesIds, ...vinculo },
+          body: { nome, ativo, permissions, orgaosCodigos, ...vinculo },
         });
       }
       return api(`/t/${slug}/configuracoes/usuarios`, {
         method: 'POST',
-        body: { email, nome, senha, permissions, unidadesIds, ...vinculo },
+        body: { email, nome, senha, permissions, orgaosCodigos, ...vinculo },
       });
     },
     onSuccess: () => {
@@ -330,21 +435,28 @@ function UsuarioModal({
           </div>
         )}
 
-        {unidades.length > 0 && (
+        {secretarias.length > 0 && (
           <div>
-            <p className={labelCls}>Unidades orçamentárias com acesso</p>
-            <div className="max-h-32 space-y-1 overflow-y-auto rounded-[10px] border border-ink-200 p-2">
-              {unidades.map((u) => (
-                <label key={u.id} className="flex items-center gap-2 text-sm text-ink-800">
-                  <input
-                    type="checkbox"
-                    checked={unidadesIds.includes(u.id!)}
-                    onChange={() => toggleUnidade(u.id!)}
-                  />
-                  {u.codigo ? `${u.codigo} — ` : ''}{u.nome}
-                </label>
-              ))}
-            </div>
+            <p className={labelCls}>Lotação: secretarias que o usuário enxerga</p>
+            {(personalizado ? role : perfilEscolhido?.papel) === 'admin' ? (
+              <p className="rounded-[10px] bg-ink-50 px-3 py-2 text-xs text-ink-500">Administradores enxergam todas as secretarias.</p>
+            ) : (
+              <>
+                <div className="max-h-40 space-y-1 overflow-y-auto rounded-[10px] border border-ink-200 p-2">
+                  {secretarias.map((s) => (
+                    <label key={s.codigo} className="flex items-center gap-2 text-sm text-ink-800">
+                      <input type="checkbox" checked={orgaosCodigos.includes(s.codigo)} onChange={() => toggleSecretaria(s.codigo)} />
+                      {s.codigo} — {s.nome}
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-1 text-xs text-ink-500">
+                  {orgaosCodigos.length === 0
+                    ? 'Nenhuma marcada: enxerga todas as secretarias.'
+                    : 'Enxerga só os documentos destas secretarias e os documentos sem secretaria.'}
+                </p>
+              </>
+            )}
           </div>
         )}
 

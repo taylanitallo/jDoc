@@ -22,6 +22,7 @@ import { OcrModule } from './ocr/ocr.module';
 import { AutenticidadeModule } from './autenticidade/autenticidade.module';
 import { ArquivoFisicoModule } from './arquivo-fisico/arquivo-fisico.module';
 import { IntegridadeModule } from './integridade/integridade.module';
+import { AuditoriaModule } from './auditoria/auditoria.module';
 import { RelatoriosArquivoModule } from './relatorios-arquivo/relatorios-arquivo.module';
 import { AtendimentoModule } from './atendimento/atendimento.module';
 import { SigiloModule } from './sigilo/sigilo.module';
@@ -67,6 +68,7 @@ import { TenantsPublicController } from './tenants-public.controller';
     AutenticidadeModule,
     ArquivoFisicoModule,
     IntegridadeModule,
+    AuditoriaModule,
     RelatoriosArquivoModule,
     AtendimentoModule,
     SigiloModule,

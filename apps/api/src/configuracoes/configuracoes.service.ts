@@ -16,6 +16,8 @@ import {
   type UsuarioUpdate,
   type TenantSettings,
   type TenantBranding,
+  type SegurancaOrgao,
+  type SegurancaOrgaoInput,
   MODELOS_TIPO_ACERVO,
   camposMetadadosSchema,
 } from '@jdoc/shared';
@@ -25,6 +27,12 @@ import { RefreshTokenService } from '../auth/refresh-token.service';
 import { StorageService, detectImageExt } from '../storage/storage.module';
 import { requireTenantContext } from '../tenancy/tenant-context';
 import { aplicarPerfilAoUsuario, garantirPerfis } from '../perfis/perfis-orgao';
+import { CHAVE_MFA_OBRIGATORIO } from '../auth/auth.service';
+
+/** Codigos de secretaria sem repeticao e sem espaco (vazio = enxerga todas). */
+function normalizarLotacao(codigos: string[] | undefined): string[] {
+  return [...new Set((codigos ?? []).map((c) => c.trim()).filter(Boolean))];
+}
 
 const BRASAO_URL_TTL_S = 3600;
 const BRASAO_MAX_BYTES = 2 * 1024 * 1024;
@@ -1003,9 +1011,12 @@ export class ConfiguracoesService {
         cpf: string | null;
         perfil_id: string | null;
         perfil_nome: string | null;
+        orgaos_codigos: string[] | null;
+        totp_enabled: boolean;
       }>
     >`
-      SELECT u.id, u.email, u.nome, u.role, u.ativo, u.ultimo_acesso, u.criado_em, u.cpf, u.perfil_id, p.nome AS perfil_nome
+      SELECT u.id, u.email, u.nome, u.role, u.ativo, u.ultimo_acesso, u.criado_em, u.cpf, u.perfil_id, p.nome AS perfil_nome,
+             u.orgaos_codigos, u.totp_enabled
       FROM users u LEFT JOIN perfis p ON p.id = u.perfil_id
       ORDER BY u.nome ASC
       LIMIT ${pageSize} OFFSET ${offset}
@@ -1030,6 +1041,8 @@ export class ConfiguracoesService {
         criadoEm: r.criado_em.toISOString(),
         permissions: perms.map((p) => p.permission_key),
         unidadesIds: [],
+        orgaosCodigos: r.orgaos_codigos ?? [],
+        mfaEnabled: r.totp_enabled,
         cpf: r.cpf,
         perfilId: r.perfil_id,
         perfilNome: r.perfil_nome,
@@ -1057,8 +1070,9 @@ export class ConfiguracoesService {
     }
     const id = await sql.begin(async (tx) => {
       const rows = await tx<Array<{ id: string }>>`
-        INSERT INTO users (email, nome, cpf, senha_hash, role, ativo, must_change_password)
-        VALUES (${data.email}, ${data.nome}, ${data.cpf ?? null}, ${senhaHash}, ${data.role}, true, true)
+        INSERT INTO users (email, nome, cpf, senha_hash, role, ativo, must_change_password, orgaos_codigos)
+        VALUES (${data.email}, ${data.nome}, ${data.cpf ?? null}, ${senhaHash}, ${data.role}, true, true,
+                ${normalizarLotacao(data.orgaosCodigos)}::varchar[])
         RETURNING id
       `;
       const novo = rows[0]?.id ?? '';
@@ -1096,7 +1110,11 @@ export class ConfiguracoesService {
       throw new ConflictException('CPF já cadastrado neste órgão');
     }
     await sql.begin(async (tx) => {
-      await tx`UPDATE users SET nome = ${data.nome}, role = ${data.role}, ativo = ${data.ativo} WHERE id = ${id}`;
+      await tx`
+        UPDATE users SET nome = ${data.nome}, role = ${data.role}, ativo = ${data.ativo},
+          orgaos_codigos = ${normalizarLotacao(data.orgaosCodigos)}::varchar[]
+        WHERE id = ${id}
+      `;
       if (data.cpf !== undefined) await tx`UPDATE users SET cpf = ${data.cpf} WHERE id = ${id}`;
       if (data.perfilId) {
         await aplicarPerfilAoUsuario(tx, id, data.perfilId);
@@ -1209,6 +1227,52 @@ export class ConfiguracoesService {
       resourceId: userId,
       ip,
     });
+  }
+
+  /** Celular perdido: o admin desliga o 2FA do usuario, que configura de novo no proximo acesso. */
+  async resetMfaUsuario(userId: string, actorId: string, ip: string): Promise<void> {
+    const ctx = requireTenantContext();
+    const sql = this.db.tenant(ctx.schemaName);
+    const r = await sql`
+      UPDATE users SET totp_enabled = false, totp_secret = NULL, totp_secret_pending = NULL, atualizado_em = now()
+      WHERE id = ${userId}
+    `;
+    if (r.count === 0) throw new NotFoundException('Usuário não encontrado');
+    await this.refreshTokens.revokeAllForUser('tenant', userId);
+    await this.audit.logTenant({ actorId, action: 'usuario_mfa_resetado', resourceType: 'user', resourceId: userId, ip });
+  }
+
+  // ===================== Seguranca do orgao =====================
+
+  async getSeguranca(): Promise<SegurancaOrgao> {
+    const ctx = requireTenantContext();
+    const sql = this.db.tenant(ctx.schemaName);
+    const [s] = await sql<Array<{ valor: unknown }>>`SELECT valor FROM tenant_settings WHERE chave = ${CHAVE_MFA_OBRIGATORIO}`;
+    const [n] = await sql<Array<{ total: number; sem: number }>>`
+      SELECT count(*)::int AS total, count(*) FILTER (WHERE NOT totp_enabled)::int AS sem
+      FROM users WHERE role = 'admin' AND ativo
+    `;
+    return { mfaObrigatorioAdmin: s?.valor === true || s?.valor === 'true', administradores: n?.total ?? 0, administradoresSemMfa: n?.sem ?? 0 };
+  }
+
+  async salvarSeguranca(data: SegurancaOrgaoInput, actorId: string, ip: string): Promise<SegurancaOrgao> {
+    const ctx = requireTenantContext();
+    const sql = this.db.tenant(ctx.schemaName);
+    const antes = await this.getSeguranca();
+    await sql.unsafe(
+      `INSERT INTO tenant_settings (chave, valor) VALUES ($1, $2)
+       ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = now()`,
+      [CHAVE_MFA_OBRIGATORIO, JSON.stringify(data.mfaObrigatorioAdmin)],
+    );
+    await this.audit.logTenant({
+      actorId,
+      action: 'seguranca_atualizada',
+      resourceType: 'tenant_settings',
+      resourceId: CHAVE_MFA_OBRIGATORIO,
+      ip,
+      metadata: { antes: antes.mfaObrigatorioAdmin, depois: data.mfaObrigatorioAdmin },
+    });
+    return this.getSeguranca();
   }
 
   // ===================== Guia 4: Layout / Customizacao =====================

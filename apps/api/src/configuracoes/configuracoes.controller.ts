@@ -3,11 +3,13 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UploadedFile,
@@ -42,6 +44,11 @@ import {
   type TenantBranding,
   type TenantAccessClaims,
   type PerfilOrgaoResumo,
+  type UsuarioCreate,
+  type UsuarioUpdate,
+  segurancaOrgaoSchema,
+  type SegurancaOrgao,
+  type SegurancaOrgaoInput,
 } from '@jdoc/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { TenantJwtGuard } from '../auth/tenant-jwt.guard';
@@ -458,7 +465,7 @@ export class ConfiguracoesController {
   @Post('usuarios')
   createUsuario(
     @CurrentUser() user: TenantAccessClaims,
-    @Body(new ZodValidationPipe(usuarioCreateSchema)) data: { email: string; nome: string; role: 'admin' | 'operador' | 'consulta'; senha: string; permissions: string[]; unidadesIds: string[] },
+    @Body(new ZodValidationPipe(usuarioCreateSchema)) data: UsuarioCreate,
     @Req() req: Request,
   ): Promise<{ id: string }> {
     return this.service.createUsuario(data, user.sub, req.ip ?? '');
@@ -470,7 +477,7 @@ export class ConfiguracoesController {
   updateUsuario(
     @CurrentUser() user: TenantAccessClaims,
     @Param('id', new ZodValidationPipe(uuidSchema)) id: string,
-    @Body(new ZodValidationPipe(usuarioUpdateSchema)) data: { nome: string; role: 'admin' | 'operador' | 'consulta'; ativo: boolean; permissions: string[]; unidadesIds: string[] },
+    @Body(new ZodValidationPipe(usuarioUpdateSchema)) data: UsuarioUpdate,
     @Req() req: Request,
   ): Promise<void> {
     return this.service.updateUsuario(id, data, user.sub, req.ip ?? '');
@@ -497,6 +504,36 @@ export class ConfiguracoesController {
     @Req() req: Request,
   ): Promise<void> {
     return this.service.resetSenhaUsuario(id, data.novaSenha, user.sub, req.ip ?? '');
+  }
+
+  /** Desliga a verificacao em 2 etapas do usuario (perdeu o celular). */
+  @Permissions('usuarios:update')
+  @Post('usuarios/:id/reset-mfa')
+  @HttpCode(204)
+  resetMfa(
+    @CurrentUser() user: TenantAccessClaims,
+    @Param('id', new ZodValidationPipe(uuidSchema)) id: string,
+    @Req() req: Request,
+  ): Promise<void> {
+    return this.service.resetMfaUsuario(id, user.sub, req.ip ?? '');
+  }
+
+  @Permissions('usuarios:read')
+  @Get('seguranca')
+  getSeguranca(): Promise<SegurancaOrgao> {
+    return this.service.getSeguranca();
+  }
+
+  /** So administrador: liga/desliga a exigencia de 2 etapas para administradores. */
+  @Permissions('usuarios:update')
+  @Put('seguranca')
+  salvarSeguranca(
+    @CurrentUser() user: TenantAccessClaims,
+    @Body(new ZodValidationPipe(segurancaOrgaoSchema)) data: SegurancaOrgaoInput,
+    @Req() req: Request,
+  ): Promise<SegurancaOrgao> {
+    if (user.role !== 'admin') throw new ForbiddenException('Somente administradores alteram a segurança do órgão');
+    return this.service.salvarSeguranca(data, user.sub, req.ip ?? '');
   }
 
   // ===================== Guia 4: Layout / Customizacao =====================

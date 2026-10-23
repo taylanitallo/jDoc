@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { loginSchema, type LoginInput, type TenantBranding } from '@jdoc/shared';
 import Link from 'next/link';
-import { AlertCircle, ArrowLeft, Download, Landmark, LogIn, Lock, Mail } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Download, KeyRound, Landmark, LogIn, Lock, Mail } from 'lucide-react';
 import { api, setAccessToken, ApiError } from '@/lib/api';
 import { AuthLayout } from '@/components/shell/auth-layout';
 import { Button, Card, Field, Input, buttonClasses } from '@/components/ui';
@@ -22,6 +22,9 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [branding, setBranding] = useState<TenantBranding | null>(null);
   const [desktop, setDesktop] = useState(false);
+  // Etapa 2: a senha conferiu e a conta tem verificacao em 2 etapas.
+  const [etapa, setEtapa] = useState<1 | 2>(1);
+  const [codigo, setCodigo] = useState('');
   const {
     register,
     handleSubmit,
@@ -46,24 +49,33 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginInput) => {
     setError(null);
+    if (etapa === 2 && codigo.length !== 6) {
+      setError('Informe os 6 dígitos do aplicativo autenticador.');
+      return;
+    }
     try {
-      const result = await api<{ accessToken: string; mustChangePassword: boolean }>(`/t/${slug}/auth/login`, {
+      const result = await api<{ accessToken: string; mustChangePassword: boolean; mfaPendente: boolean }>(`/t/${slug}/auth/login`, {
         method: 'POST',
-        body: data,
+        body: etapa === 2 ? { email: data.email, senha: data.senha, totp: codigo } : { email: data.email, senha: data.senha },
       });
       setAccessToken(result.accessToken);
       // Best-effort: estabelece tambem a sessao nativa (fila/assinatura/pasta
       // monitorada) quando rodando dentro do jDoc Desktop. Nao bloqueia nem
       // falha o login do site se o app nativo nao estiver disponivel.
       desktopLoginBestEffort(slug, data.email, data.senha);
-      // Senha provisoria: primeiro troca, em Minha conta.
-      if (result.mustChangePassword) {
+      // Senha provisoria ou 2 etapas exigida pelo orgao: primeiro resolve, em Minha conta.
+      if (result.mustChangePassword || result.mfaPendente) {
         router.push(`/${slug}/conta?trocar=1`);
         return;
       }
       // Com os dois modulos contratados, a tela de escolha decide; com um so, ela segue direto ao Inicio.
       router.push(`/${slug}/modulos`);
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'mfa_required') {
+        setEtapa(2);
+        return;
+      }
+      if (etapa === 2) setCodigo('');
       setError(err instanceof ApiError ? err.message : 'Falha ao entrar. Tente novamente.');
     }
   };
@@ -82,46 +94,68 @@ export default function LoginPage() {
         </span>
         <div className="min-w-0">
           <h1 className="text-xl font-extrabold uppercase leading-tight tracking-tight text-ink-900 sm:text-2xl" title={nome}>{nome}</h1>
-          <p className="text-sm text-ink-500">Entre com seu e-mail e senha</p>
+          <p className="text-sm text-ink-500">
+            {etapa === 1 ? 'Entre com seu e-mail e senha' : 'Digite o código do aplicativo autenticador'}
+          </p>
         </div>
       </div>
 
       <Card className="p-5 sm:p-6">
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
-          <Field label="E-mail" htmlFor="email" required error={errors.email?.message}>
-            <div className="relative">
-              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" aria-hidden />
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                placeholder="seu@email.gov.br"
-                className="pl-9"
-                invalid={!!errors.email}
-                {...register('email')}
-              />
-            </div>
-          </Field>
+          {etapa === 2 && (
+            <Field label="Código de 6 dígitos" htmlFor="totp" required hint="Abra o Google Authenticator, Microsoft Authenticator ou similar.">
+              <div className="relative">
+                <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" aria-hidden />
+                <Input
+                  id="totp"
+                  autoFocus
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  placeholder="000000"
+                  className="pl-9 tracking-[0.3em]"
+                  value={codigo}
+                  onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                />
+              </div>
+            </Field>
+          )}
+          <div className={etapa === 2 ? 'hidden' : 'space-y-4'}>
+            <Field label="E-mail" htmlFor="email" required error={errors.email?.message}>
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" aria-hidden />
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="seu@email.gov.br"
+                  className="pl-9"
+                  invalid={!!errors.email}
+                  {...register('email')}
+                />
+              </div>
+            </Field>
 
-          <Field label="Senha" htmlFor="senha" required error={errors.senha?.message}>
-            <div className="relative">
-              <Input
-                id="senha"
-                type="password"
-                autoComplete="current-password"
-                placeholder="••••••••••"
-                className="pl-9"
-                invalid={!!errors.senha}
-                {...register('senha')}
-              />
-              <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" aria-hidden />
-            </div>
-            <div className="mt-2 text-right">
-              <Link href={`/${slug}/esqueci-senha`} className="text-[13px] font-semibold text-brand-600 hover:text-brand-700">
-                Esqueci minha senha
-              </Link>
-            </div>
-          </Field>
+            <Field label="Senha" htmlFor="senha" required error={errors.senha?.message}>
+              <div className="relative">
+                <Input
+                  id="senha"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="••••••••••"
+                  className="pl-9"
+                  invalid={!!errors.senha}
+                  {...register('senha')}
+                />
+                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" aria-hidden />
+              </div>
+              <div className="mt-2 text-right">
+                <Link href={`/${slug}/esqueci-senha`} className="text-[13px] font-semibold text-brand-600 hover:text-brand-700">
+                  Esqueci minha senha
+                </Link>
+              </div>
+            </Field>
+          </div>
 
           {error && (
             <p role="alert" className="flex items-center gap-2 rounded-[10px] bg-danger-50 px-3 py-2.5 text-sm text-danger-600 ring-1 ring-inset ring-danger-600/15">
@@ -131,8 +165,21 @@ export default function LoginPage() {
           )}
 
           <Button type="submit" size="lg" className="w-full" loading={isSubmitting} leftIcon={<LogIn aria-hidden />}>
-            {isSubmitting ? 'Entrando…' : 'Entrar'}
+            {isSubmitting ? 'Entrando…' : etapa === 2 ? 'Confirmar código' : 'Entrar'}
           </Button>
+          {etapa === 2 && (
+            <button
+              type="button"
+              className="w-full text-center text-[13px] font-semibold text-ink-500 hover:text-ink-800"
+              onClick={() => {
+                setEtapa(1);
+                setCodigo('');
+                setError(null);
+              }}
+            >
+              Voltar e usar outra conta
+            </button>
+          )}
         </form>
       </Card>
 
