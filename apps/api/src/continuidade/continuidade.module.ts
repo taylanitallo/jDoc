@@ -6,11 +6,13 @@ import { ContinuidadeService } from './continuidade.service';
 import { ExportacaoService } from './exportacao.service';
 import { ExportacaoWorker } from './exportacao.worker';
 import { ContinuidadeOrgaoController, ContinuidadePlataformaController } from './continuidade.controller';
+import { MedicaoService } from './medicao.service';
+import { MedicaoOrgaoController, MedicaoPlataformaController } from './medicao.controller';
 
 @Module({
   imports: [AuthModule, SuperadminAuthModule],
-  controllers: [ContinuidadeOrgaoController, ContinuidadePlataformaController],
-  providers: [DestinoSegregadoService, ContinuidadeService, ExportacaoService, ExportacaoWorker],
+  controllers: [ContinuidadeOrgaoController, ContinuidadePlataformaController, MedicaoPlataformaController, MedicaoOrgaoController],
+  providers: [DestinoSegregadoService, ContinuidadeService, ExportacaoService, ExportacaoWorker, MedicaoService],
   exports: [ContinuidadeService],
 })
 export class ContinuidadeModule {}
