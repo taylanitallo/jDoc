@@ -95,6 +95,14 @@ export const buscaConteudoQuerySchema = z
     /** Restringe ao modulo contratado em uso na tela (Financeiro/Contabil ou Arquivo Municipal). */
     sistema: sistemaSchema.optional(),
     exercicio: z.coerce.number().int().min(1800).max(2100).optional(),
+    // Busca avancada: combina o texto do PDF com os metadados.
+    orgaoId: z.string().uuid().optional(),
+    documentTypeId: z.string().uuid().optional(),
+    de: z.coerce.date().optional(),
+    ate: z.coerce.date().optional(),
+    assunto: z.string().trim().max(200).optional(),
+    interessado: z.string().trim().max(200).optional(),
+    palavraChave: z.string().trim().max(60).optional(),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(50).default(20),
   })

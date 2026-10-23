@@ -3,6 +3,7 @@ import PDFKitDocument from 'pdfkit';
 import type { Sql } from 'postgres';
 import {
   CANAL_LABEL,
+  DIREITO_LGPD_LABEL,
   FORMA_ACESSO_LABEL,
   LAI_ALERTA_DIAS,
   VINCULO_LABEL,
@@ -25,6 +26,8 @@ interface Row {
   id: string;
   numero: number;
   ano: number;
+  tipo: AtendimentoView['tipo'];
+  direito_lgpd: AtendimentoView['direitoLgpd'];
   status: AtendimentoView['status'];
   solicitante_nome: string;
   solicitante_documento: string | null;
@@ -84,6 +87,8 @@ export class AtendimentoService {
     return {
       id: r.id,
       protocolo: protocolo(r.numero, r.ano),
+      tipo: r.tipo ?? 'lai',
+      direitoLgpd: r.direito_lgpd ?? null,
       status: r.status,
       solicitanteNome: r.solicitante_nome,
       solicitanteDocumento: r.solicitante_documento,
@@ -209,11 +214,12 @@ export class AtendimentoService {
       const [a] = await tx<Array<{ id: string }>>`
         INSERT INTO atendimentos (numero, ano, solicitante_nome, solicitante_documento, solicitante_contato, vinculo, setor_orgao,
                                   canal, finalidade, forma_acesso, documentos_nao_cadastrados, justificativa_restrito,
-                                  data_pedido, prazo_final, registrado_por)
+                                  data_pedido, prazo_final, registrado_por, tipo, direito_lgpd)
         VALUES (${n!.proximo}, ${ano}, ${input.solicitanteNome}, ${input.solicitanteDocumento || null}, ${input.solicitanteContato || null},
                 ${input.vinculo}, ${input.setorOrgao || null}, ${input.canal}, ${input.finalidade}, ${input.formaAcesso},
                 ${input.documentosNaoCadastrados || null}, ${input.justificativaRestrito || null},
-                ${dataPedido}, ${prazoFinalLai(dataPedido, false)}, ${user.sub})
+                ${dataPedido}, ${prazoFinalLai(dataPedido, false, input.tipo)}, ${user.sub},
+                ${input.tipo}, ${input.tipo === 'lgpd' ? (input.direitoLgpd ?? null) : null})
         RETURNING id
       `;
       for (const docId of ids) {
@@ -227,14 +233,14 @@ export class AtendimentoService {
       resourceType: 'atendimento',
       resourceId: id,
       ip,
-      metadata: { documentos: ids.length, formaAcesso: input.formaAcesso },
+      metadata: { documentos: ids.length, formaAcesso: input.formaAcesso, tipo: input.tipo },
     });
     return this.obter(user, id);
   }
 
-  private async aberto(sql: Sql, id: string): Promise<{ prorrogado: boolean; data_pedido: Date }> {
-    const [a] = await sql<Array<{ status: string; prorrogado: boolean; data_pedido: Date }>>`
-      SELECT status, prorrogado, data_pedido FROM atendimentos WHERE id = ${id}
+  private async aberto(sql: Sql, id: string): Promise<{ prorrogado: boolean; data_pedido: Date; tipo: string }> {
+    const [a] = await sql<Array<{ status: string; prorrogado: boolean; data_pedido: Date; tipo: string }>>`
+      SELECT status, prorrogado, data_pedido, tipo FROM atendimentos WHERE id = ${id}
     `;
     if (!a) throw new NotFoundException('Atendimento não encontrado');
     if (a.status !== 'aberto') throw new ConflictException('Este atendimento já foi concluído');
@@ -255,6 +261,7 @@ export class AtendimentoService {
   async prorrogar(user: TenantAccessClaims, id: string, justificativa: string, ip: string): Promise<AtendimentoView> {
     const sql = this.sql();
     const a = await this.aberto(sql, id);
+    if (a.tipo === 'lgpd') throw new ConflictException('Pedido do titular (LGPD) não tem prorrogação: o prazo é de 15 dias (art. 19, II).');
     if (a.prorrogado) throw new ConflictException('O prazo já foi prorrogado uma vez (a LAI permite uma prorrogação de 10 dias).');
     await sql`
       UPDATE atendimentos SET prorrogado = true, justificativa_prorrogacao = ${justificativa}, prazo_final = ${prazoFinalLai(a.data_pedido, true)}
@@ -285,13 +292,15 @@ export class AtendimentoService {
       };
       doc.font('Helvetica-Bold').fontSize(11).text(ctx.nome.toUpperCase(), { align: 'center' });
       doc.fontSize(14).text('COMPROVANTE DE ATENDIMENTO', { align: 'center' });
-      doc.font('Helvetica').fontSize(9).fillColor('#475569').text(`Protocolo ${a.protocolo} · Lei nº 12.527/2011 (Acesso à Informação)`, { align: 'center' });
+      const lei = a.tipo === 'lgpd' ? 'Lei nº 13.709/2018 (LGPD) — pedido do titular' : 'Lei nº 12.527/2011 (Acesso à Informação)';
+      doc.font('Helvetica').fontSize(9).fillColor('#475569').text(`Protocolo ${a.protocolo} · ${lei}`, { align: 'center' });
       doc.moveDown(1.2).fillColor('#0f172a');
       campo('Solicitante', a.solicitanteNome);
       campo('CPF/RG', a.solicitanteDocumento);
       campo('Contato', a.solicitanteContato);
       campo('Vínculo', VINCULO_LABEL[a.vinculo]);
       if (a.setorOrgao) campo('Setor/órgão', a.setorOrgao);
+      if (a.tipo === 'lgpd' && a.direitoLgpd) campo('Direito exercido', DIREITO_LGPD_LABEL[a.direitoLgpd]);
       campo('Canal', CANAL_LABEL[a.canal]);
       campo('Data do pedido', dataBr(a.dataPedido));
       campo('Prazo', `${dataBr(a.prazoFinal)}${a.prorrogado ? ' (prorrogado)' : ''}`);
@@ -310,7 +319,11 @@ export class AtendimentoService {
         doc.moveDown(0.6);
         doc.font('Helvetica-Bold').fontSize(10).text(a.status === 'indeferido' ? 'Fundamentação do indeferimento' : 'Resposta');
         doc.font('Helvetica').fontSize(9).text(a.resposta);
-        if (a.status === 'indeferido') {
+        if (a.status === 'indeferido' && a.tipo === 'lgpd') {
+          doc.moveDown(0.3).fillColor('#475569').fontSize(8)
+            .text('O titular pode peticionar à Autoridade Nacional de Proteção de Dados (art. 18, § 1º, da Lei nº 13.709/2018).');
+          doc.fillColor('#0f172a');
+        } else if (a.status === 'indeferido') {
           doc.moveDown(0.3).fillColor('#475569').fontSize(8)
             .text('Cabe recurso no prazo de 10 dias, contados da ciência da decisão (art. 15 da Lei nº 12.527/2011).');
           doc.fillColor('#0f172a');

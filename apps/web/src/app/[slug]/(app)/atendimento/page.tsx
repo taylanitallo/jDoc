@@ -24,6 +24,10 @@ import {
   FORMA_ACESSO_LABEL,
   LAI_ALERTA_DIAS,
   VINCULOS_SOLICITANTE,
+  TIPOS_ATENDIMENTO,
+  TIPO_ATENDIMENTO_LABEL,
+  DIREITOS_LGPD,
+  DIREITO_LGPD_LABEL,
   VINCULO_LABEL,
   type AtendimentoCreateInput,
   type AtendimentoResumo,
@@ -179,6 +183,7 @@ export default function AtendimentoPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-xs font-semibold text-ink-500">{a.protocolo}</span>
                       <span className="font-semibold text-ink-900">{a.solicitanteNome}</span>
+                      {a.tipo === 'lgpd' && <Badge tone="violet">LGPD</Badge>}
                       <Badge tone="neutral">{VINCULO_LABEL[a.vinculo]}</Badge>
                       {a.documentos.some((d) => d.restrito) && <Badge tone="danger">Restrito</Badge>}
                     </div>
@@ -213,6 +218,7 @@ function NovoAtendimento({ slug, onClose, onCriado }: { slug: string; onClose: (
   const qc = useQueryClient();
   const toast = useToast();
   const [f, setF] = useState<Omit<AtendimentoCreateInput, 'documentIds' | 'dataPedido'> & { dataPedido: string }>({
+    tipo: 'lai',
     solicitanteNome: '',
     solicitanteDocumento: '',
     solicitanteContato: '',
@@ -264,7 +270,11 @@ function NovoAtendimento({ slug, onClose, onCriado }: { slug: string; onClose: (
       size="lg"
       onClose={() => !criar.isPending && onClose()}
       title="Novo atendimento"
-      subtitle="Registre o pedido: o prazo de 20 dias começa na data do pedido"
+      subtitle={
+        f.tipo === 'lgpd'
+          ? 'Pedido do titular de dados: a LGPD dá 15 dias para a resposta completa'
+          : 'Registre o pedido: o prazo de 20 dias começa na data do pedido'
+      }
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={criar.isPending}>
@@ -277,7 +287,26 @@ function NovoAtendimento({ slug, onClose, onCriado }: { slug: string; onClose: (
       }
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Solicitante" htmlFor="at-nome" required className="sm:col-span-2">
+        <Field label="Tipo de pedido" htmlFor="at-tipo">
+          <SelectMenu id="at-tipo" className={inputCls} value={f.tipo} onChange={(e) => set('tipo', e.target.value as typeof f.tipo)}>
+            {TIPOS_ATENDIMENTO.map((t) => (
+              <option key={t} value={t}>{TIPO_ATENDIMENTO_LABEL[t]}</option>
+            ))}
+          </SelectMenu>
+        </Field>
+        {f.tipo === 'lgpd' ? (
+          <Field label="Direito exercido" htmlFor="at-direito" required>
+            <SelectMenu id="at-direito" className={inputCls} value={f.direitoLgpd ?? ''} onChange={(e) => set('direitoLgpd', (e.target.value || undefined) as typeof f.direitoLgpd)}>
+              <option value="">Selecione…</option>
+              {DIREITOS_LGPD.map((d) => (
+                <option key={d} value={d}>{DIREITO_LGPD_LABEL[d]}</option>
+              ))}
+            </SelectMenu>
+          </Field>
+        ) : (
+          <div className="hidden sm:block" />
+        )}
+        <Field label={f.tipo === 'lgpd' ? 'Titular dos dados' : 'Solicitante'} htmlFor="at-nome" required className="sm:col-span-2">
           <Input id="at-nome" value={f.solicitanteNome} onChange={(e) => set('solicitanteNome', e.target.value)} placeholder="Nome completo" />
         </Field>
         <Field label="CPF/RG" htmlFor="at-doc">
@@ -430,7 +459,7 @@ function DetalheAtendimento({ slug, id, onClose }: { slug: string; id: string; o
             </Button>
             {a.status === 'aberto' && !acao && (
               <div className="flex flex-wrap gap-2">
-                {!a.prorrogado && (
+                {!a.prorrogado && a.tipo !== 'lgpd' && (
                   <Button variant="outline" leftIcon={<CalendarClock aria-hidden />} onClick={() => setAcao('prorrogar')}>
                     Prorrogar +10 dias
                   </Button>

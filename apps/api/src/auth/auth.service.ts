@@ -245,6 +245,8 @@ export class AuthService {
     const podeVerRestrito = u.role === 'admin' || perms.includes('acervo_restrito:read');
     const podeAuditar = u.role === 'admin' || perms.includes('auditoria:read');
     const [cor] = await sql<Array<{ valor: unknown }>>`SELECT valor FROM tenant_settings WHERE chave = 'corDestaque'`;
+    const [priv] = await sql<Array<{ valor: unknown }>>`SELECT valor FROM tenant_settings WHERE chave = 'privacidade'`;
+    const privacidade = (typeof priv?.valor === 'string' ? JSON.parse(priv.valor) : priv?.valor) as { iaDesligada?: boolean } | undefined;
     const corOrgao = typeof cor?.valor === 'string' && HEX_COR.test(cor.valor) ? cor.valor : null;
     return {
       nome: u.nome,
@@ -254,6 +256,7 @@ export class AuthService {
       orgao: ctx.nome,
       podeVerRestrito,
       podeAuditar,
+      iaDesligada: privacidade?.iaDesligada === true,
       uiTheme: u.ui_theme,
       corOrgao,
       mustChangePassword: u.must_change_password,

@@ -21,7 +21,44 @@ export const DOC_STATUS = ['disponivel', 'processando', 'substituido'] as const;
 /** Competencia no formato YYYY-MM. */
 export const competenciaSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Competencia deve ser YYYY-MM');
 
+/** Marcacao LGPD: o documento traz dados pessoais? Sensiveis = art. 5o, II (saude, biometria, religiao...). */
+export const DADOS_PESSOAIS = ['nao', 'comuns', 'sensiveis'] as const;
+export const dadosPessoaisSchema = z.enum(DADOS_PESSOAIS);
+export type DadosPessoais = z.infer<typeof dadosPessoaisSchema>;
+export const DADOS_PESSOAIS_LABEL: Record<DadosPessoais, string> = {
+  nao: 'Sem dados pessoais',
+  comuns: 'Dados pessoais',
+  sensiveis: 'Dados pessoais sensíveis',
+};
+
+/**
+ * Nivel de acesso como aparece para o usuario: sigiloso = classificado pela
+ * LAI (termo de classificacao vigente), alem de publico e restrito.
+ */
+export const NIVEIS_ACESSO_EFETIVO = ['publico', 'restrito', 'sigiloso'] as const;
+export type NivelAcessoEfetivo = (typeof NIVEIS_ACESSO_EFETIVO)[number];
+export const NIVEL_ACESSO_LABEL: Record<NivelAcessoEfetivo, string> = { publico: 'Público', restrito: 'Restrito', sigiloso: 'Sigiloso' };
+
+/** Palavras-chave: no formulario vem "a, b; c" (multipart) ou lista. */
+export const palavrasChaveSchema = z.preprocess(
+  (v) => (typeof v === 'string' ? v.split(/[,;\n]/) : v),
+  z
+    .array(z.string())
+    .transform((xs) => [...new Set(xs.map((x) => x.trim().toLowerCase()).filter(Boolean))])
+    .pipe(z.array(z.string().max(60)).max(30)),
+);
+
+/** Metadados padrao de catalogacao (dicionario de metadados), comuns a todos os modulos. */
+const catalogacao = {
+  numero: z.string().trim().max(60).optional(),
+  assunto: z.string().trim().max(500).optional(),
+  interessado: z.string().trim().max(300).optional(),
+  palavrasChave: palavrasChaveSchema.optional(),
+  dadosPessoais: dadosPessoaisSchema.optional(),
+};
+
 const base = {
+  ...catalogacao,
   // Arquivo Municipal guarda documentos historicos: aceita desde 1800.
   exercicio: z.coerce.number().int().min(1800).max(2100),
   budgetUnitId: z.string().uuid().nullable().optional(),
@@ -160,6 +197,11 @@ export const updateDocumentSchema = z
     /** Caixa (ou outro local) onde esta o original em papel. */
     localFisicoId: z.string().uuid().nullable().optional(),
     possuiOriginalFisico: z.boolean().optional(),
+    numero: z.string().trim().max(60).nullable().optional(),
+    assunto: z.string().trim().max(500).nullable().optional(),
+    interessado: z.string().trim().max(300).nullable().optional(),
+    palavrasChave: palavrasChaveSchema.optional(),
+    dadosPessoais: dadosPessoaisSchema.optional(),
   })
   .strict();
 export type UpdateDocumentInput = z.infer<typeof updateDocumentSchema>;
@@ -187,6 +229,13 @@ export const searchDocumentsSchema = z
     classificacaoId: z.string().uuid().optional(),
     fase: faseArquivisticaSchema.optional(),
     documentTypeId: z.string().uuid().optional(),
+    // Busca avancada (metadados padrao)
+    numero: z.string().trim().max(60).optional(),
+    assunto: z.string().trim().max(200).optional(),
+    interessado: z.string().trim().max(200).optional(),
+    palavraChave: z.string().trim().max(60).optional(),
+    dadosPessoais: z.enum(['sim', 'nao', 'sensiveis']).optional(),
+    nivel: z.enum(NIVEIS_ACESSO_EFETIVO).optional(),
     sort: z.enum(['data_desc', 'data_asc', 'valor_desc', 'valor_asc', 'criado_desc']).default('data_desc'),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -248,6 +297,13 @@ export interface DocumentView {
   nivelAcesso: NivelAcesso;
   /** Grau de sigilo LAI vigente (null = sem classificacao de sigilo). */
   grauSigilo: GrauSigilo | null;
+  /** Publico, restrito ou sigiloso (classificado pela LAI). */
+  nivelEfetivo: NivelAcessoEfetivo;
+  numero: string | null;
+  assunto: string | null;
+  interessado: string | null;
+  palavrasChave: string[];
+  dadosPessoais: DadosPessoais;
   dataInicioContagem: string | null;
   dataPrevistaTransferencia: string | null;
   dataPrevistaDestinacao: string | null;

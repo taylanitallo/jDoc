@@ -82,6 +82,19 @@ export class RelatoriosArquivoController {
     enviar(res, await this.service.exportarQuantitativo(user, filtro, formato, req.ip ?? ''));
   }
 
+  /** Dicionario de metadados (campos padrao + campos dos tipos de documento). */
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Permissions('acervo:read')
+  @Get('dicionario/:formato')
+  async dicionario(
+    @CurrentUser() user: TenantAccessClaims,
+    @Param('formato', new ZodValidationPipe(formatoSchema)) formato: 'pdf' | 'csv',
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    enviar(res, await this.service.dicionario(user, formato, req.ip ?? ''));
+  }
+
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Permissions('arquivo_fisico:read')
   @Get('topografico/pdf')

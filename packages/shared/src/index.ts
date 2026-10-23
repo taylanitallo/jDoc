@@ -33,3 +33,4 @@ export * from './operacao.js';
 export * from './logs.js';
 export * from './chamados.js';
 export * from './auditoria.js';
+export * from './lgpd.js';

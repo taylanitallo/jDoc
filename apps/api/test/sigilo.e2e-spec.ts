@@ -45,7 +45,7 @@ beforeAll(async () => {
   await sql`INSERT INTO public.tenants (slug, nome, schema_name, status, modulos) VALUES (${SLUG}, 'Prefeitura Sigilo', ${'tenant_' + SLUG}, 'ativo', '{arquivo}')`;
   const hash = await argon2.hash(PASS, { type: argon2.argon2id });
   for (const [email, nome, perms] of [
-    [ARQUIVISTA, 'Ana Arquivista', ['acervo:read', 'acervo:update', 'acervo_restrito:read', 'sigilo:read', 'sigilo:create', 'sigilo:update']],
+    [ARQUIVISTA, 'Ana Arquivista', ['acervo:read', 'acervo:update', 'acervo_restrito:read', 'acervo_sigiloso:read', 'sigilo:read', 'sigilo:create', 'sigilo:update']],
     [LEITOR, 'Leo Leitor', ['acervo:read', 'sigilo:read']],
   ] as const) {
     const r = await sql.unsafe(

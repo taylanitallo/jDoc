@@ -73,9 +73,10 @@ import { addExtraDocumentFile, attachDocumentFile, uploadDocument } from '@/lib/
 import { useExercicio } from '@/components/topbar';
 import { LabelsImportModal } from '@/components/documents/labels-import-modal';
 import { ClassificacaoFields } from '@/components/documents/classificacao-fields';
+import { CAMPOS_CATALOGACAO, CatalogacaoFields } from '@/components/documents/catalogacao-fields';
 import { DigitalizacaoFields, MetadadosFields } from '@/components/documents/metadados-fields';
 import { GRAU_TOM, SigiloDocumento } from '@/components/documents/sigilo-documento';
-import { FASE_LABEL, GRAU_SIGILO_LABEL } from '@jdoc/shared';
+import { FASE_LABEL, GRAU_SIGILO_LABEL, NIVEL_ACESSO_LABEL } from '@jdoc/shared';
 import { useModulo } from '@/components/branding';
 import { Badge, Button, DropdownMenu, buttonClasses, Modal, btnGhost, btnPrimary, cardCls, formatBytes, inputCls, labelCls, Pagination, TONE_VIVID, type Tone, SelectMenu } from '@/components/ui';
 import { cn } from '@/lib/cn';
@@ -497,9 +498,14 @@ const DETAIL_COLUMNS: Record<
     },
     {
       header: 'Acesso',
-      render: (d) => (d.nivelAcesso === 'restrito' ? 'Restrito' : 'Público'),
+      render: (d) => NIVEL_ACESSO_LABEL[d.nivelEfetivo ?? d.nivelAcesso],
       cell: (d) =>
-        d.nivelAcesso === 'restrito' ? (
+        d.nivelEfetivo === 'sigiloso' ? (
+          <Badge tone="violet">
+            <Lock className="mr-1 inline h-3 w-3" aria-hidden />
+            Sigiloso
+          </Badge>
+        ) : d.nivelAcesso === 'restrito' ? (
           <Badge tone="danger">
             <Lock className="mr-1 inline h-3 w-3" aria-hidden />
             Restrito
@@ -546,6 +552,12 @@ export function DocumentsModule({ module }: { module: DocModule }) {
   const [valorMax, setValorMax] = useState('');
   const [comArquivo, setComArquivo] = useState('');
   const [critica, setCritica] = useState('');
+  // Busca avancada pelos metadados padrao (numero, assunto, interessado, palavra-chave, LGPD, nivel).
+  const [buscaMeta, setBuscaMeta] = useState<Record<string, string>>({});
+  const setMeta = (k: string, v: string) => {
+    setBuscaMeta((m) => ({ ...m, [k]: v }));
+    setPage(1);
+  };
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [showTrash, setShowTrash] = useState(false);
@@ -608,6 +620,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
     if (valorMax) params.set('valorMax', valorMax);
     if (comArquivo) params.set('comArquivo', comArquivo);
     if (module === 'despesas' && critica) params.set('critica', critica);
+    for (const [k, v] of Object.entries(buscaMeta)) if (v.trim()) params.set(k, v.trim());
   }
 
   const { data, isLoading } = useQuery({
@@ -626,6 +639,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
       valorMax,
       comArquivo,
       critica,
+      buscaMeta,
       page,
       ehAcervo ? exercicioAcervo : exercicio,
     ],
@@ -926,8 +940,11 @@ export function DocumentsModule({ module }: { module: DocModule }) {
   };
 
   const hasValor = module === 'despesas' || module === 'receitas';
-  const filtrosAtivos = [subtype, orgaoId, mes, dataInicio, dataFim, valorMin, valorMax, comArquivo, critica, exercicioAcervo].filter(Boolean).length;
+  const filtrosAtivos =
+    [subtype, orgaoId, mes, dataInicio, dataFim, valorMin, valorMax, comArquivo, critica, exercicioAcervo].filter(Boolean).length +
+    Object.values(buscaMeta).filter((v) => v.trim()).length;
   const limparFiltros = () => {
+    setBuscaMeta({});
     setSubtype('');
     setOrgaoId('');
     setMes('');
@@ -1155,6 +1172,34 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                   </SelectMenu>
                 </FiltroCampo>
               )}
+              <FiltroCampo label="Número" id="f-numero">
+                <input id="f-numero" className={inputCls} placeholder="ex.: 123/2026" value={buscaMeta.numero ?? ''} onChange={(e) => setMeta('numero', e.target.value)} />
+              </FiltroCampo>
+              <FiltroCampo label="Assunto" id="f-assunto">
+                <input id="f-assunto" className={inputCls} placeholder="Parte do assunto" value={buscaMeta.assunto ?? ''} onChange={(e) => setMeta('assunto', e.target.value)} />
+              </FiltroCampo>
+              <FiltroCampo label="Interessado" id="f-interessado">
+                <input id="f-interessado" className={inputCls} placeholder="Nome ou setor" value={buscaMeta.interessado ?? ''} onChange={(e) => setMeta('interessado', e.target.value)} />
+              </FiltroCampo>
+              <FiltroCampo label="Palavra-chave" id="f-palavra">
+                <input id="f-palavra" className={inputCls} placeholder="Uma palavra-chave" value={buscaMeta.palavraChave ?? ''} onChange={(e) => setMeta('palavraChave', e.target.value)} />
+              </FiltroCampo>
+              <FiltroCampo label="Nível de acesso" id="f-nivel">
+                <SelectMenu id="f-nivel" className={inputCls} value={buscaMeta.nivel ?? ''} onChange={(e) => setMeta('nivel', e.target.value)}>
+                  <option value="">Todos</option>
+                  <option value="publico">Público</option>
+                  <option value="restrito">Restrito</option>
+                  <option value="sigiloso">Sigiloso</option>
+                </SelectMenu>
+              </FiltroCampo>
+              <FiltroCampo label="Dados pessoais (LGPD)" id="f-lgpd">
+                <SelectMenu id="f-lgpd" className={inputCls} value={buscaMeta.dadosPessoais ?? ''} onChange={(e) => setMeta('dadosPessoais', e.target.value)}>
+                  <option value="">Com e sem</option>
+                  <option value="sim">Com dados pessoais</option>
+                  <option value="sensiveis">Com dados sensíveis</option>
+                  <option value="nao">Sem dados pessoais</option>
+                </SelectMenu>
+              </FiltroCampo>
             </div>
           )}
         </div>
@@ -1871,7 +1916,7 @@ function IncludeModal({
     if (!candidate.orgaoId) delete candidate.orgaoId;
     if (!candidate.historico) delete candidate.historico;
     if (!candidate.conta && module !== 'extrato') delete candidate.conta;
-    for (const k of ['classificacaoId', 'nivelAcesso', 'dataInicioContagem']) if (!candidate[k]) delete candidate[k];
+    for (const k of ['classificacaoId', 'nivelAcesso', 'dataInicioContagem', ...CAMPOS_CATALOGACAO]) if (!candidate[k]) delete candidate[k];
     if (module === 'acervo') {
       for (const k of ['responsavelDigitalizacao', 'dataDigitalizacao', 'localDigitalizacao']) if (!candidate[k]) delete candidate[k];
       const md = metadadosSchemaFor(tipoAcervo?.campos ?? []).safeParse(metadados);
@@ -2051,6 +2096,8 @@ function IncludeModal({
           {module === 'acervo' && (
             <DigitalizacaoFields values={fields} onChange={(k, v) => setFields((f) => ({ ...f, [k]: v }))} idPrefix="inc-dg" />
           )}
+
+          <CatalogacaoFields values={fields} onChange={(k, v) => setFields((f) => ({ ...f, [k]: v }))} idPrefix="inc-cat" />
 
           <ClassificacaoFields
             slug={slug}
@@ -2565,6 +2612,9 @@ function EditModal({
     const body: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(fields)) {
       if (k === 'localFisicoId') body[k] = v || null; // vazio = remover da caixa
+      // Catalogacao: apagar o texto apaga o valor (palavras-chave vazias = nenhuma).
+      else if (k === 'palavrasChave') body[k] = v;
+      else if (k === 'numero' || k === 'assunto' || k === 'interessado') body[k] = v || null;
       else if (v !== '') body[k] = k === 'value' || k === 'exercicio' ? Number(v) : k === 'digitalizado' ? v === 'true' : v;
     }
     if (doc.module === 'acervo' && metadadosAlterados) {
@@ -2700,6 +2750,13 @@ function EditModal({
               </Field>
             </div>
           )}
+
+          <CatalogacaoFields
+            values={fields}
+            onChange={(k, v) => setFields((f) => ({ ...f, [k]: v }))}
+            atual={{ numero: doc.numero, assunto: doc.assunto, interessado: doc.interessado, palavrasChave: doc.palavrasChave, dadosPessoais: doc.dadosPessoais }}
+            idPrefix="ed-cat"
+          />
 
           <ClassificacaoFields
             slug={slug}

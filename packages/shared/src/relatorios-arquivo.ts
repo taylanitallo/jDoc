@@ -35,6 +35,9 @@ export const inventarioFiltroSchema = z
     exercicioAte: z.coerce.number().int().min(1800).max(2200).optional(),
     q: z.string().trim().max(200).optional(),
     incluirEliminados: bool.optional(),
+    /** LGPD: so documentos com dados pessoais (sim) ou so com sensiveis. */
+    dadosPessoais: z.enum(['sim', 'sensiveis']).optional(),
+    orgaoId: z.string().uuid().optional(),
   })
   .strict();
 export type InventarioFiltro = z.infer<typeof inventarioFiltroSchema>;
@@ -66,6 +69,8 @@ export interface InventarioItem {
   nivelAcesso: NivelAcesso;
   paginas: number | null;
   digitalizado: boolean;
+  dadosPessoais: 'nao' | 'comuns' | 'sensiveis';
+  secretaria: string | null;
 }
 
 export interface InventarioPage {
@@ -112,5 +117,7 @@ export function descreverFiltro(f: InventarioFiltro, nomes: { tipo?: string | nu
   if (f.exercicioDe || f.exercicioAte) out.push(`Exercício: ${f.exercicioDe ?? '…'} a ${f.exercicioAte ?? '…'}`);
   if (f.q) out.push(`Busca: "${f.q}"`);
   if (f.incluirEliminados) out.push('Inclui documentos eliminados');
+  if (f.dadosPessoais) out.push(f.dadosPessoais === 'sensiveis' ? 'Só com dados pessoais sensíveis' : 'Só com dados pessoais');
+  if (f.orgaoId) out.push('Uma secretaria');
   return out.length ? [out.join(' · ')] : ['Sem filtros: todo o acervo'];
 }

@@ -194,6 +194,9 @@ export default function LoginPage() {
           <ArrowLeft className="h-4 w-4" aria-hidden />
           Trocar de órgão
         </Link>
+        <Link href={`/${slug}/privacidade`} className="text-xs font-medium text-ink-400 hover:text-ink-700">
+          Privacidade e proteção de dados
+        </Link>
       </div>
     </AuthLayout>
   );

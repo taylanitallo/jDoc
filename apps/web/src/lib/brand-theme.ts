@@ -54,7 +54,7 @@ function injetar(css: string): void {
 export const SCRIPT_TEMA_MARCA = `
 (function(){try{
   var p=location.pathname, s=p.split('/')[1]||'';
-  if(/\\/(login|esqueci-senha|redefinir-senha|legislacao)(\\/|$)/.test(p)||!s||s==='verificar')return;
+  if(/\\/(login|esqueci-senha|redefinir-senha|legislacao|privacidade)(\\/|$)/.test(p)||!s||s==='verificar')return;
   var css=localStorage.getItem('${PREFIXO_CACHE}'+s);
   if(css){var el=document.createElement('style');el.id='${STYLE_ID}';el.textContent=css;document.head.appendChild(el);}
 }catch(_){}})();

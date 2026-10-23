@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Building2, Calculator, FileType2, FolderTree, Palette, Settings, Target, Users, type LucideIcon } from 'lucide-react';
+import { Building2, Calculator, FileType2, FolderTree, Palette, Settings, ShieldCheck, Target, Users, type LucideIcon } from 'lucide-react';
 import { Tabs, TONE_VIVID } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { useModuloAtivo } from '@/components/modulo-ativo';
@@ -13,8 +13,9 @@ import { TiposDocumentoTab } from './tipos-documento-tab';
 import { UsuariosTab } from './usuarios-tab';
 import { LayoutTab } from './layout-tab';
 import { ClassificacaoTab } from './classificacao-tab';
+import { PrivacidadeTab } from './privacidade-tab';
 
-type Guia = 'orgaos' | 'projetos' | 'elementos' | 'tipos-documento' | 'classificacao' | 'usuarios' | 'layout';
+type Guia = 'orgaos' | 'projetos' | 'elementos' | 'tipos-documento' | 'classificacao' | 'usuarios' | 'layout' | 'privacidade';
 
 /** sistema = aba so aparece com o modulo contratado; null = comum. */
 const GUIAS: { id: Guia; label: string; sistema: Sistema | null; icon: LucideIcon }[] = [
@@ -25,6 +26,7 @@ const GUIAS: { id: Guia; label: string; sistema: Sistema | null; icon: LucideIco
   { id: 'classificacao', label: 'Plano de Classificação', sistema: 'arquivo', icon: FolderTree },
   { id: 'usuarios', label: 'Usuários', sistema: null, icon: Users },
   { id: 'layout', label: 'Aparência', sistema: null, icon: Palette },
+  { id: 'privacidade', label: 'Privacidade (LGPD)', sistema: null, icon: ShieldCheck },
 ];
 
 export default function ConfiguracoesPage() {
@@ -56,6 +58,7 @@ export default function ConfiguracoesPage() {
       {guia === 'classificacao' && <ClassificacaoTab />}
       {guia === 'usuarios' && <UsuariosTab />}
       {guia === 'layout' && <LayoutTab />}
+      {guia === 'privacidade' && <PrivacidadeTab />}
     </div>
   );
 }

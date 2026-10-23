@@ -25,6 +25,8 @@ export const MODULES = [
   'acervo',
   /** So a acao read importa: ver documentos com nivel de acesso restrito (RH/LGPD). */
   'acervo_restrito',
+  /** So a acao read: ver documentos classificados como sigilosos pela LAI. */
+  'acervo_sigiloso',
   'classificacao',
   'temporalidade',
   'arquivo_fisico',

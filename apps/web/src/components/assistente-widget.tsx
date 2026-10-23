@@ -3,7 +3,8 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useParams } from 'next/navigation';
 import { ExternalLink, Send, X } from 'lucide-react';
-import type { AssistenteResposta, DocumentView } from '@jdoc/shared';
+import { useQuery } from '@tanstack/react-query';
+import type { AssistenteResposta, DocumentView, UsuarioAtual } from '@jdoc/shared';
 import { api, ApiError } from '@/lib/api';
 import { btnGhost, cardCls, inputCls } from '@/components/ui';
 import { useToast } from '@/components/toast';
@@ -57,6 +58,13 @@ export function AylaVisibilityProvider({ children }: { children: ReactNode }) {
 export function AssistenteWidget() {
   const { slug } = useParams<{ slug: string }>();
   const { oculta } = useAylaVisibility();
+  // Mesma chave do layout: vem do cache.
+  const { data: usuario } = useQuery({
+    queryKey: ['auth', 'me', slug],
+    queryFn: () => api<UsuarioAtual>(`/t/${slug}/auth/me`),
+    staleTime: 5 * 60_000,
+    enabled: !!slug,
+  });
   const [open, setOpen] = useState(false);
   const [texto, setTexto] = useState('');
   const [turnos, setTurnos] = useState<Turno[]>([]);
@@ -98,7 +106,8 @@ export function AssistenteWidget() {
     }
   };
 
-  if (!slug || oculta) return null;
+  // Orgao desligou a IA em Configuracoes > Privacidade.
+  if (!slug || oculta || usuario?.iaDesligada) return null;
 
   return (
     <>

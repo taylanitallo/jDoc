@@ -204,7 +204,7 @@ describe('Relatorios do Arquivo', () => {
     const csv = (csvRes.body as Buffer).toString('utf8');
     expect(csv.charCodeAt(0)).toBe(0xfeff);
     const linhas = csv.slice(1).trim().split('\r\n');
-    expect(linhas[0]).toBe('Classe;Tipo;Identificação;Data;Exerc.;Fase;Transf. prevista;Destinação;Localização;Acesso;Págs.');
+    expect(linhas[0]).toBe('Classe;Tipo;Identificação;Data;Exerc.;Fase;Transf. prevista;Destinação;Localização;Acesso;Dados pessoais;Págs.');
     expect(linhas).toHaveLength(5);
     // descricao "=HYPERLINK(...)" nao pode virar formula no Excel
     const contrato = linhas.find((l) => l.includes('HYPERLINK'))!;

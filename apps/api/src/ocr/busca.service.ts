@@ -82,6 +82,13 @@ export class BuscaService {
       AND (${this.podeVerRestrito(user)} OR d.nivel_acesso = 'publico')
       AND ${filtroLotacao(sql, user)}
       AND (${q.exercicio ?? null}::int IS NULL OR d.exercicio = ${q.exercicio ?? null})
+      AND (${q.orgaoId ?? null}::uuid IS NULL OR d.orgao_id = ${q.orgaoId ?? null})
+      AND (${q.documentTypeId ?? null}::uuid IS NULL OR d.document_type_id = ${q.documentTypeId ?? null})
+      AND (${q.de ?? null}::date IS NULL OR d.document_date >= ${q.de ?? null})
+      AND (${q.ate ?? null}::date IS NULL OR d.document_date <= ${q.ate ?? null})
+      AND (${q.assunto ?? null}::varchar IS NULL OR d.assunto ILIKE ${q.assunto ? `%${q.assunto}%` : null})
+      AND (${q.interessado ?? null}::varchar IS NULL OR d.interessado ILIKE ${q.interessado ? `%${q.interessado}%` : null})
+      AND (${q.palavraChave ?? null}::varchar IS NULL OR ${q.palavraChave?.toLowerCase() ?? null} = ANY(d.palavras_chave))
     `;
     // Melhor pagina de cada documento (DISTINCT ON) e depois ranking entre documentos.
     const hits = sql`
