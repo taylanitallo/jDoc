@@ -127,6 +127,8 @@ export interface UsuarioAtual {
   podeVerRestrito: boolean;
   /** Admin ou auditoria:read: ve a trilha de auditoria do orgao. */
   podeAuditar: boolean;
+  /** Admin ou fiscal_contrato:update: aprova plano e da o aceite dos lotes. */
+  podeFiscalizar: boolean;
   /** O orgao desligou a IA (assistente e conferencia somem). */
   iaDesligada: boolean;
   /** Tema escolhido pelo usuario (null = nunca escolheu). */

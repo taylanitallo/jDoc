@@ -313,6 +313,25 @@ const ACOES: Record<string, Frase> = {
   dossie_encerrado: (_, q) => `${q} encerrou um dossiê`,
   norma_estruturada: (_, q) => `${q} cadastrou o texto de uma norma`,
   norma_alteracao_registrada: (_, q) => `${q} registrou uma alteração de norma`,
+  privacidade_atualizada: (_, q) => `${q} alterou as configurações de privacidade (LGPD)`,
+  dicionario_metadados_exportado: (_, q) => `${q} exportou o dicionário de metadados`,
+  digit_plano_criado: (l, q) => `${q} criou o plano de trabalho ${meta(l, 'titulo') ?? ''}`.trim(),
+  digit_plano_alterado: (_, q) => `${q} alterou um plano de trabalho de digitalização`,
+  digit_plano_aprovado: (_, q) => `${q} aprovou um plano de trabalho como fiscal do contrato`,
+  digit_lote_recebido: (l, q) => `${q} recebeu um lote para digitalização: ${meta(l, 'descricao') ?? ''}`.trim(),
+  digit_lote_alterado: (_, q) => `${q} alterou os dados de um lote de digitalização`,
+  digit_lote_etapa: (l, q) => `${q} moveu um lote de digitalização de ${meta(l, 'de') ?? '—'} para ${meta(l, 'para') ?? '—'}`,
+  digit_item_inventariado: (l, q) => `${q} inventariou ${meta(l, 'identificacao') ?? 'um item'} em um lote`,
+  digit_item_alterado: (_, q) => `${q} alterou um item do inventário do lote`,
+  digit_item_removido: (_, q) => `${q} removeu um item do inventário do lote`,
+  digit_documentos_vinculados: (l, q) => `${q} vinculou ${meta(l, 'count') ?? 0} documento(s) a um lote de digitalização`,
+  digit_documento_desvinculado: (_, q) => `${q} retirou um documento de um lote de digitalização`,
+  digit_qc_registrado: (l, q) =>
+    `${q} registrou o controle de qualidade de um lote: ${l.metadata?.aprovado ? 'aprovado' : `reprovado (${meta(l, 'naoConformidades') ?? 0} não conformidade(s))`}`,
+  digit_nc_corrigida: (_, q) => `${q} corrigiu uma não conformidade da digitalização`,
+  digit_lote_aceito: (l, q) => `${q} deu o aceite de fiscal em um lote com ${meta(l, 'paginas') ?? 0} página(s)`,
+  digit_termo_emitido: (l, q) => `${q} emitiu o termo de ${meta(l, 'tipo') ?? ''} de um lote`.trim(),
+  digit_producao_exportada: (_, q) => `${q} exportou o relatório de produção da digitalização`,
 };
 
 /** Frase do log, em portugues, sem chaves tecnicas. */

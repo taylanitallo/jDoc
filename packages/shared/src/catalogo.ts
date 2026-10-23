@@ -58,6 +58,7 @@ export const CATALOGO_MODULOS: ModuloCatalogo[] = [
       { id: 'sigilo', label: 'Sigilo', descricao: 'Informações classificadas pela LAI' },
       { id: 'temporalidade', label: 'Temporalidade', descricao: 'Prazos de guarda e eliminação' },
       { id: 'integridade', label: 'Integridade', descricao: 'Conferência periódica dos arquivos' },
+      { id: 'digitalizacao', label: 'Digitalização', descricao: 'Lotes, custódia, controle de qualidade e produção' },
       { id: 'relatorios', label: 'Relatórios', descricao: 'Inventário e quantitativos' },
     ],
   },
@@ -103,6 +104,8 @@ export const PERMISSAO_LABEL: Record<ModuleName, { label: string; acoes?: readon
   dossies: { label: 'Dossiês e processos' },
   descricao: { label: 'Descrição (NOBRADE)' },
   legislacao: { label: 'Legislação' },
+  digitalizacao: { label: 'Digitalização' },
+  fiscal_contrato: { label: 'Fiscal do contrato', acoes: ['read', 'update'], dica: 'Aprovar plano de trabalho e dar o aceite formal dos lotes digitalizados' },
   orgaos: { label: 'Órgãos (cadastro)' },
   unidades_orcamentarias: { label: 'Unidades orçamentárias' },
   projetos_atividades: { label: 'Projetos e atividades' },
@@ -157,7 +160,7 @@ export interface PerfilPadrao {
   permissoes: string[];
 }
 
-const SO_ADMIN = new Set<ModuleName>(['usuarios', 'layout', 'orgaos', 'auditoria']);
+const SO_ADMIN = new Set<ModuleName>(['usuarios', 'layout', 'orgaos', 'auditoria', 'fiscal_contrato']);
 
 /** Perfis de fabrica (os modelos globais do superadmin sobrescrevem estes). */
 export function perfisDeFabrica(): PerfilPadrao[] {
