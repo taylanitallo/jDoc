@@ -42,6 +42,10 @@ export const MODULES = [
   'descricao',
   /** Legislacao compilada (texto por dispositivo, alteracoes, portal publico). */
   'legislacao',
+  /** Servico de digitalizacao: plano, lotes, custodia, controle de qualidade. */
+  'digitalizacao',
+  /** So update: aceite formal do lote pelo fiscal do contrato. */
+  'fiscal_contrato',
   /** Midia legislativa (pacotes mensais para a Camara). */
   'midia_legislativa',
   // Cadastros de Configuracoes (ja usados pelas rotas; antes ficavam fora da matriz).

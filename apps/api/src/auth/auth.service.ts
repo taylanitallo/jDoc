@@ -244,6 +244,7 @@ export class AuthService {
     const perms = u.role === 'admin' ? [] : await this.loadPermissions(ctx.schemaName, userId);
     const podeVerRestrito = u.role === 'admin' || perms.includes('acervo_restrito:read');
     const podeAuditar = u.role === 'admin' || perms.includes('auditoria:read');
+    const podeFiscalizar = u.role === 'admin' || perms.includes('fiscal_contrato:update');
     const [cor] = await sql<Array<{ valor: unknown }>>`SELECT valor FROM tenant_settings WHERE chave = 'corDestaque'`;
     const [priv] = await sql<Array<{ valor: unknown }>>`SELECT valor FROM tenant_settings WHERE chave = 'privacidade'`;
     const privacidade = (typeof priv?.valor === 'string' ? JSON.parse(priv.valor) : priv?.valor) as { iaDesligada?: boolean } | undefined;
@@ -256,6 +257,7 @@ export class AuthService {
       orgao: ctx.nome,
       podeVerRestrito,
       podeAuditar,
+      podeFiscalizar,
       iaDesligada: privacidade?.iaDesligada === true,
       uiTheme: u.ui_theme,
       corOrgao,
