@@ -257,6 +257,12 @@ export class SuperadminTenantsService {
     if (row.status !== 'inativo' && row.status !== 'arquivado') throw new ConflictException('Suspenda ou arquive o órgão antes de excluir');
     if (confirmacao.trim().toLowerCase() !== row.slug) throw new BadRequestException('Digite o slug do órgão para confirmar a exclusão');
     if (!SCHEMA_NAME_REGEX.test(row.schema_name)) throw new BadRequestException('Schema inválido');
+    // Plano de saida (TR): com documentos, so exclui depois de exportar e registrar o aceite da migracao.
+    const [docs] = await this.db.tenant(row.schema_name)<Array<{ n: number }>>`SELECT count(*)::int AS n FROM documents`;
+    const [aceite] = await this.db.catalog()<Array<{ em: Date | null }>>`SELECT migracao_aceita_em AS em FROM public.tenants WHERE id = ${id}`;
+    if ((docs?.n ?? 0) > 0 && !aceite?.em) {
+      throw new ConflictException('Antes de excluir, gere a exportação integral e registre o aceite da migração pelo órgão (Continuidade).');
+    }
 
     await this.db.closeTenant(row.schema_name);
     const direct = this.db.direct();

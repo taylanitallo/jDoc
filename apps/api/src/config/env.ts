@@ -14,6 +14,16 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
 
+  /**
+   * Copia segregada (continuidade): outro projeto Supabase, separado do
+   * principal, para onde vao PDFs e backups. Sem ele, COPIA_DIR (volume).
+   */
+  COPIA_SUPABASE_URL: z.string().url().optional(),
+  COPIA_SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
+  COPIA_DIR: z.string().min(1).optional(),
+  /** Tamanho maximo de cada parte ZIP da exportacao integral (MB). */
+  EXPORTACAO_PARTE_MB: z.coerce.number().int().min(10).max(2000).default(200),
+
   REDIS_URL: z.string().min(1),
 
   /** Conferencia de documentos por IA — opcional; ausente = feature desligada. */

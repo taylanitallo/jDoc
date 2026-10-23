@@ -35,3 +35,4 @@ export * from './chamados.js';
 export * from './auditoria.js';
 export * from './lgpd.js';
 export * from './digitalizacao.js';
+export * from './continuidade.js';

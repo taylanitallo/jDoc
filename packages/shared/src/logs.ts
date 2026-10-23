@@ -332,6 +332,13 @@ const ACOES: Record<string, Frase> = {
   digit_lote_aceito: (l, q) => `${q} deu o aceite de fiscal em um lote com ${meta(l, 'paginas') ?? 0} página(s)`,
   digit_termo_emitido: (l, q) => `${q} emitiu o termo de ${meta(l, 'tipo') ?? ''} de um lote`.trim(),
   digit_producao_exportada: (_, q) => `${q} exportou o relatório de produção da digitalização`,
+  relatorio_mensal_emitido: (l, q) => `${q} emitiu o relatório mensal de ${meta(l, 'mes') ?? ''}`.trim(),
+  exportacao_integral_solicitada: (_, q, o) => `${q} pediu a exportação integral dos dados de ${o}`,
+  exportacao_integral_gerada: (l) => `Exportação integral pronta: ${meta(l, 'documentos') ?? 0} documento(s) em ${meta(l, 'partes') ?? 1} parte(s)`,
+  exportacao_integral_baixada: (l, q) => `${q} baixou a parte ${meta(l, 'parte') ?? ''} da exportação integral`,
+  teste_restauracao_executado: (l, q, o) => `${q} testou a restauração do backup de ${o}: ${meta(l, 'status') === 'sucesso' ? 'sucesso' : 'falha'}`,
+  migracao_aceita: (_, q, o) => `${q} registrou o aceite da migração dos dados de ${o}`,
+  lgpd_atualizada: (_, q) => `${q} alterou as informações de privacidade (LGPD) da plataforma`,
 };
 
 /** Frase do log, em portugues, sem chaves tecnicas. */

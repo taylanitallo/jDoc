@@ -9,6 +9,7 @@ import { StorageService } from '../../storage/storage.module';
 import { TenancyService } from '../../tenancy/tenancy.service';
 import { JobsService } from '../../operacao/jobs.service';
 import { loadEnv } from '../../config/env';
+import { executarDump } from './executar-dump';
 import { BACKUPS_QUEUE, SLUG_PLATAFORMA, type BackupsQueueData, type FullBackupJobData, type RestoreJobData } from './backups.service';
 
 const fmtTamanho = (b: number) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
@@ -201,8 +202,9 @@ export class BackupsWorker implements OnModuleInit, OnModuleDestroy {
       await this.etapa(restoreJobId, 'restaurando');
       await this.db.tenant(schemaName).begin(async (tx) => {
         await tx.unsafe(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
-        await tx.unsafe(`CREATE SCHEMA "${schemaName}"`);
-        await tx.unsafe(dumpSql);
+        // O pg_dump --schema ja traz o CREATE SCHEMA; dumps antigos sem ele ganham um aqui.
+        if (!new RegExp(`^CREATE SCHEMA "?${schemaName}"?;`, 'm').test(dumpSql)) await tx.unsafe(`CREATE SCHEMA "${schemaName}"`);
+        await executarDump(tx, dumpSql);
       });
       await this.db.closeTenant(schemaName);
 
