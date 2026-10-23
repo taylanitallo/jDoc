@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
-import { DatabaseBackup, ExternalLink, History, KeyRound, LayoutGrid, Settings2, ShieldHalf, Users } from 'lucide-react';
+import { DatabaseBackup, ExternalLink, History, KeyRound, LayoutGrid, LifeBuoy, Settings2, ShieldHalf, Users } from 'lucide-react';
 import { AMBIENTE_LABEL, TENANT_STATUS_LABEL, type TenantStatus } from '@jdoc/shared';
 import { cn } from '@/lib/cn';
 import { Badge, PageHeader, buttonClasses } from '@/components/ui';
@@ -19,6 +19,7 @@ const ABAS = [
   { id: 'integracoes', label: 'Chaves de API', icon: KeyRound },
   { id: 'acessos', label: 'Acessos', icon: History },
   { id: 'backup', label: 'Backup', icon: DatabaseBackup },
+  { id: 'continuidade', label: 'Continuidade', icon: LifeBuoy },
 ];
 
 export default function OrgaoLayout({ children }: { children: ReactNode }) {

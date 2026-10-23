@@ -25,6 +25,7 @@ import {
   ShieldAlert,
   EyeOff,
   LogOut,
+  HeartPulse,
   LifeBuoy,
   Megaphone,
   TrendingDown,
@@ -74,6 +75,7 @@ const TITULOS: Record<string, { title: string; description: string }> = {
   sigilo: { title: 'Sigilo', description: 'Informações classificadas pela LAI' },
   busca: { title: 'Busca no conteúdo', description: 'Procure dentro do texto dos PDFs' },
   auditoria: { title: 'Auditoria', description: 'Quem fez o quê, quando e de onde' },
+  continuidade: { title: 'Continuidade', description: 'Backups, restauração, disponibilidade e exportação' },
   digitalizacao: { title: 'Digitalização', description: 'Lotes, custódia, qualidade e produção' },
   configuracoes: { title: 'Configurações', description: 'Cadastros, usuários e personalização' },
   conta: { title: 'Minha conta', description: 'Seus dados, senha e aparência' },
@@ -175,7 +177,12 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
       title: 'Geral',
       items: [
         { href: `${base}/busca`, label: 'Busca no conteúdo', icon: ScanSearch },
-        ...(usuario?.podeAuditar ? [{ href: `${base}/auditoria`, label: 'Auditoria', icon: ScrollText }] : []),
+        ...(usuario?.podeAuditar
+          ? [
+              { href: `${base}/auditoria`, label: 'Auditoria', icon: ScrollText },
+              { href: `${base}/continuidade`, label: 'Continuidade', icon: HeartPulse },
+            ]
+          : []),
         { href: `${base}/suporte`, label: 'Suporte', icon: LifeBuoy },
         { href: `${base}/novidades`, label: 'Novidades', icon: Megaphone, badge: naoLidas },
         { href: `${base}/configuracoes`, label: 'Configurações', icon: Settings },

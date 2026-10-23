@@ -25,6 +25,7 @@ import { IntegridadeModule } from './integridade/integridade.module';
 import { AuditoriaModule } from './auditoria/auditoria.module';
 import { PrivacidadeModule } from './privacidade/privacidade.module';
 import { DigitalizacaoModule } from './digitalizacao/digitalizacao.module';
+import { ContinuidadeModule } from './continuidade/continuidade.module';
 import { RelatoriosArquivoModule } from './relatorios-arquivo/relatorios-arquivo.module';
 import { AtendimentoModule } from './atendimento/atendimento.module';
 import { SigiloModule } from './sigilo/sigilo.module';
@@ -73,6 +74,7 @@ import { TenantsPublicController } from './tenants-public.controller';
     AuditoriaModule,
     PrivacidadeModule,
     DigitalizacaoModule,
+    ContinuidadeModule,
     RelatoriosArquivoModule,
     AtendimentoModule,
     SigiloModule,
