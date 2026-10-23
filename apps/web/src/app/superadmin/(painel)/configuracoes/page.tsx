@@ -6,6 +6,8 @@ import { api } from '@/lib/api';
 import { PageHeader } from '@/components/ui';
 import { Skeleton } from '@/components/skeleton';
 import { IntegracaoCard } from '@/components/platform/integracao-card';
+import { LgpdCard } from '@/components/platform/lgpd-card';
+import { usePode } from '@/components/platform/admin-context';
 
 /**
  * Chaves globais padrao (SMTP, IA, mapas, WhatsApp): valem para todo orgao que
@@ -13,6 +15,7 @@ import { IntegracaoCard } from '@/components/platform/integracao-card';
  */
 export default function ConfiguracoesPage() {
   const qc = useQueryClient();
+  const owner = usePode('owner');
   const { data } = useQuery({ queryKey: ['sa-settings'], queryFn: () => api<IntegracaoView[]>('/superadmin/settings') });
   return (
     <div>
@@ -38,6 +41,9 @@ export default function ConfiguracoesPage() {
           ))}
         </div>
       )}
+      <div className="mt-6">
+        <LgpdCard podeEditar={owner} />
+      </div>
     </div>
   );
 }

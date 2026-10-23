@@ -28,6 +28,7 @@ import {
 import { loadEnv } from '../config/env';
 import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.module';
+import { podeVerSigiloso } from '../common/acesso-documento';
 import { requireTenantContext } from '../tenancy/tenant-context';
 import { gerarPdfTabela } from '../common/exportacao';
 
@@ -107,8 +108,9 @@ export class SigiloService implements OnModuleInit, OnModuleDestroy {
     return this.db.tenant(requireTenantContext().schemaName);
   }
 
+  /** Informacao classificada: so quem tem acervo_sigiloso:read (alem do admin) ve conteudo e razoes. */
   private podeVerRestrito(user: TenantAccessClaims): boolean {
-    return user.role === 'admin' || user.permissions.includes('acervo_restrito:read');
+    return podeVerSigiloso(user);
   }
 
   /** Fim do prazo: status expirado e nivel de acesso anterior restaurado. Idempotente. */

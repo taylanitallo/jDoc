@@ -127,6 +127,8 @@ export interface UsuarioAtual {
   podeVerRestrito: boolean;
   /** Admin ou auditoria:read: ve a trilha de auditoria do orgao. */
   podeAuditar: boolean;
+  /** O orgao desligou a IA (assistente e conferencia somem). */
+  iaDesligada: boolean;
   /** Tema escolhido pelo usuario (null = nunca escolheu). */
   uiTheme: UiTheme | null;
   /** Cor da marca do orgao (Configuracoes > Aparencia), padrao dos usuarios. */

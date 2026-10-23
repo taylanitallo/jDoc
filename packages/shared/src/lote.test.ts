@@ -49,6 +49,12 @@ describe('montarLote', () => {
     expect(r.avisos).toContain('Linha 3: nenhum PDF selecionado com esse nome.');
   });
 
+  it('le as colunas dos metadados padrao (assunto, palavras-chave, dados pessoais)', () => {
+    const r = montarLote(['a.pdf'], 'arquivo;assunto;palavras_chave;dados_pessoais\na.pdf;Obra;"escola, obra";comuns', CAMPOS);
+    expect(r.itens[0]?.catalogacao).toEqual({ assunto: 'Obra', palavrasChave: 'escola, obra', dadosPessoais: 'comuns' });
+    expect(r.avisos).toEqual([]);
+  });
+
   it('sem coluna arquivo avisa; sem planilha usa so os padroes', () => {
     expect(montarLote(['a.pdf'], 'descricao;data\nx;01/01/2020', CAMPOS).avisos[0]).toMatch(/coluna "arquivo"/);
     expect(montarLote(['a.pdf'], null, CAMPOS).itens[0]).toMatchObject({ descricao: 'a', dataDocumento: '' });
@@ -73,7 +79,7 @@ describe('modeloCsvLote', () => {
   it('gera cabecalho com os campos do tipo e abre no Excel (BOM + ;)', () => {
     const m = modeloCsvLote(CAMPOS);
     expect(m.charCodeAt(0)).toBe(0xfeff);
-    expect(m.slice(1).split('\r\n')[0]).toBe('arquivo;descricao;data_documento;numero;data_publicacao;especie');
+    expect(m.slice(1).split('\r\n')[0]).toBe('arquivo;descricao;data_documento;numero;data_publicacao;especie;assunto;interessado;palavras_chave;dados_pessoais');
     // o proprio modelo e lido de volta sem avisos
     expect(montarLote(['lei-1234.pdf'], m, CAMPOS).avisos).toEqual([]);
   });

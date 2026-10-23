@@ -93,6 +93,7 @@ export const PERMISSAO_LABEL: Record<ModuleName, { label: string; acoes?: readon
   midia_legislativa: { label: 'Mídia legislativa', acoes: ['read', 'create'] },
   acervo: { label: 'Acervo' },
   acervo_restrito: { label: 'Acervo restrito', acoes: ['read'], dica: 'Ver documentos de acesso restrito (RH, LGPD)' },
+  acervo_sigiloso: { label: 'Acervo sigiloso', acoes: ['read'], dica: 'Ver documentos classificados como sigilosos (LAI); todo acesso fica na auditoria' },
   classificacao: { label: 'Plano de classificação' },
   temporalidade: { label: 'Temporalidade' },
   arquivo_fisico: { label: 'Arquivo físico' },
@@ -175,14 +176,16 @@ export function perfisDeFabrica(): PerfilPadrao[] {
       nome: 'Operador',
       descricao: 'Cadastra, edita e exporta documentos; não exclui nem administra usuários.',
       papel: 'operador',
-      permissoes: semAdmin.filter((p) => !p.endsWith(':delete') && p !== 'acervo_restrito:read'),
+      permissoes: semAdmin.filter((p) => !p.endsWith(':delete') && p !== 'acervo_restrito:read' && p !== 'acervo_sigiloso:read'),
     },
     {
       chave: 'consulta',
       nome: 'Consulta',
       descricao: 'Somente leitura e exportação.',
       papel: 'consulta',
-      permissoes: semAdmin.filter((p) => p.endsWith(':read') || p.endsWith(':export')).filter((p) => p !== 'acervo_restrito:read'),
+      permissoes: semAdmin
+        .filter((p) => p.endsWith(':read') || p.endsWith(':export'))
+        .filter((p) => p !== 'acervo_restrito:read' && p !== 'acervo_sigiloso:read'),
     },
   ];
 }

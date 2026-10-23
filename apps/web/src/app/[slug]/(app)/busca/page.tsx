@@ -3,8 +3,8 @@
 import { useState, type FormEvent } from 'react';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText, RefreshCw, ScanSearch, Search } from 'lucide-react';
-import { sistemaDoModulo, type BuscaConteudoResult, type DocModule, type IndexacaoResumo } from '@jdoc/shared';
+import { FileText, RefreshCw, ScanSearch, Search, SlidersHorizontal } from 'lucide-react';
+import { sistemaDoModulo, type BuscaConteudoResult, type DocModule, type IndexacaoResumo, type Orgao } from '@jdoc/shared';
 import { api, ApiError } from '@/lib/api';
 import { btnGhost, btnPrimary, cardCls, inputCls, PageHeader, Pagination, SelectMenu } from '@/components/ui';
 import { EmptyState } from '@/components/empty-state';
@@ -32,7 +32,19 @@ export default function BuscaConteudoPage() {
   const opcoes = MODULOS.filter((m) => m.id === '' || sistemaDoModulo(m.id) === ativo);
   const [texto, setTexto] = useState('');
   const [modulo, setModulo] = useState<DocModule | ''>('');
-  const [consulta, setConsulta] = useState<{ q: string; modulo: DocModule | '' } | null>(null);
+  // Busca avancada: texto do PDF combinado com os metadados.
+  const [avancado, setAvancado] = useState(false);
+  const [filtros, setFiltros] = useState<Record<string, string>>({});
+  const setFiltro = (k: string, v: string) => setFiltros((f) => ({ ...f, [k]: v }));
+  const [consulta, setConsulta] = useState<{ q: string; modulo: DocModule | ''; filtros: Record<string, string> } | null>(null);
+  const { data: orgaos } = useQuery({
+    queryKey: ['busca', 'orgaos', slug],
+    queryFn: () => api<{ items: Orgao[] }>(`/t/${slug}/configuracoes/orgaos?pageSize=1000`),
+    enabled: avancado,
+    retry: false,
+  });
+  // O cadastro se repete por exercicio: um item por codigo, com o id do exercicio mais recente.
+  const secretarias = [...new Map((orgaos?.items ?? []).sort((a, b) => a.exercicio - b.exercicio).map((o) => [o.codigo, o])).values()];
   const [page, setPage] = useState(1);
   const pageSize = 20;
 
@@ -49,6 +61,7 @@ export default function BuscaConteudoPage() {
       const p = new URLSearchParams({ q: consulta!.q, page: String(page), pageSize: String(pageSize) });
       if (consulta!.modulo) p.set('module', consulta!.modulo);
       if (ativo) p.set('sistema', ativo);
+      for (const [k, v] of Object.entries(consulta!.filtros)) if (v.trim()) p.set(k, v.trim());
       return api(`/t/${slug}/busca?${p.toString()}`);
     },
   });
@@ -67,7 +80,7 @@ export default function BuscaConteudoPage() {
     e.preventDefault();
     if (texto.trim().length < 2) return;
     setPage(1);
-    setConsulta({ q: texto.trim(), modulo });
+    setConsulta({ q: texto.trim(), modulo, filtros: avancado ? filtros : {} });
   };
 
   const abrir = async (documentId: string, documentFileId: string | null, pagina: number) => {
@@ -111,7 +124,34 @@ export default function BuscaConteudoPage() {
             <option key={m.id} value={m.id}>{m.label}</option>
           ))}
         </SelectMenu>
+        <button type="button" className={btnGhost} onClick={() => setAvancado((a) => !a)} aria-expanded={avancado}>
+          <span className="flex items-center gap-2">
+            <SlidersHorizontal className="h-4 w-4" aria-hidden /> Busca avançada
+          </span>
+        </button>
         <button type="submit" className={btnPrimary} disabled={texto.trim().length < 2}>Buscar</button>
+        {avancado && (
+          <div className="grid w-full grid-cols-1 gap-3 border-t border-ink-100 pt-3 sm:grid-cols-2 lg:grid-cols-4">
+            <SelectMenu aria-label="Secretaria" className={inputCls} value={filtros.orgaoId ?? ''} onChange={(e) => setFiltro('orgaoId', e.target.value)}>
+              <option value="">Todas as secretarias</option>
+              {secretarias.map((o) => (
+                <option key={o.codigo} value={o.id}>{o.codigo} — {o.descricao}</option>
+              ))}
+            </SelectMenu>
+            <input aria-label="Assunto" className={inputCls} placeholder="Assunto" value={filtros.assunto ?? ''} onChange={(e) => setFiltro('assunto', e.target.value)} />
+            <input aria-label="Interessado" className={inputCls} placeholder="Interessado" value={filtros.interessado ?? ''} onChange={(e) => setFiltro('interessado', e.target.value)} />
+            <input aria-label="Palavra-chave" className={inputCls} placeholder="Palavra-chave" value={filtros.palavraChave ?? ''} onChange={(e) => setFiltro('palavraChave', e.target.value)} />
+            <input aria-label="Exercício" type="number" min={1800} max={2100} className={inputCls} placeholder="Exercício" value={filtros.exercicio ?? ''} onChange={(e) => setFiltro('exercicio', e.target.value)} />
+            <label className="flex items-center gap-2 text-xs text-ink-500">
+              De
+              <input aria-label="Data inicial" type="date" className={inputCls} value={filtros.de ?? ''} onChange={(e) => setFiltro('de', e.target.value)} />
+            </label>
+            <label className="flex items-center gap-2 text-xs text-ink-500">
+              Até
+              <input aria-label="Data final" type="date" className={inputCls} value={filtros.ate ?? ''} onChange={(e) => setFiltro('ate', e.target.value)} />
+            </label>
+          </div>
+        )}
       </form>
 
       {indexacao && (

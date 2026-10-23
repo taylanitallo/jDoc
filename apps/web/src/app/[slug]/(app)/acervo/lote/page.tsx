@@ -175,6 +175,9 @@ export default function EnvioEmLotePage() {
         nivelAcesso: nivel,
         metadados: JSON.stringify(l.metadados),
       };
+      // Metadados padrao da planilha; sem coluna "numero" propria, vale o numero do tipo.
+      for (const [k, v] of Object.entries(l.catalogacao ?? {})) if (v) campos[k] = v;
+      if (!campos.numero && l.metadados.numero) campos.numero = String(l.metadados.numero);
       if (classeId) campos.classificacaoId = classeId;
       if (digitalizado) {
         campos.digitalizado = 'true';

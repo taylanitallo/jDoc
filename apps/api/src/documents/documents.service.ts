@@ -31,13 +31,15 @@ import {
   metadadosSchemaFor,
   type NivelAcesso,
   type GrauSigilo,
+  type DadosPessoais,
   type SearchDocumentsQuery,
   type TenantAccessClaims,
   type TrashQuery,
   type UpdateDocumentInput,
 } from '@jdoc/shared';
-import { dentroDaLotacao, filtroLotacao, lotacaoDe, podeVerRestrito } from '../common/acesso-documento';
+import { dentroDaLotacao, filtroLotacao, lotacaoDe, podeVerRestrito, podeVerSigiloso } from '../common/acesso-documento';
 import { DatabaseService } from '../database/database.service';
+import { PrivacidadeService } from '../privacidade/privacidade.service';
 import { StorageService } from '../storage/storage.module';
 import { AuditService } from '../audit/audit.module';
 import { loadEnv } from '../config/env';
@@ -112,6 +114,11 @@ interface DocRow {
   fase?: FaseArquivistica;
   nivel_acesso?: NivelAcesso;
   grau_sigilo?: GrauSigilo | null;
+  numero?: string | null;
+  assunto?: string | null;
+  interessado?: string | null;
+  palavras_chave?: string[] | null;
+  dados_pessoais?: DadosPessoais;
   data_inicio_contagem?: Date | null;
   data_prevista_transferencia?: Date | null;
   data_prevista_destinacao?: Date | null;
@@ -217,6 +224,12 @@ function toView(r: DocRow, arquivosExtras: DocumentFileView[] = []): DocumentVie
     fase: r.fase ?? 'corrente',
     nivelAcesso: r.nivel_acesso ?? 'publico',
     grauSigilo: r.grau_sigilo ?? null,
+    nivelEfetivo: r.grau_sigilo ? 'sigiloso' : (r.nivel_acesso ?? 'publico'),
+    numero: r.numero ?? null,
+    assunto: r.assunto ?? null,
+    interessado: r.interessado ?? null,
+    palavrasChave: r.palavras_chave ?? [],
+    dadosPessoais: r.dados_pessoais ?? 'nao',
     dataInicioContagem: isoDate(r.data_inicio_contagem),
     dataPrevistaTransferencia: isoDate(r.data_prevista_transferencia),
     dataPrevistaDestinacao: isoDate(r.data_prevista_destinacao),
@@ -242,6 +255,7 @@ export class DocumentsService {
     private readonly conferencia: ConferenciaService,
     private readonly arquivistica: ArquivisticaService,
     private readonly ocr: OcrService,
+    private readonly privacidade: PrivacidadeService,
   ) {}
 
   /**
@@ -288,6 +302,7 @@ export class DocumentsService {
     if (row.nivel_acesso === 'restrito' && !this.podeVerRestrito(user)) {
       throw new NotFoundException('Documento nao encontrado');
     }
+    if (row.grau_sigilo && !podeVerSigiloso(user)) throw new NotFoundException('Documento nao encontrado');
     if (!dentroDaLotacao(user, row.orgao_codigo)) throw new NotFoundException('Documento nao encontrado');
     return row;
   }
@@ -420,7 +435,8 @@ export class DocumentsService {
         budget_unit_id, orgao_id, document_type_id, document_date, value, competencia,
         exercicio, banco, agencia, conta,
         original_name, file_key, file_size, file_hash, paginas, status, created_by,
-        metadados, digitalizado, responsavel_digitalizacao, data_digitalizacao, local_digitalizacao
+        metadados, digitalizado, responsavel_digitalizacao, data_digitalizacao, local_digitalizacao,
+        numero, assunto, interessado, palavras_chave, dados_pessoais
       ) VALUES (
         ${fields.module},
         ${(f.subtype as string) ?? null},
@@ -450,7 +466,12 @@ export class DocumentsService {
         ${(f.digitalizado as boolean | undefined) ?? false},
         ${(f.responsavelDigitalizacao as string | undefined) ?? null},
         ${(f.dataDigitalizacao as Date | undefined) ?? null},
-        ${(f.localDigitalizacao as string | undefined) ?? null}
+        ${(f.localDigitalizacao as string | undefined) ?? null},
+        ${(f.numero as string | undefined) || null},
+        ${(f.assunto as string | undefined) || null},
+        ${(f.interessado as string | undefined) || null},
+        ${(f.palavrasChave as string[] | undefined) ?? []}::varchar[],
+        ${(f.dadosPessoais as string | undefined) ?? 'nao'}
       )
       RETURNING id, module, subtype, doc_caixa, empenho, credor, historico, descricao,
                 budget_unit_id, NULL AS budget_unit_nome,
@@ -462,7 +483,8 @@ export class DocumentsService {
                 classificacao_id, NULL AS classificacao_codigo, NULL AS classificacao_descricao,
                 fase, nivel_acesso, grau_sigilo, data_inicio_contagem, data_prevista_transferencia, data_prevista_destinacao,
                 metadados, digitalizado, responsavel_digitalizacao, data_digitalizacao, local_digitalizacao, ocr_status,
-                possui_original_fisico, local_fisico_id, NULL AS local_fisico_codigo
+                possui_original_fisico, local_fisico_id, NULL AS local_fisico_codigo,
+                numero, assunto, interessado, palavras_chave, dados_pessoais
     `;
 
     await this.audit.logTenant({
@@ -614,6 +636,9 @@ export class DocumentsService {
     this.assertPermission(user, 'despesas', 'update');
     if (!this.conferencia.isEnabled()) {
       throw new BadRequestException('Conferencia por IA nao esta configurada neste ambiente.');
+    }
+    if (await this.privacidade.iaDesligada()) {
+      throw new BadRequestException('O órgão desligou o uso de inteligência artificial com os documentos (Configurações > Privacidade).');
     }
 
     const sql = this.db.tenant(ctx.schemaName);
@@ -1431,6 +1456,8 @@ export class DocumentsService {
       AND (${text}::text IS NULL OR d.credor ILIKE ${text} OR d.historico ILIKE ${text}
            OR d.descricao ILIKE ${text} OR d.empenho ILIKE ${text} OR d.doc_caixa ILIKE ${text}
            OR d.original_name ILIKE ${text} OR d.metadados::text ILIKE ${text}
+           OR d.numero ILIKE ${text} OR d.assunto ILIKE ${text} OR d.interessado ILIKE ${text}
+           OR array_to_string(d.palavras_chave, ' ') ILIKE ${text}
            OR (${dateQuery?.day ?? null}::int IS NOT NULL
                AND EXTRACT(DAY FROM d.document_date) = ${dateQuery?.day ?? null}
                AND EXTRACT(MONTH FROM d.document_date) = ${dateQuery?.month ?? null}
@@ -1438,6 +1465,17 @@ export class DocumentsService {
       AND (${this.podeVerRestrito(user)} OR d.nivel_acesso = 'publico')
       AND ${filtroLotacao(sql, user)}
       AND (${q.documentTypeId ?? null}::uuid IS NULL OR d.document_type_id = ${q.documentTypeId ?? null})
+      AND (${q.numero ?? null}::varchar IS NULL OR d.numero ILIKE ${q.numero ? `%${q.numero}%` : null})
+      AND (${q.assunto ?? null}::varchar IS NULL OR d.assunto ILIKE ${q.assunto ? `%${q.assunto}%` : null})
+      AND (${q.interessado ?? null}::varchar IS NULL OR d.interessado ILIKE ${q.interessado ? `%${q.interessado}%` : null})
+      AND (${q.palavraChave ?? null}::varchar IS NULL OR ${q.palavraChave?.toLowerCase() ?? null} = ANY(d.palavras_chave))
+      AND (${q.dadosPessoais ?? null}::varchar IS NULL
+           OR (${q.dadosPessoais ?? null} = 'sim' AND d.dados_pessoais <> 'nao')
+           OR (${q.dadosPessoais ?? null} = 'nao' AND d.dados_pessoais = 'nao')
+           OR (${q.dadosPessoais ?? null} = 'sensiveis' AND d.dados_pessoais = 'sensiveis'))
+      AND (${q.nivel ?? null}::varchar IS NULL
+           OR (${q.nivel ?? null} = 'sigiloso' AND d.grau_sigilo IS NOT NULL)
+           OR (d.grau_sigilo IS NULL AND d.nivel_acesso = ${q.nivel ?? null}))
       AND (${q.subtype ?? null}::varchar IS NULL OR d.subtype = ${q.subtype ?? null})
       AND (${q.exercicio ?? null}::int IS NULL OR d.exercicio = ${q.exercicio ?? null})
       AND (${q.competencia ?? null}::varchar IS NULL OR d.competencia = ${q.competencia ?? null})
@@ -1490,7 +1528,8 @@ export class DocumentsService {
              , d.classificacao_id, cl.codigo AS classificacao_codigo, cl.descricao AS classificacao_descricao,
              d.fase, d.nivel_acesso, d.grau_sigilo, d.data_inicio_contagem, d.data_prevista_transferencia, d.data_prevista_destinacao,
              d.metadados, d.digitalizado, d.responsavel_digitalizacao, d.data_digitalizacao, d.local_digitalizacao, d.ocr_status,
-             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo
+             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo,
+             d.numero, d.assunto, d.interessado, d.palavras_chave, d.dados_pessoais
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
@@ -1569,7 +1608,8 @@ export class DocumentsService {
              , d.classificacao_id, cl.codigo AS classificacao_codigo, cl.descricao AS classificacao_descricao,
              d.fase, d.nivel_acesso, d.grau_sigilo, d.data_inicio_contagem, d.data_prevista_transferencia, d.data_prevista_destinacao,
              d.metadados, d.digitalizado, d.responsavel_digitalizacao, d.data_digitalizacao, d.local_digitalizacao, d.ocr_status,
-             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo
+             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo,
+             d.numero, d.assunto, d.interessado, d.palavras_chave, d.dados_pessoais
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
@@ -1604,7 +1644,8 @@ export class DocumentsService {
              , d.classificacao_id, cl.codigo AS classificacao_codigo, cl.descricao AS classificacao_descricao,
              d.fase, d.nivel_acesso, d.grau_sigilo, d.data_inicio_contagem, d.data_prevista_transferencia, d.data_prevista_destinacao,
              d.metadados, d.digitalizado, d.responsavel_digitalizacao, d.data_digitalizacao, d.local_digitalizacao, d.ocr_status,
-             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo
+             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo,
+             d.numero, d.assunto, d.interessado, d.palavras_chave, d.dados_pessoais
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
@@ -1720,6 +1761,11 @@ export class DocumentsService {
         local_fisico_id = ${input.localFisicoId === undefined ? keep('local_fisico_id') : input.localFisicoId},
         -- Informar a caixa implica que existe original em papel.
         possui_original_fisico = ${input.possuiOriginalFisico ?? (input.localFisicoId ? true : keep('possui_original_fisico'))},
+        numero = ${input.numero === undefined ? keep('numero') : input.numero || null},
+        assunto = ${input.assunto === undefined ? keep('assunto') : input.assunto || null},
+        interessado = ${input.interessado === undefined ? keep('interessado') : input.interessado || null},
+        palavras_chave = ${input.palavrasChave === undefined ? keep('palavras_chave') : sql`${input.palavrasChave}::varchar[]`},
+        dados_pessoais = ${input.dadosPessoais ?? keep('dados_pessoais')},
         atualizado_em = now()
       WHERE id = ${id} AND deleted_at IS NULL
     `;
@@ -1982,7 +2028,8 @@ export class DocumentsService {
              , d.classificacao_id, cl.codigo AS classificacao_codigo, cl.descricao AS classificacao_descricao,
              d.fase, d.nivel_acesso, d.grau_sigilo, d.data_inicio_contagem, d.data_prevista_transferencia, d.data_prevista_destinacao,
              d.metadados, d.digitalizado, d.responsavel_digitalizacao, d.data_digitalizacao, d.local_digitalizacao, d.ocr_status,
-             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo
+             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo,
+             d.numero, d.assunto, d.interessado, d.palavras_chave, d.dados_pessoais
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id

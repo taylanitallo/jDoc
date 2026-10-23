@@ -19,6 +19,7 @@ import {
   type TenantAccessClaims,
 } from '@jdoc/shared';
 import { DatabaseService } from '../database/database.service';
+import { PrivacidadeService } from '../privacidade/privacidade.service';
 import { DocumentsService } from '../documents/documents.service';
 import { BuscaService } from '../ocr/busca.service';
 import { loadEnv } from '../config/env';
@@ -133,6 +134,7 @@ export class AssistenteService {
     private readonly db: DatabaseService,
     private readonly documents: DocumentsService,
     private readonly busca: BuscaService,
+    private readonly privacidade: PrivacidadeService,
   ) {}
 
   /** Se a feature esta configurada (API key presente) neste ambiente. */
@@ -154,6 +156,9 @@ export class AssistenteService {
     const client = await this.ensureClient();
     if (!client) {
       throw new ForbiddenException('Assistente de busca por IA nao esta configurado neste ambiente.');
+    }
+    if (await this.privacidade.iaDesligada()) {
+      throw new ForbiddenException('O órgão desligou o uso de inteligência artificial com os documentos.');
     }
     const ctx = requireTenantContext();
     const sql = this.db.tenant(ctx.schemaName);
