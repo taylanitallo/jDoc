@@ -11,6 +11,7 @@ import { Button, Card, CardHeader, Field, Input, PageHeader } from '@/components
 import { Skeleton } from '@/components/skeleton';
 import { useToast } from '@/components/toast';
 import { TrocarSenha } from '@/components/conta/trocar-senha';
+import { VerificacaoDuasEtapas } from '@/components/conta/duas-etapas';
 import { ThemePicker } from '@/components/theme/theme-picker';
 
 export default function MinhaContaPage() {
@@ -73,6 +74,26 @@ export default function MinhaContaPage() {
             await qc.invalidateQueries({ queryKey: chave });
             router.replace(`/${slug}/modulos`);
           }}
+        />
+      )}
+
+      {/* "Entrar como": a equipe JEOS nao mexe no autenticador de ninguem. */}
+      {!usuario.impersonacao && !usuario.mustChangePassword && (
+        <VerificacaoDuasEtapas
+          rotaBase={`/t/${slug}/auth/mfa`}
+          ativo={usuario.mfaEnabled}
+          destaque={usuario.mfaPendente}
+          descricaoPendente={
+            usuario.mfaPendente
+              ? 'O órgão exige verificação em 2 etapas para administradores. Escaneie o QR code no Google Authenticator, Microsoft Authenticator ou similar e confirme o código para liberar o sistema.'
+              : 'Recomendada. Além da senha, cada acesso pede um código do aplicativo autenticador (Google Authenticator, Microsoft Authenticator ou similar).'
+          }
+          avisoDesligar={
+            usuario.mfaPendente || usuario.role === 'admin'
+              ? 'Se o órgão exige 2 etapas para administradores, o sistema fica bloqueado até você configurar de novo.'
+              : 'Sua conta volta a pedir só a senha.'
+          }
+          onMudou={() => qc.invalidateQueries({ queryKey: chave })}
         />
       )}
 

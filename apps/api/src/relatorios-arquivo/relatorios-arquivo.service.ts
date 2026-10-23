@@ -19,6 +19,7 @@ import { AuditService } from '../audit/audit.module';
 import { requireTenantContext } from '../tenancy/tenant-context';
 import { sistemaAtivo } from '../common/sistema.guard';
 import { gerarCsv, gerarPdfTabela, type ColunaExport } from '../common/exportacao';
+import { filtroLotacao } from '../common/acesso-documento';
 
 const MODULO_ROTULO: Record<string, string> = {
   receitas: 'Receitas',
@@ -119,6 +120,7 @@ export class RelatoriosArquivoService {
     const podeVerRestrito = user.role === 'admin' || user.permissions.includes('acervo_restrito:read');
     const partes = [sql`d.deleted_at IS NULL`, sql`d.module = ANY(${mods.length ? mods : ['__nenhum__']})`];
     if (!podeVerRestrito) partes.push(sql`COALESCE(d.nivel_acesso, 'publico') = 'publico'`);
+    partes.push(filtroLotacao(sql, user));
     if (!f.incluirEliminados) partes.push(sql`d.fase <> 'eliminado'`);
     if (f.fase) partes.push(sql`d.fase = ${f.fase}`);
     if (f.nivelAcesso) partes.push(sql`COALESCE(d.nivel_acesso, 'publico') = ${f.nivelAcesso}`);
@@ -325,7 +327,8 @@ export class RelatoriosArquivoService {
       SELECT cm.path, l.tipo, l.descricao, l.ativo,
              (SELECT count(*) FROM documents d
                WHERE d.local_fisico_id = l.id AND d.deleted_at IS NULL AND d.fase <> 'eliminado'
-                 AND (${podeVerRestrito} OR COALESCE(d.nivel_acesso, 'publico') = 'publico'))::int AS documentos
+                 AND (${podeVerRestrito} OR COALESCE(d.nivel_acesso, 'publico') = 'publico')
+                 AND ${filtroLotacao(sql, user)})::int AS documentos
       FROM caminho cm JOIN locais_fisicos l ON l.id = cm.id
       ORDER BY cm.path
     `;

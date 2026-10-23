@@ -31,8 +31,9 @@ export class BuscaController {
   buscar(
     @CurrentUser() user: TenantAccessClaims,
     @Query(new ZodValidationPipe(buscaConteudoQuerySchema)) q: BuscaConteudoQuery,
+    @Req() req: Request,
   ): Promise<BuscaConteudoResult> {
-    return this.service.buscar(user, q);
+    return this.service.buscar(user, q, req.ip ?? '');
   }
 
   @Permissions()

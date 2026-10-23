@@ -68,6 +68,7 @@ export const CATALOGO_MODULOS: ModuloCatalogo[] = [
     descricao: 'Recursos comuns aos dois módulos.',
     menus: [
       { id: 'busca', label: 'Busca no conteúdo', descricao: 'Procura dentro do texto dos PDFs' },
+      { id: 'auditoria', label: 'Auditoria', descricao: 'Trilha de quem fez o quê, quando e de onde' },
       { id: 'suporte', label: 'Suporte', descricao: 'Chamados com a equipe JEOS' },
       { id: 'novidades', label: 'Novidades', descricao: 'Notas de versão do sistema' },
     ],
@@ -108,6 +109,7 @@ export const PERMISSAO_LABEL: Record<ModuleName, { label: string; acoes?: readon
   tipos_documento: { label: 'Tipos de documento' },
   usuarios: { label: 'Usuários' },
   layout: { label: 'Aparência do órgão', acoes: ['read', 'update'] },
+  auditoria: { label: 'Auditoria', acoes: ['read', 'export'], dica: 'Ver e exportar a trilha de auditoria do órgão' },
 };
 
 export const ACAO_LABEL: Record<ModuleAction, string> = {
@@ -154,7 +156,7 @@ export interface PerfilPadrao {
   permissoes: string[];
 }
 
-const SO_ADMIN = new Set<ModuleName>(['usuarios', 'layout', 'orgaos']);
+const SO_ADMIN = new Set<ModuleName>(['usuarios', 'layout', 'orgaos', 'auditoria']);
 
 /** Perfis de fabrica (os modelos globais do superadmin sobrescrevem estes). */
 export function perfisDeFabrica(): PerfilPadrao[] {
