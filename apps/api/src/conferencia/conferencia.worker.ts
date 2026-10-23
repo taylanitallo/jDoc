@@ -6,6 +6,7 @@ import Anthropic, { toFile } from '@anthropic-ai/sdk';
 // na compilacao, nunca vira require()); a classe real e importada via import()
 // dinamico dentro de onModuleInit, unico lugar onde e instanciada.
 import type { GoogleGenAI } from '@google/genai' with { 'resolution-mode': 'import' };
+import { PDFDocument } from 'pdf-lib';
 import { z } from 'zod';
 import { SCHEMA_NAME_REGEX, type ConferenciaResultado, type ConferenciaStatus } from '@jdoc/shared';
 import { DatabaseService } from '../database/database.service';
@@ -112,6 +113,7 @@ function buildPrompt(etiqueta: Etiqueta): string {
     `Empenho esperado: ${formatEsperado(etiqueta.empenho)}`,
     `Documento de caixa esperado: ${formatEsperado(etiqueta.docCaixa)}`,
     '',
+    `Foram enviadas apenas as primeiras paginas do PDF (ate ${MAX_PAGINAS_IA}); procure os dados nelas.`,
     'Liste em "divergencias" apenas os campos onde o valor do PDF diverge claramente do esperado (nao liste campos que baterem ou que o PDF simplesmente nao mostra).',
     'Use status "divergente" se houver qualquer divergencia de valor ou credor; "conforme" caso contrario.',
   ].join('\n');
@@ -119,6 +121,25 @@ function buildPrompt(etiqueta: Etiqueta): string {
 
 /** Sobrecarga/limite do provedor (Gemini 429/503, Claude 529): passa sozinho, vale tentar de novo. */
 const STATUS_TRANSITORIO = new Set([429, 500, 502, 503, 504, 529]);
+/** Paginas enviadas a IA (do inicio do PDF). */
+export const MAX_PAGINAS_IA = 8;
+/** Acima disso o PDF vai pela Files API (limite do pedido inline e 32MB, com folga para o base64). */
+const INLINE_MAX_BYTES = 20 * 1024 * 1024;
+
+/** Copia so as `max` primeiras paginas. PDF protegido/corrompido volta inteiro (a IA tenta mesmo assim). */
+export async function primeirasPaginas(pdf: Buffer, max: number): Promise<Buffer> {
+  try {
+    const origem = await PDFDocument.load(pdf, { ignoreEncryption: true });
+    if (origem.getPageCount() <= max) return pdf;
+    const destino = await PDFDocument.create();
+    const paginas = await destino.copyPages(origem, Array.from({ length: max }, (_, i) => i));
+    for (const pg of paginas) destino.addPage(pg);
+    return Buffer.from(await destino.save());
+  } catch {
+    return pdf;
+  }
+}
+
 /** Tentativas dentro do mesmo job e espera entre elas. */
 const ESPERAS_MS = [2_000, 6_000];
 
@@ -229,7 +250,9 @@ export class ConferenciaWorker implements OnModuleInit, OnModuleDestroy {
     const sql = this.db.tenant(schemaName);
 
     try {
-      const pdf = await this.storage.download(slug, fileKey);
+      // So as primeiras paginas: empenho/nota/ordem de pagamento (valor, credor, doc. caixa)
+      // ficam no inicio. Mandar o processo inteiro (dezenas de paginas) so deixava lento e caro.
+      const pdf = await primeirasPaginas(await this.storage.download(slug, fileKey), MAX_PAGINAS_IA);
       const resultado = await this.conferir(pdf, { docCaixa, empenho, credor, value });
       // targetTable so vem de 'documents' | 'document_files' (uniao de tipos
       // fixada no job data, nunca de input de usuario) — sql() e o helper de
@@ -277,46 +300,52 @@ export class ConferenciaWorker implements OnModuleInit, OnModuleDestroy {
   ): Promise<ConferenciaResultado & { status: ConferenciaStatus }> {
     if (!this.anthropic) throw new Error('Conferencia por IA (Claude) desativada (sem ANTHROPIC_API_KEY)');
 
-    // Upload via Files API (nao embutido em base64 no corpo do request) —
-    // documentos escaneados/grandes passam facil do limite de 32MB inline.
-    const uploaded = await this.anthropic.beta.files.upload({
-      file: await toFile(pdf, 'documento.pdf', { type: 'application/pdf' }),
-      betas: [FILES_API_BETA],
-    });
+    const anthropic = this.anthropic;
+    const pedido = (fonte: Anthropic.Beta.BetaBase64PDFSource | Anthropic.Beta.BetaFileDocumentSource, betas: string[]) =>
+      comRetry(() =>
+        anthropic.beta.messages.create({
+          // Haiku 4.5: decisao do usuario por custo. Sem raciocinio estendido — extrair valor,
+          // credor e documento de caixa e comparar nao precisa dele, e ele deixava a resposta lenta.
+          model: 'claude-haiku-4-5',
+          max_tokens: 1024,
+          ...(betas.length ? { betas } : {}),
+          output_config: { format: { type: 'json_schema', schema: CONFERENCIA_JSON_SCHEMA } },
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'document', source: fonte },
+                { type: 'text', text: buildPrompt(etiqueta) },
+              ],
+            },
+          ],
+        }),
+      );
 
-    try {
-      const anthropic = this.anthropic;
-      const response = await comRetry(() => anthropic.beta.messages.create({
-        // Haiku 4.5 (nao o default Opus) - decisao explicita do usuario por
-        // custo: ~5x mais barato, e essa tarefa (extrair valor/credor/doc
-        // caixa de 1 PDF e comparar) e simples o bastante pra nao precisar
-        // do modelo mais caro.
-        model: 'claude-haiku-4-5',
-        max_tokens: 4096,
-        thinking: { type: 'enabled', budget_tokens: 2048 },
+    // PDF pequeno (o normal, ja recortado nas primeiras paginas) vai direto no pedido:
+    // economiza o upload e a exclusao na Files API. Grande demais para o limite inline, usa a Files API.
+    let response: Anthropic.Beta.BetaMessage;
+    if (pdf.length <= INLINE_MAX_BYTES) {
+      response = await pedido({ type: 'base64', media_type: 'application/pdf', data: pdf.toString('base64') }, []);
+    } else {
+      const uploaded = await anthropic.beta.files.upload({
+        file: await toFile(pdf, 'documento.pdf', { type: 'application/pdf' }),
         betas: [FILES_API_BETA],
-        output_config: { format: { type: 'json_schema', schema: CONFERENCIA_JSON_SCHEMA } },
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'document', source: { type: 'file', file_id: uploaded.id } },
-              { type: 'text', text: buildPrompt(etiqueta) },
-            ],
-          },
-        ],
-      }));
-
-      if (response.stop_reason === 'refusal') {
-        throw new Error(`IA recusou a analise (stop_reason=refusal)`);
+      });
+      try {
+        response = await pedido({ type: 'file', file_id: uploaded.id }, [FILES_API_BETA]);
+      } finally {
+        // Best-effort: nao deve derrubar a analise se a limpeza falhar.
+        await anthropic.beta.files.delete(uploaded.id, { betas: [FILES_API_BETA] }).catch(() => {});
       }
-      const textBlock = response.content.find((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text');
-      if (!textBlock) throw new Error('Resposta da IA sem bloco de texto');
-      return conferenciaSchema.parse(JSON.parse(textBlock.text));
-    } finally {
-      // Best-effort: nao deve derrubar a analise se a limpeza falhar.
-      await this.anthropic.beta.files.delete(uploaded.id, { betas: [FILES_API_BETA] }).catch(() => {});
     }
+
+    if (response.stop_reason === 'refusal') {
+      throw new Error(`IA recusou a analise (stop_reason=refusal)`);
+    }
+    const textBlock = response.content.find((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text');
+    if (!textBlock) throw new Error('Resposta da IA sem bloco de texto');
+    return conferenciaSchema.parse(JSON.parse(textBlock.text));
   }
 
   private async conferirComGemini(
