@@ -3,8 +3,9 @@ import { tenantRoleSchema, type TenantRole } from './constants.js';
 import type { UiTheme } from './tema.js';
 
 /**
- * Politica de senha: minimo 6 caracteres (pedido do cliente).
- * Checagem contra senhas vazadas comuns fica no backend (lista/serviço).
+ * Politica de senha dos usuarios do orgao: minimo 6 caracteres, sem outra regra
+ * (so numeros, letras, simbolos: tudo vale). Pedido do cliente; nao acrescentar
+ * exigencias de composicao. A senha da equipe da plataforma e mais forte (10).
  */
 export const passwordSchema = z
   .string()

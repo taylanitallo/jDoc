@@ -470,7 +470,7 @@ function UsuarioModal({
             type="button"
             className={btnPrimary}
             onClick={() => save.mutate()}
-            disabled={save.isPending || !nome || (!usuario && (!email || senha.length < 8))}
+            disabled={save.isPending || !nome || (!usuario && (!email || senha.length < 6))}
           >
             {save.isPending ? 'Salvando…' : 'Salvar'}
           </button>
@@ -533,7 +533,7 @@ function ResetSenhaModal({
               type="button"
               className={btnPrimary}
               onClick={() => reset.mutate()}
-              disabled={reset.isPending || novaSenha.length < 8}
+              disabled={reset.isPending || novaSenha.length < 6}
             >
               {reset.isPending ? 'Salvando…' : 'Resetar'}
             </button>
