@@ -70,6 +70,8 @@ export const CATALOGO_MODULOS: ModuloCatalogo[] = [
     menus: [
       { id: 'busca', label: 'Busca no conteúdo', descricao: 'Procura dentro do texto dos PDFs' },
       { id: 'auditoria', label: 'Auditoria', descricao: 'Trilha de quem fez o quê, quando e de onde' },
+      { id: 'continuidade', label: 'Continuidade', descricao: 'Backups, restauração, disponibilidade e exportação' },
+      { id: 'ajuda', label: 'Ajuda', descricao: 'Manual do sistema e treinamentos' },
       { id: 'suporte', label: 'Suporte', descricao: 'Chamados com a equipe JEOS' },
       { id: 'novidades', label: 'Novidades', descricao: 'Notas de versão do sistema' },
     ],
@@ -114,6 +116,7 @@ export const PERMISSAO_LABEL: Record<ModuleName, { label: string; acoes?: readon
   usuarios: { label: 'Usuários' },
   layout: { label: 'Aparência do órgão', acoes: ['read', 'update'] },
   auditoria: { label: 'Auditoria', acoes: ['read', 'export'], dica: 'Ver e exportar a trilha de auditoria do órgão' },
+  treinamentos: { label: 'Treinamentos', dica: 'Registrar capacitações e listas de presença' },
 };
 
 export const ACAO_LABEL: Record<ModuleAction, string> = {

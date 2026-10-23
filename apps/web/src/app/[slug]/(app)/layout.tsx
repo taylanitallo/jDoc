@@ -31,7 +31,9 @@ import {
   TrendingDown,
   TrendingUp,
   Warehouse,
+  BookOpen,
   BookOpenText,
+  Calculator,
   FolderKanban,
 } from 'lucide-react';
 import type { Sistema, UsuarioAtual } from '@jdoc/shared';
@@ -76,6 +78,8 @@ const TITULOS: Record<string, { title: string; description: string }> = {
   busca: { title: 'Busca no conteúdo', description: 'Procure dentro do texto dos PDFs' },
   auditoria: { title: 'Auditoria', description: 'Quem fez o quê, quando e de onde' },
   continuidade: { title: 'Continuidade', description: 'Backups, restauração, disponibilidade e exportação' },
+  medicao: { title: 'Medição', description: 'Boletim mensal do contrato' },
+  ajuda: { title: 'Ajuda', description: 'Manual e treinamentos' },
   digitalizacao: { title: 'Digitalização', description: 'Lotes, custódia, qualidade e produção' },
   configuracoes: { title: 'Configurações', description: 'Cadastros, usuários e personalização' },
   conta: { title: 'Minha conta', description: 'Seus dados, senha e aparência' },
@@ -183,6 +187,8 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
               { href: `${base}/continuidade`, label: 'Continuidade', icon: HeartPulse },
             ]
           : []),
+        ...(usuario?.podeFiscalizar ? [{ href: `${base}/medicao`, label: 'Medição', icon: Calculator }] : []),
+        { href: `${base}/ajuda`, label: 'Ajuda', icon: BookOpen },
         { href: `${base}/suporte`, label: 'Suporte', icon: LifeBuoy },
         { href: `${base}/novidades`, label: 'Novidades', icon: Megaphone, badge: naoLidas },
         { href: `${base}/configuracoes`, label: 'Configurações', icon: Settings },

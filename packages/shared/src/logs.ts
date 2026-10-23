@@ -339,6 +339,12 @@ const ACOES: Record<string, Frase> = {
   teste_restauracao_executado: (l, q, o) => `${q} testou a restauração do backup de ${o}: ${meta(l, 'status') === 'sucesso' ? 'sucesso' : 'falha'}`,
   migracao_aceita: (_, q, o) => `${q} registrou o aceite da migração dos dados de ${o}`,
   lgpd_atualizada: (_, q) => `${q} alterou as informações de privacidade (LGPD) da plataforma`,
+  treinamento_registrado: (l, q) => `${q} registrou o treinamento ${meta(l, 'titulo') ?? ''} (${meta(l, 'participantes') ?? 0} participante(s))`,
+  treinamento_alterado: (_, q) => `${q} alterou um treinamento`,
+  treinamento_excluido: (_, q) => `${q} excluiu um treinamento`,
+  boletim_medicao_emitido: (l, q) => `${q} emitiu o boletim de medição de ${l.entityId ?? ''}`.trim(),
+  contrato_itens_atualizados: (_, q, o) => `${q} alterou os itens do contrato de ${o}`,
+  medicao_fechada: (l, q, o) => `${q} fechou a medição de ${l.entityId ?? ''} de ${o}`,
 };
 
 /** Frase do log, em portugues, sem chaves tecnicas. */

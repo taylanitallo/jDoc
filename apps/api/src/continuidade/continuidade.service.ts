@@ -56,8 +56,8 @@ export class ContinuidadeService implements OnModuleInit {
   /** A API esta no ar neste minuto: conta uma vez, mesmo com varias instancias. */
   async marcarMinuto(): Promise<void> {
     await this.db.catalog()`
-      INSERT INTO platform.disponibilidade_dias AS d (dia, minutos, ultimo_minuto)
-      VALUES ((now() AT TIME ZONE ${FUSO_ORGAO})::date, 1, date_trunc('minute', now()))
+      INSERT INTO platform.disponibilidade_dias AS d (dia, minutos, ultimo_minuto, primeiro_minuto)
+      VALUES ((now() AT TIME ZONE ${FUSO_ORGAO})::date, 1, date_trunc('minute', now()), date_trunc('minute', now()))
       ON CONFLICT (dia) DO UPDATE SET minutos = least(d.minutos + 1, 1440), ultimo_minuto = EXCLUDED.ultimo_minuto
       WHERE d.ultimo_minuto < EXCLUDED.ultimo_minuto
     `;
@@ -446,10 +446,15 @@ export class ContinuidadeService implements OnModuleInit {
             interval '1 day') d
       )
       SELECT to_char(p.dia, 'YYYY-MM-DD') AS dia,
-             round(least(100, coalesce(d.minutos, 0) * 100.0 /
-               CASE WHEN p.dia = (SELECT agora::date FROM hoje)
-                    THEN greatest(1, extract(epoch FROM (SELECT agora FROM hoje) - p.dia::timestamp) / 60)
-                    ELSE 1440 END), 2)::float AS percentual
+             round(least(100, coalesce(d.minutos, 0) * 100.0 / greatest(1,
+               -- Janela do dia: da meia-noite (ou do primeiro minuto medido, no dia em que a medicao comecou)
+               -- ate o fim do dia (ou agora, no dia de hoje).
+               extract(epoch FROM
+                 least(p.dia::timestamp + interval '1 day', (SELECT agora FROM hoje))
+                 - CASE WHEN p.dia = (SELECT min(dia) FROM platform.disponibilidade_dias) AND d.primeiro_minuto IS NOT NULL
+                        THEN greatest(p.dia::timestamp, d.primeiro_minuto AT TIME ZONE ${FUSO_ORGAO})
+                        ELSE p.dia::timestamp END
+               ) / 60)), 2)::float AS percentual
       FROM periodo p LEFT JOIN platform.disponibilidade_dias d ON d.dia = p.dia
       WHERE p.dia <= (SELECT agora::date FROM hoje)
         -- Antes do primeiro dia medido nao ha dado: nao aparece como queda.
