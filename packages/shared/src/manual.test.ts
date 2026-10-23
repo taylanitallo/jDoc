@@ -26,3 +26,11 @@ describe('calcularLinha (medicao)', () => {
     expect(calcularLinha(item, 0, 0, false)).toMatchObject({ valorMensalGed: 0, valorTotal: 0 });
   });
 });
+
+import { passwordSchema } from './auth.js';
+describe('senha do orgao', () => {
+  it('minimo 6, sem regra de composicao', () => {
+    for (const ok of ['123456', 'abcdef', '      ', 'a1!@#$', 'ççççççç']) expect(passwordSchema.safeParse(ok).success).toBe(true);
+    expect(passwordSchema.safeParse('12345').success).toBe(false);
+  });
+});
