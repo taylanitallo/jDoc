@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { erroLegivel, statusHttp, transitorio } from './conferencia.worker';
+import { PDFDocument } from 'pdf-lib';
+import { MAX_PAGINAS_IA, erroLegivel, primeirasPaginas, statusHttp, transitorio } from './conferencia.worker';
 
 // Mensagem real que o Gemini devolveu em producao (IA sobrecarregada).
 const GEMINI_503 =
@@ -25,5 +26,21 @@ describe('erros da conferencia por IA', () => {
     expect(erroLegivel(auth)).toBe('A chave de acesso da IA foi recusada. Avise o suporte.');
     expect(transitorio(new Error('Resposta do Gemini sem texto'))).toBe(false);
     expect(erroLegivel(new Error('Resposta do Gemini sem texto'))).toBe('Resposta do Gemini sem texto');
+  });
+});
+
+describe('recorte do PDF enviado a IA', () => {
+  it('manda so as primeiras paginas e nao mexe em PDF curto', async () => {
+    const gerar = async (n: number) => {
+      const d = await PDFDocument.create();
+      for (let i = 0; i < n; i++) d.addPage([200, 200]);
+      return Buffer.from(await d.save());
+    };
+    const longo = await primeirasPaginas(await gerar(22), MAX_PAGINAS_IA);
+    expect((await PDFDocument.load(longo)).getPageCount()).toBe(MAX_PAGINAS_IA);
+    const curto = await gerar(3);
+    expect(await primeirasPaginas(curto, MAX_PAGINAS_IA)).toBe(curto);
+    const lixo = Buffer.from('nao e pdf');
+    expect(await primeirasPaginas(lixo, MAX_PAGINAS_IA)).toBe(lixo);
   });
 });
