@@ -6,18 +6,21 @@ import { tenantSlugSchema } from '@jdoc/shared';
 import { loadEnv } from '../config/env';
 
 /**
- * Destino segregado da copia de seguranca: um projeto Supabase separado do
- * principal (COPIA_SUPABASE_*) ou, sem ele, uma pasta montada em volume
- * (COPIA_DIR). Recebe os PDFs e os dumps do banco de cada orgao, num
+ * Destino segregado da copia de seguranca: buckets proprios num projeto
+ * Supabase (COPIA_SUPABASE_*; pode ser o mesmo projeto do principal ou outro)
+ * ou, sem ele, uma pasta montada em volume (COPIA_DIR). Recebe os PDFs e os dumps do banco de cada orgao, num
  * bucket proprio `copia-jdoc-<slug>`.
  */
 @Injectable()
 export class DestinoSegregadoService {
   private readonly supabase: SupabaseClient | null;
   private readonly dir: string | null;
+  /** Mesmo projeto do armazenamento principal, em buckets proprios `copia-jdoc-*`. */
+  private readonly mesmoProjeto: boolean;
 
   constructor() {
     const env = loadEnv();
+    this.mesmoProjeto = !!env.COPIA_SUPABASE_URL && env.COPIA_SUPABASE_URL === env.SUPABASE_URL;
     this.supabase =
       env.COPIA_SUPABASE_URL && env.COPIA_SUPABASE_SERVICE_ROLE_KEY ? createClient(env.COPIA_SUPABASE_URL, env.COPIA_SUPABASE_SERVICE_ROLE_KEY) : null;
     this.dir = !this.supabase && env.COPIA_DIR ? resolve(env.COPIA_DIR) : null;
@@ -28,7 +31,7 @@ export class DestinoSegregadoService {
   }
 
   descricao(): string | null {
-    if (this.supabase) return 'Projeto de armazenamento separado (Supabase)';
+    if (this.supabase) return this.mesmoProjeto ? 'Buckets separados no armazenamento (Supabase)' : 'Projeto de armazenamento separado (Supabase)';
     if (this.dir) return 'Volume separado do servidor';
     return null;
   }
