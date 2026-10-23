@@ -17,6 +17,7 @@ import { AuditService } from '../audit/audit.module';
 import { requireTenantContext } from '../tenancy/tenant-context';
 import { OcrService } from './ocr.service';
 import { sistemaAtivo } from '../common/sistema.guard';
+import { filtroLotacao, podeVerRestrito } from '../common/acesso-documento';
 
 /** Teto de arquivos enfileirados por chamada de reindexacao (evita encher a fila de uma vez). */
 const LOTE_REINDEXACAO = 2000;
@@ -61,10 +62,10 @@ export class BuscaService {
   }
 
   private podeVerRestrito(user: TenantAccessClaims): boolean {
-    return user.role === 'admin' || user.permissions.includes('acervo_restrito:read');
+    return podeVerRestrito(user);
   }
 
-  async buscar(user: TenantAccessClaims, q: BuscaConteudoQuery): Promise<BuscaConteudoResult> {
+  async buscar(user: TenantAccessClaims, q: BuscaConteudoQuery, ip = ''): Promise<BuscaConteudoResult> {
     const ctx = requireTenantContext();
     const sql = this.db.tenant(ctx.schemaName);
     const mods = this.modulosLegiveis(user).filter(
@@ -79,7 +80,15 @@ export class BuscaService {
       d.deleted_at IS NULL
       AND d.module = ANY(${mods})
       AND (${this.podeVerRestrito(user)} OR d.nivel_acesso = 'publico')
+      AND ${filtroLotacao(sql, user)}
       AND (${q.exercicio ?? null}::int IS NULL OR d.exercicio = ${q.exercicio ?? null})
+      AND (${q.orgaoId ?? null}::uuid IS NULL OR d.orgao_id = ${q.orgaoId ?? null})
+      AND (${q.documentTypeId ?? null}::uuid IS NULL OR d.document_type_id = ${q.documentTypeId ?? null})
+      AND (${q.de ?? null}::date IS NULL OR d.document_date >= ${q.de ?? null})
+      AND (${q.ate ?? null}::date IS NULL OR d.document_date <= ${q.ate ?? null})
+      AND (${q.assunto ?? null}::varchar IS NULL OR d.assunto ILIKE ${q.assunto ? `%${q.assunto}%` : null})
+      AND (${q.interessado ?? null}::varchar IS NULL OR d.interessado ILIKE ${q.interessado ? `%${q.interessado}%` : null})
+      AND (${q.palavraChave ?? null}::varchar IS NULL OR ${q.palavraChave?.toLowerCase() ?? null} = ANY(d.palavras_chave))
     `;
     // Melhor pagina de cada documento (DISTINCT ON) e depois ranking entre documentos.
     const hits = sql`
@@ -116,7 +125,18 @@ export class BuscaService {
       pagina: r.pagina,
       trecho: montarTrecho(r.texto, termos),
     }));
-    return { items, total: Number(total[0]?.n ?? 0), page: q.page, pageSize: q.pageSize };
+    const totalN = Number(total[0]?.n ?? 0);
+    // Pesquisas ficam na trilha (so a primeira pagina: paginar nao e nova pesquisa).
+    if (q.page === 1) {
+      await this.audit.logTenant({
+        actorId: user.sub,
+        action: 'busca_realizada',
+        resourceType: 'busca',
+        ip,
+        metadata: { termo: q.q.slice(0, 200), resultados: totalN, modulo: q.module ?? null, sistema: q.sistema ?? null },
+      });
+    }
+    return { items, total: totalN, page: q.page, pageSize: q.pageSize };
   }
 
   async resumo(): Promise<IndexacaoResumo> {

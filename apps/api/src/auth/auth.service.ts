@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { authenticator } from 'otplib';
 import {
   HEX_COR,
   JWT_AUDIENCE,
@@ -16,6 +17,7 @@ import {
 import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.module';
 import { loadEnv } from '../config/env';
+import { cifrar, decifrar, estaCifrado } from '../common/crypto';
 import { requireTenantContext } from '../tenancy/tenant-context';
 import { PasswordService } from './password.service';
 import { BruteForceService } from './brute-force.service';
@@ -28,6 +30,8 @@ export interface LoginResult {
   accessToken: string;
   refreshToken: string;
   mustChangePassword: boolean;
+  /** O orgao exige 2 etapas deste usuario e ele ainda nao configurou. */
+  mfaPendente: boolean;
 }
 
 interface UserRow {
@@ -38,6 +42,19 @@ interface UserRow {
   role: string;
   ativo: boolean;
   must_change_password: boolean;
+  totp_enabled: boolean;
+  totp_secret: string | null;
+  orgaos_codigos: string[] | null;
+}
+
+const USER_COLS = 'id, email, nome, senha_hash, role, ativo, must_change_password, totp_enabled, totp_secret, orgaos_codigos';
+
+/** Configuracao do orgao: administradores precisam de verificacao em 2 etapas. */
+export const CHAVE_MFA_OBRIGATORIO = 'mfaObrigatorioAdmin';
+
+/** Segredo TOTP guardado cifrado (os antigos, em claro, continuam legiveis). */
+function segredo(v: string): string {
+  return estaCifrado(v) ? decifrar(v) : v;
 }
 
 @Injectable()
@@ -58,8 +75,7 @@ export class AuthService {
 
     const sql = this.db.tenant(ctx.schemaName);
     const rows = await sql<UserRow[]>`
-      SELECT id, email, nome, senha_hash, role, ativo, must_change_password
-      FROM users WHERE email = ${input.email} LIMIT 1
+      SELECT ${sql.unsafe(USER_COLS)} FROM users WHERE email = ${input.email} LIMIT 1
     `;
     const user = rows[0];
 
@@ -79,21 +95,27 @@ export class AuthService {
       throw new UnauthorizedException(LOGIN_FAIL_MSG);
     }
 
+    // Segunda etapa: so depois de a senha conferir (nao revela quem tem 2FA).
+    if (user.totp_enabled && user.totp_secret) {
+      if (!input.totp) {
+        throw new UnauthorizedException({ message: 'Informe o código do aplicativo autenticador.', code: 'mfa_required' });
+      }
+      if (!authenticator.verify({ token: input.totp, secret: segredo(user.totp_secret) })) {
+        await this.bruteForce.registerFailure(accountKey, ip);
+        await this.audit.logTenant({
+          actorId: user.id,
+          action: 'login_failed',
+          ip,
+          userAgent,
+          metadata: { email: input.email, motivo: 'codigo_2fa' },
+        });
+        throw new UnauthorizedException({ message: 'Código inválido.', code: 'mfa_invalido' });
+      }
+    }
+
     await this.bruteForce.registerSuccess(accountKey);
 
-    const permissions = await this.loadPermissions(ctx.schemaName, user.id);
-    const role = (TENANT_ROLES as readonly string[]).includes(user.role)
-      ? (user.role as TenantRole)
-      : 'consulta';
-
-    const claims: TenantAccessClaims = {
-      sub: user.id,
-      tenantId: ctx.tenantId,
-      tenantSlug: ctx.slug,
-      role,
-      permissions,
-      realm: 'tenant',
-    };
+    const claims = await this.montarClaims(ctx.schemaName, ctx.tenantId, ctx.slug, user);
 
     const [accessToken, refreshToken] = await Promise.all([
       this.signAccess(claims),
@@ -101,9 +123,46 @@ export class AuthService {
       sql`UPDATE users SET ultimo_acesso = now() WHERE id = ${user.id}`,
     ]);
 
-    await this.audit.logTenant({ actorId: user.id, action: 'login', ip, userAgent });
+    await this.audit.logTenant({
+      actorId: user.id,
+      action: 'login',
+      ip,
+      userAgent,
+      metadata: user.totp_enabled ? { duasEtapas: true } : undefined,
+    });
 
-    return { accessToken, refreshToken, mustChangePassword: user.must_change_password };
+    return {
+      accessToken,
+      refreshToken,
+      mustChangePassword: user.must_change_password,
+      mfaPendente: await this.mfaPendente(sql, user),
+    };
+  }
+
+  /** Claims do token: papel, permissoes e a lotacao (so quando restringe). */
+  private async montarClaims(
+    schemaName: string,
+    tenantId: string,
+    slug: string,
+    user: Pick<UserRow, 'id' | 'role' | 'orgaos_codigos'>,
+  ): Promise<TenantAccessClaims> {
+    const permissions = await this.loadPermissions(schemaName, user.id);
+    const role = (TENANT_ROLES as readonly string[]).includes(user.role) ? (user.role as TenantRole) : 'consulta';
+    const lot = role !== 'admin' && user.orgaos_codigos?.length ? user.orgaos_codigos : undefined;
+    return { sub: user.id, tenantId, tenantSlug: slug, role, permissions, realm: 'tenant', ...(lot ? { lot } : {}) };
+  }
+
+  private async mfaObrigatorio(sql: ReturnType<DatabaseService['tenant']>): Promise<boolean> {
+    const [s] = await sql<Array<{ valor: unknown }>>`SELECT valor FROM tenant_settings WHERE chave = ${CHAVE_MFA_OBRIGATORIO}`;
+    // jsonb gravado como texto JSON ("true") pelos saves antigos ou como booleano.
+    return s?.valor === true || s?.valor === 'true';
+  }
+
+  private async mfaPendente(
+    sql: ReturnType<DatabaseService['tenant']>,
+    user: Pick<UserRow, 'role' | 'totp_enabled'>,
+  ): Promise<boolean> {
+    return user.role === 'admin' && !user.totp_enabled && (await this.mfaObrigatorio(sql));
   }
 
   /** Rotaciona refresh e emite novo access token. */
@@ -138,8 +197,7 @@ export class AuthService {
 
     const sql = this.db.tenant(ctx.schemaName);
     const rows = await sql<UserRow[]>`
-      SELECT id, email, nome, senha_hash, role, ativo, must_change_password
-      FROM users WHERE id = ${rotation.payload.userId} LIMIT 1
+      SELECT ${sql.unsafe(USER_COLS)} FROM users WHERE id = ${rotation.payload.userId} LIMIT 1
     `;
     const user = rows[0];
     if (!user || !user.ativo) {
@@ -147,24 +205,13 @@ export class AuthService {
       throw new UnauthorizedException('Sessao invalida');
     }
 
-    const permissions = await this.loadPermissions(ctx.schemaName, user.id);
-    const role = (TENANT_ROLES as readonly string[]).includes(user.role)
-      ? (user.role as TenantRole)
-      : 'consulta';
-
-    const accessToken = await this.signAccess({
-      sub: user.id,
-      tenantId: ctx.tenantId,
-      tenantSlug: ctx.slug,
-      role,
-      permissions,
-      realm: 'tenant',
-    });
+    const accessToken = await this.signAccess(await this.montarClaims(ctx.schemaName, ctx.tenantId, ctx.slug, user));
 
     return {
       accessToken,
       refreshToken: rotation.newToken,
       mustChangePassword: user.must_change_password,
+      mfaPendente: await this.mfaPendente(sql, user),
     };
   }
 
@@ -185,14 +232,22 @@ export class AuthService {
         role: UsuarioAtual['role'];
         ui_theme: UiTheme | null;
         must_change_password: boolean;
+        totp_enabled: boolean;
+        orgaos_codigos: string[] | null;
       }>
     >`
-      SELECT nome, email, cpf, role, ui_theme, must_change_password FROM users WHERE id = ${userId} AND ativo = true
+      SELECT nome, email, cpf, role, ui_theme, must_change_password, totp_enabled, orgaos_codigos
+      FROM users WHERE id = ${userId} AND ativo = true
     `;
     const u = rows[0];
     if (!u) throw new UnauthorizedException('Sessao invalida');
-    const podeVerRestrito = u.role === 'admin' || (await this.loadPermissions(ctx.schemaName, userId)).includes('acervo_restrito:read');
+    const perms = u.role === 'admin' ? [] : await this.loadPermissions(ctx.schemaName, userId);
+    const podeVerRestrito = u.role === 'admin' || perms.includes('acervo_restrito:read');
+    const podeAuditar = u.role === 'admin' || perms.includes('auditoria:read');
+    const podeFiscalizar = u.role === 'admin' || perms.includes('fiscal_contrato:update');
     const [cor] = await sql<Array<{ valor: unknown }>>`SELECT valor FROM tenant_settings WHERE chave = 'corDestaque'`;
+    const [priv] = await sql<Array<{ valor: unknown }>>`SELECT valor FROM tenant_settings WHERE chave = 'privacidade'`;
+    const privacidade = (typeof priv?.valor === 'string' ? JSON.parse(priv.valor) : priv?.valor) as { iaDesligada?: boolean } | undefined;
     const corOrgao = typeof cor?.valor === 'string' && HEX_COR.test(cor.valor) ? cor.valor : null;
     return {
       nome: u.nome,
@@ -201,9 +256,16 @@ export class AuthService {
       role: u.role,
       orgao: ctx.nome,
       podeVerRestrito,
+      podeAuditar,
+      podeFiscalizar,
+      iaDesligada: privacidade?.iaDesligada === true,
       uiTheme: u.ui_theme,
       corOrgao,
       mustChangePassword: u.must_change_password,
+      mfaEnabled: u.totp_enabled,
+      // Na sessao de "entrar como" a equipe JEOS nao configura 2FA de ninguem.
+      mfaPendente: !imp && (await this.mfaPendente(sql, u)),
+      lotacao: u.role === 'admin' ? [] : (u.orgaos_codigos ?? []),
       menusDesligados: Object.entries(ctx.menuOverrides ?? {})
         .filter(([, ligado]) => ligado === false)
         .map(([id]) => id),
@@ -245,6 +307,64 @@ export class AuthService {
     await this.audit.logTenant({ actorId: userId, action: 'senha_alterada', ip, resourceType: 'user', resourceId: userId });
   }
 
+  // ---------------- Verificacao em 2 etapas ----------------
+
+  /**
+   * Gera (ou reaproveita) o segredo pendente. Nao mexe no 2FA atual enquanto
+   * o novo nao for confirmado.
+   */
+  async setup2FA(userId: string): Promise<{ secret: string; otpauthUrl: string }> {
+    const ctx = requireTenantContext();
+    const sql = this.db.tenant(ctx.schemaName);
+    const [u] = await sql<Array<{ email: string; totp_secret_pending: string | null }>>`
+      SELECT email, totp_secret_pending FROM users WHERE id = ${userId} AND ativo = true
+    `;
+    if (!u) throw new UnauthorizedException('Sessao invalida');
+    let secret = u.totp_secret_pending ? segredo(u.totp_secret_pending) : null;
+    if (!secret) {
+      secret = authenticator.generateSecret();
+      await sql`UPDATE users SET totp_secret_pending = ${cifrar(secret)} WHERE id = ${userId}`;
+    }
+    return { secret, otpauthUrl: authenticator.keyuri(u.email, `jDoc ${ctx.nome}`, secret) };
+  }
+
+  async confirm2FA(userId: string, totp: string, ip: string): Promise<void> {
+    const ctx = requireTenantContext();
+    const sql = this.db.tenant(ctx.schemaName);
+    const [u] = await sql<Array<{ totp_secret_pending: string | null }>>`
+      SELECT totp_secret_pending FROM users WHERE id = ${userId} AND ativo = true
+    `;
+    if (!u?.totp_secret_pending) throw new BadRequestException('Nenhuma configuração de 2 etapas pendente');
+    if (!authenticator.verify({ token: totp, secret: segredo(u.totp_secret_pending) })) {
+      throw new BadRequestException('Código inválido');
+    }
+    const cifrado = estaCifrado(u.totp_secret_pending) ? u.totp_secret_pending : cifrar(u.totp_secret_pending);
+    await sql`
+      UPDATE users SET totp_secret = ${cifrado}, totp_enabled = true, totp_secret_pending = NULL, atualizado_em = now()
+      WHERE id = ${userId}
+    `;
+    await this.audit.logTenant({ actorId: userId, action: 'mfa_ativado', ip, resourceType: 'user', resourceId: userId });
+  }
+
+  /** Desligar pede senha e um codigo atual (quem pegou a sessao aberta nao desliga sozinho). */
+  async desligar2FA(userId: string, senha: string, totp: string, ip: string): Promise<void> {
+    const ctx = requireTenantContext();
+    const sql = this.db.tenant(ctx.schemaName);
+    const [u] = await sql<Array<{ senha_hash: string; totp_secret: string | null; totp_enabled: boolean }>>`
+      SELECT senha_hash, totp_secret, totp_enabled FROM users WHERE id = ${userId} AND ativo = true
+    `;
+    if (!u || !u.totp_enabled || !u.totp_secret) throw new BadRequestException('A verificação em 2 etapas não está ligada');
+    const senhaOk = await this.passwords.verify(u.senha_hash, senha);
+    if (!senhaOk || !authenticator.verify({ token: totp, secret: segredo(u.totp_secret) })) {
+      throw new BadRequestException('Senha ou código incorretos');
+    }
+    await sql`
+      UPDATE users SET totp_enabled = false, totp_secret = NULL, totp_secret_pending = NULL, atualizado_em = now()
+      WHERE id = ${userId}
+    `;
+    await this.audit.logTenant({ actorId: userId, action: 'mfa_desligado', ip, resourceType: 'user', resourceId: userId });
+  }
+
   async logoutAll(userId: string, ip: string): Promise<void> {
     await this.refreshTokens.revokeAllForUser('tenant', userId);
     await this.audit.logTenant({ actorId: userId, action: 'logout_all', ip });
@@ -269,14 +389,15 @@ export class AuthService {
     imp: NonNullable<TenantAccessClaims['imp']>,
   ): Promise<{ accessToken: string; expiraEm: string }> {
     const sql = this.db.tenant(alvo.schemaName);
-    const [u] = await sql<Array<{ role: string; ativo: boolean }>>`SELECT role, ativo FROM users WHERE id = ${userId}`;
+    const [u] = await sql<Array<{ role: string; ativo: boolean; orgaos_codigos: string[] | null }>>`
+      SELECT role, ativo, orgaos_codigos FROM users WHERE id = ${userId}
+    `;
     // 404, nao 401: um 401 faria o painel achar que a sessao do admin caiu.
     if (!u) throw new NotFoundException('Usuário não encontrado neste órgão');
     if (!u.ativo) throw new BadRequestException('Usuário desativado: reative antes de entrar como ele');
-    const permissions = await this.loadPermissions(alvo.schemaName, userId);
-    const role = (TENANT_ROLES as readonly string[]).includes(u.role) ? (u.role as TenantRole) : 'consulta';
+    const claims = await this.montarClaims(alvo.schemaName, alvo.tenantId, alvo.slug, { id: userId, ...u });
     const accessToken = await this.jwt.signAsync(
-      { sub: userId, tenantId: alvo.tenantId, tenantSlug: alvo.slug, role, permissions, realm: 'tenant', imp } satisfies TenantAccessClaims,
+      { ...claims, imp } satisfies TenantAccessClaims,
       { secret: loadEnv().JWT_ACCESS_SECRET, issuer: JWT_ISSUER.tenant, audience: JWT_AUDIENCE.tenant, expiresIn: '30m' },
     );
     return { accessToken, expiraEm: new Date(Date.now() + 30 * 60_000).toISOString() };

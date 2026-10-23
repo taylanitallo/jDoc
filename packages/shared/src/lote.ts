@@ -16,6 +16,8 @@ export interface ItemLote {
   /** ISO aaaa-mm-dd ou '' */
   dataDocumento: string;
   metadados: Metadados;
+  /** Metadados padrao do dicionario vindos da planilha (so as colunas preenchidas). */
+  catalogacao?: Partial<Record<ChaveCatalogacao, string>>;
 }
 
 export interface LoteMontado {
@@ -87,16 +89,35 @@ export function dataParaIso(v: string): string | null {
 const nomeSemExtensao = (n: string) => n.replace(/\.[^.]+$/, '');
 const chaveArquivo = (n: string) => normalizarCabecalho(nomeSemExtensao(n.split(/[\\/]/).pop() ?? n));
 
+/** Colunas dos metadados padrao (iguais em todo tipo documental). */
+const COLUNAS_CATALOGACAO = {
+  numero: ['numero'],
+  assunto: ['assunto'],
+  interessado: ['interessado'],
+  palavrasChave: ['palavras_chave', 'palavra_chave'],
+  dadosPessoais: ['dados_pessoais'],
+} as const;
+export type ChaveCatalogacao = keyof typeof COLUNAS_CATALOGACAO;
+
 const COLUNAS_FIXAS = { arquivo: ['arquivo', 'nome_do_arquivo', 'pdf'], descricao: ['descricao', 'titulo', 'titulo_descricao'], data: ['data_documento', 'data_do_documento', 'data'] };
 
 /** Cabecalho da planilha-modelo de um tipo documental (arquivo, descricao, data e os campos do tipo). */
 export function cabecalhoModeloLote(campos: readonly CampoMetadado[]): string[] {
-  return ['arquivo', 'descricao', 'data_documento', ...campos.map((c) => c.chave)];
+  const proprios = campos.map((c) => c.chave);
+  const padrao = ['numero', 'assunto', 'interessado', 'palavras_chave', 'dados_pessoais'].filter((c) => !proprios.includes(c));
+  return ['arquivo', 'descricao', 'data_documento', ...proprios, ...padrao];
 }
 
 /** Planilha-modelo em CSV (BOM + ';', abre direto no Excel) com uma linha de exemplo. */
 export function modeloCsvLote(campos: readonly CampoMetadado[]): string {
-  const exemplo = ['lei-1234.pdf', 'Institui o Plano Diretor', '15/04/2019', ...campos.map((c) => (c.tipo === 'data' ? '15/04/2019' : c.tipo === 'selecao' ? (c.opcoes?.[0] ?? '') : c.tipo === 'numero' ? '1234' : `(${c.rotulo})`))];
+  const exemploPadrao: Record<string, string> = { numero: '1234/2019', assunto: 'Plano Diretor', interessado: 'Secretaria de Infraestrutura', palavras_chave: 'plano diretor, urbanismo', dados_pessoais: 'nao' };
+  const exemplo = [
+    'lei-1234.pdf',
+    'Institui o Plano Diretor',
+    '15/04/2019',
+    ...campos.map((c) => (c.tipo === 'data' ? '15/04/2019' : c.tipo === 'selecao' ? (c.opcoes?.[0] ?? '') : c.tipo === 'numero' ? '1234' : `(${c.rotulo})`)),
+    ...cabecalhoModeloLote(campos).slice(3 + campos.length).map((c) => exemploPadrao[c] ?? ''),
+  ];
   const cel = (v: string) => (/[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
   return `\uFEFF${[cabecalhoModeloLote(campos), exemplo].map((l) => l.map(cel).join(';')).join('\r\n')}\r\n`;
 }
@@ -113,7 +134,7 @@ export function montarLote(
   padrao: { dataDocumento?: string } = {},
 ): LoteMontado {
   const avisos: string[] = [];
-  const porArquivo = new Map<string, { descricao?: string; data?: string; metadados: Metadados; linha: number }>();
+  const porArquivo = new Map<string, { descricao?: string; data?: string; metadados: Metadados; catalogacao: ItemLote['catalogacao']; linha: number }>();
 
   if (csv && csv.trim()) {
     const [cab, ...linhas] = lerCsv(csv);
@@ -126,7 +147,12 @@ export function montarLote(
       avisos.push('A planilha precisa da coluna "arquivo" com o nome de cada PDF.');
     } else {
       const colCampo = campos.map((c) => ({ c, i: cabNorm.findIndex((h) => h === c.chave || h === normalizarCabecalho(c.rotulo)) }));
-      const conhecidas = new Set([iArq, iDesc, iData, ...colCampo.map((x) => x.i)]);
+      const colCat = (Object.keys(COLUNAS_CATALOGACAO) as ChaveCatalogacao[]).map((k) => ({
+        k,
+        i: cabNorm.findIndex((h) => (COLUNAS_CATALOGACAO[k] as readonly string[]).includes(h)),
+      // Coluna que ja e campo do tipo (ex.: numero) fica nos metadados do tipo.
+      })).filter((x) => !colCampo.some((c) => c.i === x.i));
+      const conhecidas = new Set([iArq, iDesc, iData, ...colCampo.map((x) => x.i), ...colCat.map((x) => x.i)]);
       cabNorm.forEach((h, i) => {
         if (!conhecidas.has(i) && h) avisos.push(`Coluna "${cab![i]}" não pertence a este tipo documental e foi ignorada.`);
       });
@@ -139,9 +165,21 @@ export function montarLote(
           if (!v) continue;
           metadados[c.chave] = c.tipo === 'data' ? (dataParaIso(v) ?? v) : v;
         }
+        const catalogacao: NonNullable<ItemLote['catalogacao']> = {};
+        for (const { k, i } of colCat) {
+          const v = i >= 0 ? (l[i] ?? '').trim() : '';
+          if (v) catalogacao[k] = v;
+        }
         const chave = chaveArquivo(nome);
         if (porArquivo.has(chave)) avisos.push(`Linha ${n + 2}: o arquivo "${nome}" aparece mais de uma vez; vale a primeira linha.`);
-        else porArquivo.set(chave, { descricao: iDesc >= 0 ? l[iDesc] : undefined, data: iData >= 0 ? l[iData] : undefined, metadados, linha: n + 2 });
+        else
+          porArquivo.set(chave, {
+            descricao: iDesc >= 0 ? l[iDesc] : undefined,
+            data: iData >= 0 ? l[iData] : undefined,
+            metadados,
+            catalogacao: Object.keys(catalogacao).length ? catalogacao : undefined,
+            linha: n + 2,
+          });
       });
     }
   }
@@ -157,6 +195,7 @@ export function montarLote(
       descricao: linha?.descricao?.trim() || nomeSemExtensao(arquivo).replace(/[_-]+/g, ' ').trim(),
       dataDocumento: dataTexto ? (dataParaIso(dataTexto) ?? dataTexto) : (padrao.dataDocumento ?? ''),
       metadados: linha?.metadados ?? {},
+      ...(linha?.catalogacao ? { catalogacao: linha.catalogacao } : {}),
     };
   });
   for (const [chave, l] of porArquivo) {

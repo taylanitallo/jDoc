@@ -58,6 +58,7 @@ export const CATALOGO_MODULOS: ModuloCatalogo[] = [
       { id: 'sigilo', label: 'Sigilo', descricao: 'Informações classificadas pela LAI' },
       { id: 'temporalidade', label: 'Temporalidade', descricao: 'Prazos de guarda e eliminação' },
       { id: 'integridade', label: 'Integridade', descricao: 'Conferência periódica dos arquivos' },
+      { id: 'digitalizacao', label: 'Digitalização', descricao: 'Lotes, custódia, controle de qualidade e produção' },
       { id: 'relatorios', label: 'Relatórios', descricao: 'Inventário e quantitativos' },
     ],
   },
@@ -68,6 +69,9 @@ export const CATALOGO_MODULOS: ModuloCatalogo[] = [
     descricao: 'Recursos comuns aos dois módulos.',
     menus: [
       { id: 'busca', label: 'Busca no conteúdo', descricao: 'Procura dentro do texto dos PDFs' },
+      { id: 'auditoria', label: 'Auditoria', descricao: 'Trilha de quem fez o quê, quando e de onde' },
+      { id: 'continuidade', label: 'Continuidade', descricao: 'Backups, restauração, disponibilidade e exportação' },
+      { id: 'ajuda', label: 'Ajuda', descricao: 'Manual do sistema e treinamentos' },
       { id: 'suporte', label: 'Suporte', descricao: 'Chamados com a equipe JEOS' },
       { id: 'novidades', label: 'Novidades', descricao: 'Notas de versão do sistema' },
     ],
@@ -92,6 +96,7 @@ export const PERMISSAO_LABEL: Record<ModuleName, { label: string; acoes?: readon
   midia_legislativa: { label: 'Mídia legislativa', acoes: ['read', 'create'] },
   acervo: { label: 'Acervo' },
   acervo_restrito: { label: 'Acervo restrito', acoes: ['read'], dica: 'Ver documentos de acesso restrito (RH, LGPD)' },
+  acervo_sigiloso: { label: 'Acervo sigiloso', acoes: ['read'], dica: 'Ver documentos classificados como sigilosos (LAI); todo acesso fica na auditoria' },
   classificacao: { label: 'Plano de classificação' },
   temporalidade: { label: 'Temporalidade' },
   arquivo_fisico: { label: 'Arquivo físico' },
@@ -101,6 +106,8 @@ export const PERMISSAO_LABEL: Record<ModuleName, { label: string; acoes?: readon
   dossies: { label: 'Dossiês e processos' },
   descricao: { label: 'Descrição (NOBRADE)' },
   legislacao: { label: 'Legislação' },
+  digitalizacao: { label: 'Digitalização' },
+  fiscal_contrato: { label: 'Fiscal do contrato', acoes: ['read', 'update'], dica: 'Aprovar plano de trabalho e dar o aceite formal dos lotes digitalizados' },
   orgaos: { label: 'Órgãos (cadastro)' },
   unidades_orcamentarias: { label: 'Unidades orçamentárias' },
   projetos_atividades: { label: 'Projetos e atividades' },
@@ -108,6 +115,8 @@ export const PERMISSAO_LABEL: Record<ModuleName, { label: string; acoes?: readon
   tipos_documento: { label: 'Tipos de documento' },
   usuarios: { label: 'Usuários' },
   layout: { label: 'Aparência do órgão', acoes: ['read', 'update'] },
+  auditoria: { label: 'Auditoria', acoes: ['read', 'export'], dica: 'Ver e exportar a trilha de auditoria do órgão' },
+  treinamentos: { label: 'Treinamentos', dica: 'Registrar capacitações e listas de presença' },
 };
 
 export const ACAO_LABEL: Record<ModuleAction, string> = {
@@ -154,7 +163,7 @@ export interface PerfilPadrao {
   permissoes: string[];
 }
 
-const SO_ADMIN = new Set<ModuleName>(['usuarios', 'layout', 'orgaos']);
+const SO_ADMIN = new Set<ModuleName>(['usuarios', 'layout', 'orgaos', 'auditoria', 'fiscal_contrato']);
 
 /** Perfis de fabrica (os modelos globais do superadmin sobrescrevem estes). */
 export function perfisDeFabrica(): PerfilPadrao[] {
@@ -173,14 +182,16 @@ export function perfisDeFabrica(): PerfilPadrao[] {
       nome: 'Operador',
       descricao: 'Cadastra, edita e exporta documentos; não exclui nem administra usuários.',
       papel: 'operador',
-      permissoes: semAdmin.filter((p) => !p.endsWith(':delete') && p !== 'acervo_restrito:read'),
+      permissoes: semAdmin.filter((p) => !p.endsWith(':delete') && p !== 'acervo_restrito:read' && p !== 'acervo_sigiloso:read'),
     },
     {
       chave: 'consulta',
       nome: 'Consulta',
       descricao: 'Somente leitura e exportação.',
       papel: 'consulta',
-      permissoes: semAdmin.filter((p) => p.endsWith(':read') || p.endsWith(':export')).filter((p) => p !== 'acervo_restrito:read'),
+      permissoes: semAdmin
+        .filter((p) => p.endsWith(':read') || p.endsWith(':export'))
+        .filter((p) => p !== 'acervo_restrito:read' && p !== 'acervo_sigiloso:read'),
     },
   ];
 }

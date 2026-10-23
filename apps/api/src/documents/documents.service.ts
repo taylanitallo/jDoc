@@ -31,12 +31,15 @@ import {
   metadadosSchemaFor,
   type NivelAcesso,
   type GrauSigilo,
+  type DadosPessoais,
   type SearchDocumentsQuery,
   type TenantAccessClaims,
   type TrashQuery,
   type UpdateDocumentInput,
 } from '@jdoc/shared';
+import { dentroDaLotacao, filtroLotacao, lotacaoDe, podeVerRestrito, podeVerSigiloso } from '../common/acesso-documento';
 import { DatabaseService } from '../database/database.service';
+import { PrivacidadeService } from '../privacidade/privacidade.service';
 import { StorageService } from '../storage/storage.module';
 import { AuditService } from '../audit/audit.module';
 import { loadEnv } from '../config/env';
@@ -111,6 +114,11 @@ interface DocRow {
   fase?: FaseArquivistica;
   nivel_acesso?: NivelAcesso;
   grau_sigilo?: GrauSigilo | null;
+  numero?: string | null;
+  assunto?: string | null;
+  interessado?: string | null;
+  palavras_chave?: string[] | null;
+  dados_pessoais?: DadosPessoais;
   data_inicio_contagem?: Date | null;
   data_prevista_transferencia?: Date | null;
   data_prevista_destinacao?: Date | null;
@@ -216,6 +224,12 @@ function toView(r: DocRow, arquivosExtras: DocumentFileView[] = []): DocumentVie
     fase: r.fase ?? 'corrente',
     nivelAcesso: r.nivel_acesso ?? 'publico',
     grauSigilo: r.grau_sigilo ?? null,
+    nivelEfetivo: r.grau_sigilo ? 'sigiloso' : (r.nivel_acesso ?? 'publico'),
+    numero: r.numero ?? null,
+    assunto: r.assunto ?? null,
+    interessado: r.interessado ?? null,
+    palavrasChave: r.palavras_chave ?? [],
+    dadosPessoais: r.dados_pessoais ?? 'nao',
     dataInicioContagem: isoDate(r.data_inicio_contagem),
     dataPrevistaTransferencia: isoDate(r.data_prevista_transferencia),
     dataPrevistaDestinacao: isoDate(r.data_prevista_destinacao),
@@ -241,6 +255,7 @@ export class DocumentsService {
     private readonly conferencia: ConferenciaService,
     private readonly arquivistica: ArquivisticaService,
     private readonly ocr: OcrService,
+    private readonly privacidade: PrivacidadeService,
   ) {}
 
   /**
@@ -275,16 +290,32 @@ export class DocumentsService {
 
   /** Documento restrito (dados pessoais/sigilo): so admin ou quem tem acervo_restrito:read. */
   private podeVerRestrito(user: TenantAccessClaims): boolean {
-    return user.role === 'admin' || user.permissions.includes('acervo_restrito:read');
+    return podeVerRestrito(user);
   }
 
-  /** getRow + nivel de acesso. Restrito sem permissao = 404 (nao revela que o documento existe). */
+  /**
+   * getRow + nivel de acesso + lotacao. Restrito sem permissao ou de outra
+   * secretaria = 404 (nao revela que o documento existe).
+   */
   private async getRowFor(user: TenantAccessClaims, id: string, includeDeleted = false): Promise<DocRow> {
     const row = await this.getRow(id, includeDeleted);
     if (row.nivel_acesso === 'restrito' && !this.podeVerRestrito(user)) {
       throw new NotFoundException('Documento nao encontrado');
     }
+    if (row.grau_sigilo && !podeVerSigiloso(user)) throw new NotFoundException('Documento nao encontrado');
+    if (!dentroDaLotacao(user, row.orgao_codigo)) throw new NotFoundException('Documento nao encontrado');
     return row;
+  }
+
+  /** Usuario lotado so cadastra/move documento para uma das proprias secretarias. */
+  private async assertOrgaoDaLotacao(user: TenantAccessClaims, orgaoId: string | null | undefined): Promise<void> {
+    const lot = lotacaoDe(user);
+    if (!lot || !orgaoId) return;
+    const ctx = requireTenantContext();
+    const [o] = await this.db.tenant(ctx.schemaName)<Array<{ codigo: string }>>`SELECT codigo FROM orgaos WHERE id = ${orgaoId}`;
+    if (!o || !lot.includes(o.codigo)) {
+      throw new ForbiddenException('Você só pode registrar documentos das secretarias em que está lotado');
+    }
   }
 
   /** Tipo documental do Acervo: valida tipo e metadados contra os campos definidos nele. */
@@ -356,6 +387,7 @@ export class DocumentsService {
   ): Promise<DocumentView> {
     const ctx = requireTenantContext();
     this.assertPermission(user, fields.module, 'create');
+    await this.assertOrgaoDaLotacao(user, (fields as { orgaoId?: string | null }).orgaoId);
     // Acervo: valida tipo + metadados ANTES de gravar arquivo (erro nao deixa PDF orfao no storage).
     const acervo =
       fields.module === 'acervo'
@@ -403,7 +435,8 @@ export class DocumentsService {
         budget_unit_id, orgao_id, document_type_id, document_date, value, competencia,
         exercicio, banco, agencia, conta,
         original_name, file_key, file_size, file_hash, paginas, status, created_by,
-        metadados, digitalizado, responsavel_digitalizacao, data_digitalizacao, local_digitalizacao
+        metadados, digitalizado, responsavel_digitalizacao, data_digitalizacao, local_digitalizacao,
+        numero, assunto, interessado, palavras_chave, dados_pessoais
       ) VALUES (
         ${fields.module},
         ${(f.subtype as string) ?? null},
@@ -433,7 +466,12 @@ export class DocumentsService {
         ${(f.digitalizado as boolean | undefined) ?? false},
         ${(f.responsavelDigitalizacao as string | undefined) ?? null},
         ${(f.dataDigitalizacao as Date | undefined) ?? null},
-        ${(f.localDigitalizacao as string | undefined) ?? null}
+        ${(f.localDigitalizacao as string | undefined) ?? null},
+        ${(f.numero as string | undefined) || null},
+        ${(f.assunto as string | undefined) || null},
+        ${(f.interessado as string | undefined) || null},
+        ${(f.palavrasChave as string[] | undefined) ?? []}::varchar[],
+        ${(f.dadosPessoais as string | undefined) ?? 'nao'}
       )
       RETURNING id, module, subtype, doc_caixa, empenho, credor, historico, descricao,
                 budget_unit_id, NULL AS budget_unit_nome,
@@ -445,7 +483,8 @@ export class DocumentsService {
                 classificacao_id, NULL AS classificacao_codigo, NULL AS classificacao_descricao,
                 fase, nivel_acesso, grau_sigilo, data_inicio_contagem, data_prevista_transferencia, data_prevista_destinacao,
                 metadados, digitalizado, responsavel_digitalizacao, data_digitalizacao, local_digitalizacao, ocr_status,
-                possui_original_fisico, local_fisico_id, NULL AS local_fisico_codigo
+                possui_original_fisico, local_fisico_id, NULL AS local_fisico_codigo,
+                numero, assunto, interessado, palavras_chave, dados_pessoais
     `;
 
     await this.audit.logTenant({
@@ -597,6 +636,9 @@ export class DocumentsService {
     this.assertPermission(user, 'despesas', 'update');
     if (!this.conferencia.isEnabled()) {
       throw new BadRequestException('Conferencia por IA nao esta configurada neste ambiente.');
+    }
+    if (await this.privacidade.iaDesligada()) {
+      throw new BadRequestException('O órgão desligou o uso de inteligência artificial com os documentos (Configurações > Privacidade).');
     }
 
     const sql = this.db.tenant(ctx.schemaName);
@@ -1414,12 +1456,26 @@ export class DocumentsService {
       AND (${text}::text IS NULL OR d.credor ILIKE ${text} OR d.historico ILIKE ${text}
            OR d.descricao ILIKE ${text} OR d.empenho ILIKE ${text} OR d.doc_caixa ILIKE ${text}
            OR d.original_name ILIKE ${text} OR d.metadados::text ILIKE ${text}
+           OR d.numero ILIKE ${text} OR d.assunto ILIKE ${text} OR d.interessado ILIKE ${text}
+           OR array_to_string(d.palavras_chave, ' ') ILIKE ${text}
            OR (${dateQuery?.day ?? null}::int IS NOT NULL
                AND EXTRACT(DAY FROM d.document_date) = ${dateQuery?.day ?? null}
                AND EXTRACT(MONTH FROM d.document_date) = ${dateQuery?.month ?? null}
                AND (${dateQuery?.year ?? null}::int IS NULL OR EXTRACT(YEAR FROM d.document_date) = ${dateQuery?.year ?? null})))
       AND (${this.podeVerRestrito(user)} OR d.nivel_acesso = 'publico')
+      AND ${filtroLotacao(sql, user)}
       AND (${q.documentTypeId ?? null}::uuid IS NULL OR d.document_type_id = ${q.documentTypeId ?? null})
+      AND (${q.numero ?? null}::varchar IS NULL OR d.numero ILIKE ${q.numero ? `%${q.numero}%` : null})
+      AND (${q.assunto ?? null}::varchar IS NULL OR d.assunto ILIKE ${q.assunto ? `%${q.assunto}%` : null})
+      AND (${q.interessado ?? null}::varchar IS NULL OR d.interessado ILIKE ${q.interessado ? `%${q.interessado}%` : null})
+      AND (${q.palavraChave ?? null}::varchar IS NULL OR ${q.palavraChave?.toLowerCase() ?? null} = ANY(d.palavras_chave))
+      AND (${q.dadosPessoais ?? null}::varchar IS NULL
+           OR (${q.dadosPessoais ?? null} = 'sim' AND d.dados_pessoais <> 'nao')
+           OR (${q.dadosPessoais ?? null} = 'nao' AND d.dados_pessoais = 'nao')
+           OR (${q.dadosPessoais ?? null} = 'sensiveis' AND d.dados_pessoais = 'sensiveis'))
+      AND (${q.nivel ?? null}::varchar IS NULL
+           OR (${q.nivel ?? null} = 'sigiloso' AND d.grau_sigilo IS NOT NULL)
+           OR (d.grau_sigilo IS NULL AND d.nivel_acesso = ${q.nivel ?? null}))
       AND (${q.subtype ?? null}::varchar IS NULL OR d.subtype = ${q.subtype ?? null})
       AND (${q.exercicio ?? null}::int IS NULL OR d.exercicio = ${q.exercicio ?? null})
       AND (${q.competencia ?? null}::varchar IS NULL OR d.competencia = ${q.competencia ?? null})
@@ -1441,7 +1497,7 @@ export class DocumentsService {
     `;
   }
 
-  async search(user: TenantAccessClaims, q: SearchDocumentsQuery): Promise<DocumentPage> {
+  async search(user: TenantAccessClaims, q: SearchDocumentsQuery, ip?: string): Promise<DocumentPage> {
     const ctx = requireTenantContext();
     this.assertPermission(user, q.module, 'read');
     const sql = this.db.tenant(ctx.schemaName);
@@ -1472,7 +1528,8 @@ export class DocumentsService {
              , d.classificacao_id, cl.codigo AS classificacao_codigo, cl.descricao AS classificacao_descricao,
              d.fase, d.nivel_acesso, d.grau_sigilo, d.data_inicio_contagem, d.data_prevista_transferencia, d.data_prevista_destinacao,
              d.metadados, d.digitalizado, d.responsavel_digitalizacao, d.data_digitalizacao, d.local_digitalizacao, d.ocr_status,
-             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo
+             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo,
+             d.numero, d.assunto, d.interessado, d.palavras_chave, d.dados_pessoais
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
@@ -1487,10 +1544,22 @@ export class DocumentsService {
       SELECT COUNT(*)::bigint AS total FROM documents d WHERE ${where}
     `;
     const extrasMap = await this.fetchExtrasMap(sql, items.map((i) => i.id));
+    const total = Number(totalRows[0]?.total ?? 0);
+
+    // Pesquisa por texto vinda da tela (ip informado) fica na trilha; listar sem texto nao.
+    if (ip !== undefined && q.q && q.page === 1) {
+      await this.audit.logTenant({
+        actorId: user.sub,
+        action: 'busca_realizada',
+        resourceType: 'documents',
+        ip,
+        metadata: { termo: q.q.slice(0, 200), resultados: total, modulo: q.module },
+      });
+    }
 
     return {
       items: items.map((r) => toView(r, extrasMap.get(r.id) ?? [])),
-      total: Number(totalRows[0]?.total ?? 0),
+      total,
       page: q.page,
       pageSize: q.pageSize,
     };
@@ -1539,7 +1608,8 @@ export class DocumentsService {
              , d.classificacao_id, cl.codigo AS classificacao_codigo, cl.descricao AS classificacao_descricao,
              d.fase, d.nivel_acesso, d.grau_sigilo, d.data_inicio_contagem, d.data_prevista_transferencia, d.data_prevista_destinacao,
              d.metadados, d.digitalizado, d.responsavel_digitalizacao, d.data_digitalizacao, d.local_digitalizacao, d.ocr_status,
-             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo
+             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo,
+             d.numero, d.assunto, d.interessado, d.palavras_chave, d.dados_pessoais
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
@@ -1574,7 +1644,8 @@ export class DocumentsService {
              , d.classificacao_id, cl.codigo AS classificacao_codigo, cl.descricao AS classificacao_descricao,
              d.fase, d.nivel_acesso, d.grau_sigilo, d.data_inicio_contagem, d.data_prevista_transferencia, d.data_prevista_destinacao,
              d.metadados, d.digitalizado, d.responsavel_digitalizacao, d.data_digitalizacao, d.local_digitalizacao, d.ocr_status,
-             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo
+             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo,
+             d.numero, d.assunto, d.interessado, d.palavras_chave, d.dados_pessoais
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
@@ -1597,6 +1668,20 @@ export class DocumentsService {
     const sql = this.db.tenant(ctx.schemaName);
     const extras = await this.fetchExtrasMap(sql, [id]);
     return toView(row, extras.get(id) ?? []);
+  }
+
+  /** Abertura do documento pela tela: igual ao get, mas fica na trilha de auditoria. */
+  async visualizar(user: TenantAccessClaims, id: string, ip: string): Promise<DocumentView> {
+    const doc = await this.get(user, id);
+    await this.audit.logTenant({
+      actorId: user.sub,
+      action: 'document_viewed',
+      resourceType: 'document',
+      resourceId: id,
+      ip,
+      metadata: { module: doc.module, nivelAcesso: doc.nivelAcesso },
+    });
+    return doc;
   }
 
   /** Signed URL 60s — checagem de permissao + posse pelo tenant ANTES de assinar. */
@@ -1628,6 +1713,7 @@ export class DocumentsService {
     const row = await this.getRowFor(user, id);
     this.assertPermission(user, row.module, 'update');
     this.assertNaoEliminado(row);
+    if (input.orgaoId !== undefined) await this.assertOrgaoDaLotacao(user, input.orgaoId);
     // Documento com sigilo LAI vigente: o acesso so muda pelo termo (desclassificacao), nunca pela edicao.
     if (row.grau_sigilo && input.nivelAcesso !== undefined && input.nivelAcesso !== 'restrito') {
       throw new BadRequestException('Documento com classificação de sigilo vigente: para liberar o acesso, desclassifique pelo termo (Sigilo).');
@@ -1675,6 +1761,11 @@ export class DocumentsService {
         local_fisico_id = ${input.localFisicoId === undefined ? keep('local_fisico_id') : input.localFisicoId},
         -- Informar a caixa implica que existe original em papel.
         possui_original_fisico = ${input.possuiOriginalFisico ?? (input.localFisicoId ? true : keep('possui_original_fisico'))},
+        numero = ${input.numero === undefined ? keep('numero') : input.numero || null},
+        assunto = ${input.assunto === undefined ? keep('assunto') : input.assunto || null},
+        interessado = ${input.interessado === undefined ? keep('interessado') : input.interessado || null},
+        palavras_chave = ${input.palavrasChave === undefined ? keep('palavras_chave') : sql`${input.palavrasChave}::varchar[]`},
+        dados_pessoais = ${input.dadosPessoais ?? keep('dados_pessoais')},
         atualizado_em = now()
       WHERE id = ${id} AND deleted_at IS NULL
     `;
@@ -1778,6 +1869,7 @@ export class DocumentsService {
     const rows = await sql<Array<{ id: string; module: DocModule; fase: string }>>`
       SELECT id, module, fase FROM documents WHERE id = ANY(${ids}) AND deleted_at IS NULL
         AND (${this.podeVerRestrito(user)} OR nivel_acesso = 'publico')
+        AND ${filtroLotacao(sql, user, 'orgao_id')}
     `;
     if (rows.length === 0) return 0;
     for (const module of new Set(rows.map((r) => r.module))) {
@@ -1802,7 +1894,7 @@ export class DocumentsService {
   }
 
   /** Monta um ZIP em memoria com os PDFs dos documentos selecionados (ignora os sem arquivo). */
-  async bulkDownloadZip(user: TenantAccessClaims, ids: string[]): Promise<Buffer> {
+  async bulkDownloadZip(user: TenantAccessClaims, ids: string[], ip = ''): Promise<Buffer> {
     const ctx = requireTenantContext();
     const sql = this.db.tenant(ctx.schemaName);
 
@@ -1812,6 +1904,7 @@ export class DocumentsService {
       SELECT id, module, file_key, original_name FROM documents
       WHERE id = ANY(${ids}) AND deleted_at IS NULL
         AND (${this.podeVerRestrito(user)} OR nivel_acesso = 'publico')
+        AND ${filtroLotacao(sql, user, 'orgao_id')}
     `;
     if (rows.length === 0) throw new NotFoundException('Nenhum documento encontrado para os IDs informados');
     for (const module of new Set(rows.map((r) => r.module))) {
@@ -1874,6 +1967,13 @@ export class DocumentsService {
     }
     archive.finalize();
     await done;
+    await this.audit.logTenant({
+      actorId: user.sub,
+      action: 'documentos_baixados_zip',
+      resourceType: 'document',
+      ip,
+      metadata: { count: rows.length, arquivos: included, ids: rows.map((r) => r.id) },
+    });
     return Buffer.concat(chunks);
   }
 
@@ -1928,7 +2028,8 @@ export class DocumentsService {
              , d.classificacao_id, cl.codigo AS classificacao_codigo, cl.descricao AS classificacao_descricao,
              d.fase, d.nivel_acesso, d.grau_sigilo, d.data_inicio_contagem, d.data_prevista_transferencia, d.data_prevista_destinacao,
              d.metadados, d.digitalizado, d.responsavel_digitalizacao, d.data_digitalizacao, d.local_digitalizacao, d.ocr_status,
-             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo
+             d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo,
+             d.numero, d.assunto, d.interessado, d.palavras_chave, d.dados_pessoais
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
@@ -1938,6 +2039,7 @@ export class DocumentsService {
       WHERE d.deleted_at IS NOT NULL
         AND (${q.module ?? null}::varchar IS NULL OR d.module = ${q.module ?? null})
         AND (${this.podeVerRestrito(user)} OR d.nivel_acesso = 'publico')
+        AND ${filtroLotacao(sql, user)}
       ORDER BY d.deleted_at DESC
       LIMIT ${q.pageSize} OFFSET ${offset}
     `;
@@ -1946,6 +2048,7 @@ export class DocumentsService {
       WHERE d.deleted_at IS NOT NULL
         AND (${q.module ?? null}::varchar IS NULL OR d.module = ${q.module ?? null})
         AND (${this.podeVerRestrito(user)} OR d.nivel_acesso = 'publico')
+        AND ${filtroLotacao(sql, user)}
     `;
     return {
       items: rows.map((r) => toView(r)),

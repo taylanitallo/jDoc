@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DIREITOS_LGPD, LGPD_PRAZO_DIAS, type DireitoLgpd } from './lgpd.js';
 
 /**
  * Atendimento e consultas ao acervo (Lei 12.527/2011 — LAI). Registra quem pediu,
@@ -43,8 +44,16 @@ export type StatusAtendimento = (typeof STATUS_ATENDIMENTO)[number];
 
 const texto = (max: number) => z.string().trim().max(max);
 
+/** LAI (acesso a informacao) ou LGPD (titular pedindo sobre os proprios dados). */
+export const TIPOS_ATENDIMENTO = ['lai', 'lgpd'] as const;
+export type TipoAtendimento = (typeof TIPOS_ATENDIMENTO)[number];
+export const TIPO_ATENDIMENTO_LABEL: Record<TipoAtendimento, string> = { lai: 'Acesso à informação (LAI)', lgpd: 'Titular de dados (LGPD)' };
+
 export const atendimentoCreateSchema = z
   .object({
+    tipo: z.enum(TIPOS_ATENDIMENTO).default('lai'),
+    /** Obrigatorio quando tipo = lgpd. */
+    direitoLgpd: z.enum(DIREITOS_LGPD).optional(),
     solicitanteNome: texto(200).min(3, 'Informe o nome do solicitante'),
     solicitanteDocumento: texto(40).optional(),
     solicitanteContato: texto(200).optional(),
@@ -62,7 +71,8 @@ export const atendimentoCreateSchema = z
     /** Data do pedido (padrao: agora); permite registrar pedido recebido antes. */
     dataPedido: z.coerce.date().optional(),
   })
-  .strict();
+  .strict()
+  .refine((a) => a.tipo !== 'lgpd' || !!a.direitoLgpd, { message: 'Informe qual direito o titular está exercendo', path: ['direitoLgpd'] });
 export type AtendimentoCreateInput = z.infer<typeof atendimentoCreateSchema>;
 
 export const atendimentoConcluirSchema = z.discriminatedUnion('status', [
@@ -97,6 +107,8 @@ export interface AtendimentoDocumento {
 export interface AtendimentoView {
   id: string;
   protocolo: string;
+  tipo: TipoAtendimento;
+  direitoLgpd: DireitoLgpd | null;
   status: StatusAtendimento;
   solicitanteNome: string;
   solicitanteDocumento: string | null;
@@ -137,9 +149,10 @@ export interface AtendimentoResumo {
   mediaDiasResposta: number | null;
 }
 
-/** Prazo final: pedido + 20 dias (+10 se prorrogado). */
-export function prazoFinalLai(dataPedido: Date, prorrogado: boolean): Date {
+/** Prazo final: LAI = pedido + 20 dias (+10 se prorrogado); LGPD = 15 dias (art. 19, II), sem prorrogacao. */
+export function prazoFinalLai(dataPedido: Date, prorrogado: boolean, tipo: TipoAtendimento = 'lai'): Date {
   const d = new Date(dataPedido);
-  d.setDate(d.getDate() + LAI_PRAZO_DIAS + (prorrogado ? LAI_PRORROGACAO_DIAS : 0));
+  const dias = tipo === 'lgpd' ? LGPD_PRAZO_DIAS : LAI_PRAZO_DIAS + (prorrogado ? LAI_PRORROGACAO_DIAS : 0);
+  d.setDate(d.getDate() + dias);
   return d;
 }

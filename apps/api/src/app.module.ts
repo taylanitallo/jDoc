@@ -22,6 +22,11 @@ import { OcrModule } from './ocr/ocr.module';
 import { AutenticidadeModule } from './autenticidade/autenticidade.module';
 import { ArquivoFisicoModule } from './arquivo-fisico/arquivo-fisico.module';
 import { IntegridadeModule } from './integridade/integridade.module';
+import { AuditoriaModule } from './auditoria/auditoria.module';
+import { PrivacidadeModule } from './privacidade/privacidade.module';
+import { DigitalizacaoModule } from './digitalizacao/digitalizacao.module';
+import { ContinuidadeModule } from './continuidade/continuidade.module';
+import { AjudaModule } from './ajuda/ajuda.module';
 import { RelatoriosArquivoModule } from './relatorios-arquivo/relatorios-arquivo.module';
 import { AtendimentoModule } from './atendimento/atendimento.module';
 import { SigiloModule } from './sigilo/sigilo.module';
@@ -67,6 +72,11 @@ import { TenantsPublicController } from './tenants-public.controller';
     AutenticidadeModule,
     ArquivoFisicoModule,
     IntegridadeModule,
+    AuditoriaModule,
+    PrivacidadeModule,
+    DigitalizacaoModule,
+    ContinuidadeModule,
+    AjudaModule,
     RelatoriosArquivoModule,
     AtendimentoModule,
     SigiloModule,

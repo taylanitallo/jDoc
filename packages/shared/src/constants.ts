@@ -25,6 +25,8 @@ export const MODULES = [
   'acervo',
   /** So a acao read importa: ver documentos com nivel de acesso restrito (RH/LGPD). */
   'acervo_restrito',
+  /** So a acao read: ver documentos classificados como sigilosos pela LAI. */
+  'acervo_sigiloso',
   'classificacao',
   'temporalidade',
   'arquivo_fisico',
@@ -40,6 +42,10 @@ export const MODULES = [
   'descricao',
   /** Legislacao compilada (texto por dispositivo, alteracoes, portal publico). */
   'legislacao',
+  /** Servico de digitalizacao: plano, lotes, custodia, controle de qualidade. */
+  'digitalizacao',
+  /** So update: aceite formal do lote pelo fiscal do contrato. */
+  'fiscal_contrato',
   /** Midia legislativa (pacotes mensais para a Camara). */
   'midia_legislativa',
   // Cadastros de Configuracoes (ja usados pelas rotas; antes ficavam fora da matriz).
@@ -50,6 +56,10 @@ export const MODULES = [
   'tipos_documento',
   'usuarios',
   'layout',
+  /** Trilha de auditoria do orgao (quem fez o que, quando e de onde). */
+  'auditoria',
+  /** Registro de treinamentos dos servidores. */
+  'treinamentos',
 ] as const;
 export const moduleSchema = z.enum(MODULES);
 export type ModuleName = z.infer<typeof moduleSchema>;

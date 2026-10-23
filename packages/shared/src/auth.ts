@@ -20,6 +20,11 @@ export const loginSchema = z
   .object({
     email: emailSchema,
     senha: z.string().min(1).max(200),
+    /** Segunda etapa: so quando a conta tem verificacao em 2 etapas ligada. */
+    totp: z
+      .string()
+      .regex(/^\d{6}$/, 'O código tem 6 dígitos')
+      .optional(),
   })
   .strict();
 export type LoginInput = z.infer<typeof loginSchema>;
@@ -69,6 +74,8 @@ export const tenantAccessClaimsSchema = z.object({
   imp: z
     .object({ adminId: z.string().uuid(), adminNome: z.string(), motivo: z.string() })
     .optional(),
+  /** Lotacao: codigos das secretarias que o usuario enxerga (ausente = todas). */
+  lot: z.array(z.string().max(20)).optional(),
 });
 export type TenantAccessClaims = z.infer<typeof tenantAccessClaimsSchema>;
 
@@ -118,11 +125,23 @@ export interface UsuarioAtual {
   orgao: string;
   /** Admin ou acervo_restrito:read: enxerga documentos de acesso restrito. */
   podeVerRestrito: boolean;
+  /** Admin ou auditoria:read: ve a trilha de auditoria do orgao. */
+  podeAuditar: boolean;
+  /** Admin ou fiscal_contrato:update: aprova plano e da o aceite dos lotes. */
+  podeFiscalizar: boolean;
+  /** O orgao desligou a IA (assistente e conferencia somem). */
+  iaDesligada: boolean;
   /** Tema escolhido pelo usuario (null = nunca escolheu). */
   uiTheme: UiTheme | null;
   /** Cor da marca do orgao (Configuracoes > Aparencia), padrao dos usuarios. */
   corOrgao: string | null;
   mustChangePassword: boolean;
+  /** Verificacao em 2 etapas ligada na conta. */
+  mfaEnabled: boolean;
+  /** O orgao exige 2 etapas para este usuario e ele ainda nao configurou: so Minha conta ate ativar. */
+  mfaPendente: boolean;
+  /** Secretarias da lotacao (vazio = todas). */
+  lotacao: string[];
   /** Telas desligadas pelo superadmin para este orgao. */
   menusDesligados: string[];
   /** Sessao de "entrar como" da equipe JEOS (faixa de aviso no topo). */

@@ -130,6 +130,10 @@ describe('Exclusao de orgao e usuario', () => {
     await saApi('delete', `/tenants/${t}`).send({ confirmacao: T_SAI }).expect(409);
     await saApi('patch', `/tenants/${t}/status`).send({ status: 'inativo', motivo: 'teste de exclusao' }).expect(204);
     await saApi('delete', `/tenants/${t}`).send({ confirmacao: 'outro' }).expect(400);
+    // Com documentos: so depois do aceite da migracao (plano de saida).
+    const semAceite = await saApi('delete', `/tenants/${t}`).send({ confirmacao: T_SAI }).expect(409);
+    expect(semAceite.body.message).toMatch(/aceite da migração/);
+    await sql`UPDATE public.tenants SET migracao_aceita_em = now(), migracao_aceita_por = 'teste' WHERE id = ${t}`;
     await saApi('delete', `/tenants/${t}`).send({ confirmacao: T_SAI }).expect(204);
     const [schema] = await sql`SELECT 1 FROM pg_namespace WHERE nspname = ${'tenant_' + T_SAI}`;
     expect(schema).toBeUndefined();

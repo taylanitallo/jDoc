@@ -1,7 +1,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { Sql } from 'postgres';
 import {
+  CAMPOS_PADRAO_DICIONARIO,
   DOC_MODULES,
+  PADRAO_NOMES_EXPORTACAO,
+  ROTULO_TIPO_CAMPO,
+  type CampoDicionario,
+  type CampoMetadado,
   INVENTARIO_EXPORT_MAX,
   descreverFiltro,
   sistemaDoModulo,
@@ -19,6 +24,7 @@ import { AuditService } from '../audit/audit.module';
 import { requireTenantContext } from '../tenancy/tenant-context';
 import { sistemaAtivo } from '../common/sistema.guard';
 import { gerarCsv, gerarPdfTabela, type ColunaExport } from '../common/exportacao';
+import { filtroLotacao } from '../common/acesso-documento';
 
 const MODULO_ROTULO: Record<string, string> = {
   receitas: 'Receitas',
@@ -53,6 +59,9 @@ interface ItemRow {
   nivel_acesso: InventarioItem['nivelAcesso'] | null;
   paginas: number | null;
   digitalizado: boolean | null;
+  dados_pessoais: InventarioItem['dadosPessoais'] | null;
+  secretaria: string | null;
+  grau_sigilo: string | null;
 }
 
 const isoData = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
@@ -73,6 +82,10 @@ const toItem = (r: ItemRow): InventarioItem => ({
   nivelAcesso: r.nivel_acesso ?? 'publico',
   paginas: r.paginas,
   digitalizado: !!r.digitalizado,
+  dadosPessoais: r.dados_pessoais ?? 'nao',
+  secretaria: r.secretaria,
+  // Sigiloso (LAI) aparece como tal no inventario.
+  ...(r.grau_sigilo ? { nivelAcesso: 'restrito' as const } : {}),
 });
 
 /** Colunas do inventario (as mesmas no PDF e no CSV). */
@@ -87,6 +100,7 @@ const COLUNAS_INVENTARIO: ColunaExport<InventarioItem>[] = [
   { titulo: 'Destinação', peso: 12, valor: (i) => (i.destinacao ? `${i.destinacao === 'eliminacao' ? 'Eliminação' : 'Guarda permanente'}${i.previsaoDestinacao ? ` em ${dataBr(i.previsaoDestinacao)}` : ''}` : null) },
   { titulo: 'Localização', peso: 14, valor: (i) => i.localizacao },
   { titulo: 'Acesso', peso: 6, valor: (i) => (i.nivelAcesso === 'restrito' ? 'Restrito' : 'Público') },
+  { titulo: 'Dados pessoais', peso: 7, valor: (i) => (i.dadosPessoais === 'sensiveis' ? 'Sensíveis' : i.dadosPessoais === 'comuns' ? 'Sim' : 'Não') },
   { titulo: 'Págs.', peso: 5, valor: (i) => i.paginas, alinhar: 'right' },
 ];
 
@@ -119,10 +133,14 @@ export class RelatoriosArquivoService {
     const podeVerRestrito = user.role === 'admin' || user.permissions.includes('acervo_restrito:read');
     const partes = [sql`d.deleted_at IS NULL`, sql`d.module = ANY(${mods.length ? mods : ['__nenhum__']})`];
     if (!podeVerRestrito) partes.push(sql`COALESCE(d.nivel_acesso, 'publico') = 'publico'`);
+    partes.push(filtroLotacao(sql, user));
     if (!f.incluirEliminados) partes.push(sql`d.fase <> 'eliminado'`);
     if (f.fase) partes.push(sql`d.fase = ${f.fase}`);
     if (f.nivelAcesso) partes.push(sql`COALESCE(d.nivel_acesso, 'publico') = ${f.nivelAcesso}`);
     if (f.semClasse) partes.push(sql`d.classificacao_id IS NULL`);
+    if (f.dadosPessoais === 'sim') partes.push(sql`d.dados_pessoais <> 'nao'`);
+    if (f.dadosPessoais === 'sensiveis') partes.push(sql`d.dados_pessoais = 'sensiveis'`);
+    if (f.orgaoId) partes.push(sql`d.orgao_id = ${f.orgaoId}`);
     if (f.classe) partes.push(sql`(c.codigo = ${f.classe} OR c.codigo LIKE ${`${f.classe}.%`})`);
     if (f.tipoId) partes.push(sql`d.document_type_id = ${f.tipoId}`);
     if (f.exercicioDe) partes.push(sql`d.exercicio >= ${f.exercicioDe}`);
@@ -163,7 +181,8 @@ export class RelatoriosArquivoService {
              ) AS identificacao,
              d.document_date, d.exercicio, d.module, d.fase,
              d.data_prevista_transferencia, d.data_prevista_destinacao,
-             cm.path AS localizacao, d.nivel_acesso, d.paginas, d.digitalizado
+             cm.path AS localizacao, d.nivel_acesso, d.paginas, d.digitalizado, d.dados_pessoais, d.grau_sigilo,
+             (SELECT concat_ws(' — ', o.codigo, o.descricao) FROM orgaos o WHERE o.id = d.orgao_id) AS secretaria
       FROM documents d
       LEFT JOIN classificacoes c ON c.id = d.classificacao_id
       LEFT JOIN document_types t ON t.id = d.document_type_id
@@ -312,6 +331,57 @@ export class RelatoriosArquivoService {
     return { arquivo, nome: `quantitativo-acervo-${data}.pdf` };
   }
 
+  /**
+   * Dicionario de metadados do orgao: campos padrao de todo documento + os
+   * campos definidos em cada tipo de documento, e o padrao de nomes da exportacao.
+   */
+  async dicionario(user: TenantAccessClaims, formato: 'pdf' | 'csv', ip: string): Promise<{ arquivo: Buffer; nome: string }> {
+    const sql = this.sql();
+    const ctx = requireTenantContext();
+    const tipos = await sql<Array<{ nome: string; modulo: string | null; campos: unknown }>>`
+      SELECT nome, modulo, campos FROM document_types WHERE ativo ORDER BY nome
+    `;
+    type Linha = CampoDicionario & { origem: string };
+    const padrao: Linha[] = CAMPOS_PADRAO_DICIONARIO.map((c) => ({ ...c, origem: 'Todos os documentos' }));
+    const proprios: Linha[] = tipos.flatMap((t) => {
+      const lista = (typeof t.campos === 'string' ? JSON.parse(t.campos) : t.campos) as CampoMetadado[] | null;
+      return (lista ?? []).map((c) => ({
+        campo: c.chave,
+        rotulo: c.rotulo,
+        descricao: `Campo do tipo ${t.nome}`,
+        formato: ROTULO_TIPO_CAMPO[c.tipo] + (c.opcoes?.length ? `: ${c.opcoes.join(', ')}` : ''),
+        obrigatorio: c.obrigatorio,
+        exemplo: '',
+        origem: t.nome,
+      }));
+    });
+    await this.audit.logTenant({ actorId: user.sub, action: 'dicionario_metadados_exportado', resourceType: 'relatorio', ip, metadata: { formato } });
+    const colunas: ColunaExport<Linha>[] = [
+      { titulo: 'Aplica-se a', peso: 14, valor: (l) => l.origem },
+      { titulo: 'Campo', peso: 12, valor: (l) => l.campo },
+      { titulo: 'Rótulo', peso: 14, valor: (l) => l.rotulo },
+      { titulo: 'Descrição', peso: 28, valor: (l) => l.descricao },
+      { titulo: 'Formato', peso: 14, valor: (l) => l.formato },
+      { titulo: 'Obrigatório', peso: 8, valor: (l) => (l.obrigatorio ? 'Sim' : 'Não'), alinhar: 'center' },
+      { titulo: 'Exemplo', peso: 10, valor: (l) => l.exemplo },
+    ];
+    const data = hojeIso();
+    if (formato === 'csv') return { arquivo: gerarCsv(colunas, [...padrao, ...proprios]), nome: `dicionario-metadados-${data}.csv` };
+    const arquivo = await gerarPdfTabela(
+      {
+        orgao: ctx.nome,
+        titulo: 'Dicionário de Metadados',
+        detalhes: [`Padrão de nomes e pastas na exportação: ${PADRAO_NOMES_EXPORTACAO}`],
+        emitidoPor: await this.nomeUsuario(sql, user.sub),
+      },
+      [
+        { subtitulo: 'Metadados padrão (todos os documentos)', colunas, linhas: padrao },
+        ...(proprios.length ? [{ subtitulo: 'Campos próprios dos tipos de documento', colunas, linhas: proprios }] : []),
+      ],
+    );
+    return { arquivo, nome: `dicionario-metadados-${data}.pdf` };
+  }
+
   /** Inventario topografico: cada local (predio > sala > estante > caixa) com a quantidade de documentos. */
   async topografico(user: TenantAccessClaims, ip: string): Promise<{ arquivo: Buffer; nome: string }> {
     const sql = this.sql();
@@ -325,7 +395,8 @@ export class RelatoriosArquivoService {
       SELECT cm.path, l.tipo, l.descricao, l.ativo,
              (SELECT count(*) FROM documents d
                WHERE d.local_fisico_id = l.id AND d.deleted_at IS NULL AND d.fase <> 'eliminado'
-                 AND (${podeVerRestrito} OR COALESCE(d.nivel_acesso, 'publico') = 'publico'))::int AS documentos
+                 AND (${podeVerRestrito} OR COALESCE(d.nivel_acesso, 'publico') = 'publico')
+                 AND ${filtroLotacao(sql, user)})::int AS documentos
       FROM caminho cm JOIN locais_fisicos l ON l.id = cm.id
       ORDER BY cm.path
     `;

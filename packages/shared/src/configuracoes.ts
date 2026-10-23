@@ -134,6 +134,10 @@ export const usuarioTenantSchema = z.object({
   criadoEm: z.string().optional(),
   permissions: z.array(z.string()).default([]),
   unidadesIds: z.array(z.string().uuid()).default([]),
+  /** Lotacao: codigos das secretarias que enxerga (vazio = todas). */
+  orgaosCodigos: z.array(z.string().max(20)).default([]),
+  /** Verificacao em 2 etapas ligada. */
+  mfaEnabled: z.boolean().optional(),
   cpf: z.string().nullable().optional(),
   /** null = permissoes individuais ("Personalizado"). */
   perfilId: z.string().uuid().nullable().optional(),
@@ -157,6 +161,7 @@ export const usuarioCreateSchema = z.object({
   senha: z.string().min(6).max(128),
   permissions: z.array(z.string()).default([]),
   unidadesIds: z.array(z.string().uuid()).default([]),
+  orgaosCodigos: z.array(z.string().trim().min(1).max(20)).max(200).default([]),
   cpf: cpfOpcional,
   /** Com perfil, papel e permissoes vem dele (role/permissions sao ignorados). */
   perfilId: z.string().uuid().nullable().optional(),
@@ -169,6 +174,7 @@ export const usuarioUpdateSchema = z.object({
   ativo: z.boolean(),
   permissions: z.array(z.string()).default([]),
   unidadesIds: z.array(z.string().uuid()).default([]),
+  orgaosCodigos: z.array(z.string().trim().min(1).max(20)).max(200).default([]),
   cpf: cpfOpcional,
   perfilId: z.string().uuid().nullable().optional(),
 });
@@ -219,3 +225,19 @@ export const listQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(1000).default(20),
 });
 export type ListQuery = z.infer<typeof listQuerySchema>;
+
+// ---- Seguranca do orgao ----
+
+export const segurancaOrgaoSchema = z
+  .object({
+    /** Administradores so usam o sistema com verificacao em 2 etapas ligada. */
+    mfaObrigatorioAdmin: z.boolean(),
+  })
+  .strict();
+export type SegurancaOrgaoInput = z.infer<typeof segurancaOrgaoSchema>;
+
+export interface SegurancaOrgao {
+  mfaObrigatorioAdmin: boolean;
+  administradores: number;
+  administradoresSemMfa: number;
+}

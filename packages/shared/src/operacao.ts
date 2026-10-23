@@ -33,6 +33,24 @@ export const JOBS = {
     agenda: 'Sob demanda',
     manual: false,
   },
+  copia_segregada: {
+    nome: 'Cópia segregada',
+    descricao: 'Copia os arquivos (PDFs) e os backups do banco de cada órgão para o destino separado, só o que ainda não foi copiado.',
+    agenda: 'Todo dia às 02h30',
+    manual: true,
+  },
+  teste_restauracao: {
+    nome: 'Teste de restauração',
+    descricao: 'Restaura o último backup de um órgão num banco temporário, confere documentos, auditoria e arquivos e descarta. Um órgão por dia, em rodízio.',
+    agenda: 'Todo dia às 04h30',
+    manual: true,
+  },
+  exportacao: {
+    nome: 'Exportação integral',
+    descricao: 'Gera os pacotes ZIP com todos os documentos, metadados e a trilha de auditoria de um órgão.',
+    agenda: 'Sob demanda',
+    manual: false,
+  },
 } as const;
 export type JobNome = keyof typeof JOBS;
 export const JOBS_MANUAIS = (Object.keys(JOBS) as JobNome[]).filter((j) => JOBS[j].manual);

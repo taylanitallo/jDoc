@@ -77,8 +77,9 @@ export class DocumentsController {
   search(
     @CurrentUser() user: TenantAccessClaims,
     @Query(new ZodValidationPipe(searchDocumentsSchema)) q: SearchDocumentsQuery,
+    @Req() req: Request,
   ): Promise<DocumentPage> {
-    return this.docs.search(user, q);
+    return this.docs.search(user, q, req.ip ?? '');
   }
 
   @Permissions()
@@ -211,8 +212,9 @@ export class DocumentsController {
   get(
     @CurrentUser() user: TenantAccessClaims,
     @Param('id', new ZodValidationPipe(uuidSchema)) id: string,
+    @Req() req: Request,
   ): Promise<DocumentView> {
-    return this.docs.get(user, id);
+    return this.docs.visualizar(user, id, req.ip ?? '');
   }
 
   @Permissions()
@@ -313,9 +315,10 @@ export class DocumentsController {
   async bulkDownload(
     @CurrentUser() user: TenantAccessClaims,
     @Body(new ZodValidationPipe(bulkIdsSchema)) body: { ids: string[] },
+    @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    const zip = await this.docs.bulkDownloadZip(user, body.ids);
+    const zip = await this.docs.bulkDownloadZip(user, body.ids, req.ip ?? '');
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', 'attachment; filename="documentos.zip"');
     res.send(zip);

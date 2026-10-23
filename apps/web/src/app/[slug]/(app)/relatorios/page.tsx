@@ -306,6 +306,13 @@ export default function RelatoriosPage() {
                   <option value="restrito">Somente restrito</option>
                 </SelectMenu>
               </Field>
+              <Field label="Dados pessoais (LGPD)" htmlFor="r-lgpd">
+                <SelectMenu id="r-lgpd" className={inputCls} value={filtro.dadosPessoais ?? ''} onChange={(e) => alterar({ dadosPessoais: (e.target.value || undefined) as InventarioFiltro['dadosPessoais'] })}>
+                  <option value="">Todos</option>
+                  <option value="sim">Com dados pessoais</option>
+                  <option value="sensiveis">Com dados sensíveis</option>
+                </SelectMenu>
+              </Field>
               <Field label="Exercício — de" htmlFor="r-de">
                 <Input id="r-de" type="number" inputMode="numeric" placeholder="ex.: 2010" value={filtro.exercicioDe ?? ''} onChange={(e) => alterar({ exercicioDe: e.target.value ? Number(e.target.value) : undefined })} />
               </Field>
@@ -367,6 +374,10 @@ export default function RelatoriosPage() {
                           {i.tipo ?? MODULOS.find((m) => m.id === i.modulo)?.label}
                           {i.exercicio ? ` · Exercício ${i.exercicio}` : ''}
                           {i.nivelAcesso === 'restrito' && <span className="ml-1 font-semibold text-danger-600">· Restrito</span>}
+                          {i.dadosPessoais !== 'nao' && (
+                            <span className="ml-1 font-semibold text-warning-600">· {i.dadosPessoais === 'sensiveis' ? 'Dados sensíveis' : 'Dados pessoais'}</span>
+                          )}
+                          {i.secretaria && <span className="ml-1">· {i.secretaria}</span>}
                         </p>
                       </td>
                       <td className="whitespace-nowrap px-3 py-3 text-ink-700">{dataBr(i.dataDocumento)}</td>

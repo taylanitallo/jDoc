@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   Param,
@@ -23,6 +24,8 @@ import {
   loginSchema,
   minhaContaSchema,
   preferenciasSchema,
+  twoFaConfirmSchema,
+  type TwoFaConfirmInput,
   type ChangePasswordInput,
   type LoginInput,
   type MinhaContaInput,
@@ -41,6 +44,15 @@ import { Throttle } from '@nestjs/throttler';
 
 const REFRESH_COOKIE = 'jdoc_rt';
 const validarLinkSchema = z.object({ token: z.string().regex(/^[0-9a-f]{64}$/) }).strict();
+const desligarMfaSchema = z
+  .object({ senha: z.string().min(1).max(200), totp: z.string().regex(/^\d{6}$/, 'O código tem 6 dígitos') })
+  .strict();
+
+interface RespostaLogin {
+  accessToken: string;
+  mustChangePassword: boolean;
+  mfaPendente: boolean;
+}
 
 function cookieOptions(slug: string): CookieOptions {
   return {
@@ -70,10 +82,10 @@ export class AuthController {
     @Body(new ZodValidationPipe(loginSchema)) body: LoginInput,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ accessToken: string; mustChangePassword: boolean }> {
+  ): Promise<RespostaLogin> {
     const result = await this.auth.login(body, req.ip ?? '', req.headers['user-agent'] ?? '');
     res.cookie(REFRESH_COOKIE, result.refreshToken, cookieOptions(slug));
-    return { accessToken: result.accessToken, mustChangePassword: result.mustChangePassword };
+    return { accessToken: result.accessToken, mustChangePassword: result.mustChangePassword, mfaPendente: result.mfaPendente };
   }
 
   @Public()
@@ -83,12 +95,12 @@ export class AuthController {
     @Param('slug') slug: string,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ accessToken: string; mustChangePassword: boolean }> {
+  ): Promise<RespostaLogin> {
     const token = (req.cookies as Record<string, string> | undefined)?.[REFRESH_COOKIE];
     if (!token) throw new UnauthorizedException('Sessao invalida');
     const result = await this.auth.refresh(token, req.ip ?? '', req.headers['user-agent'] ?? '');
     res.cookie(REFRESH_COOKIE, result.refreshToken, cookieOptions(slug));
-    return { accessToken: result.accessToken, mustChangePassword: result.mustChangePassword };
+    return { accessToken: result.accessToken, mustChangePassword: result.mustChangePassword, mfaPendente: result.mfaPendente };
   }
 
   @Permissions()
@@ -141,6 +153,42 @@ export class AuthController {
     @Req() req: Request,
   ): Promise<void> {
     await this.auth.trocarSenha(user.sub, body, req.ip ?? '');
+  }
+
+  // ---- Verificacao em 2 etapas (aplicativo autenticador) ----
+
+  @Permissions()
+  @Post('mfa/setup')
+  @HttpCode(200)
+  setupMfa(@CurrentUser() user: TenantAccessClaims): Promise<{ secret: string; otpauthUrl: string }> {
+    if (user.imp) throw new ForbiddenException('Na sessão de "entrar como" não é possível configurar 2 etapas');
+    return this.auth.setup2FA(user.sub);
+  }
+
+  @Permissions()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('mfa/enable')
+  @HttpCode(204)
+  async ativarMfa(
+    @CurrentUser() user: TenantAccessClaims,
+    @Body(new ZodValidationPipe(twoFaConfirmSchema)) body: TwoFaConfirmInput,
+    @Req() req: Request,
+  ): Promise<void> {
+    if (user.imp) throw new ForbiddenException('Na sessão de "entrar como" não é possível configurar 2 etapas');
+    await this.auth.confirm2FA(user.sub, body.totp, req.ip ?? '');
+  }
+
+  @Permissions()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('mfa/disable')
+  @HttpCode(204)
+  async desligarMfa(
+    @CurrentUser() user: TenantAccessClaims,
+    @Body(new ZodValidationPipe(desligarMfaSchema)) body: { senha: string; totp: string },
+    @Req() req: Request,
+  ): Promise<void> {
+    if (user.imp) throw new ForbiddenException('Na sessão de "entrar como" não é possível configurar 2 etapas');
+    await this.auth.desligar2FA(user.sub, body.senha, body.totp, req.ip ?? '');
   }
 
   /** "Esqueci a senha": CPF ou e-mail; resposta sempre igual. */

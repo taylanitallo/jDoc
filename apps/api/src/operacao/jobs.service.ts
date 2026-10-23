@@ -24,6 +24,9 @@ const AGENDA: Agenda[] = [
   { job: 'limpeza', hora: '03:30' },
   // Correcoes criticas no horario de menor uso (meio-dia).
   { job: 'correcoes', hora: '12:00' },
+  // Continuidade: copia segregada de madrugada; teste de restauracao depois dela.
+  { job: 'copia_segregada', hora: '02:30' },
+  { job: 'teste_restauracao', hora: '04:30' },
 ];
 
 const TICK_MS = 60_000;

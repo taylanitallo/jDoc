@@ -192,3 +192,54 @@ export interface DocumentTypeLookup {
   classificacaoId: string | null;
   nivelAcessoPadrao: 'publico' | 'restrito';
 }
+
+// ---------------- Dicionario de metadados ----------------
+
+export interface CampoDicionario {
+  campo: string;
+  rotulo: string;
+  descricao: string;
+  formato: string;
+  obrigatorio: boolean;
+  exemplo: string;
+}
+
+/**
+ * Metadados padrao de todo documento (e-ARQ Brasil / Decreto 10.278/2020).
+ * O dicionario do orgao = esta lista + os campos de cada tipo de documento.
+ */
+export const CAMPOS_PADRAO_DICIONARIO: CampoDicionario[] = [
+  { campo: 'identificador', rotulo: 'Identificador', descricao: 'Código único do documento no sistema', formato: 'UUID', obrigatorio: true, exemplo: '3f2c…9a1b' },
+  { campo: 'modulo', rotulo: 'Módulo', descricao: 'Área do sistema onde o documento está (Acervo, Despesas, Receitas...)', formato: 'Lista', obrigatorio: true, exemplo: 'Acervo' },
+  { campo: 'secretaria', rotulo: 'Secretaria', descricao: 'Secretaria/órgão produtor (código e nome)', formato: 'Texto', obrigatorio: false, exemplo: '06 — Secretaria de Educação' },
+  { campo: 'tipo_documental', rotulo: 'Tipo documental', descricao: 'Espécie do documento (lei, decreto, contrato, processo...)', formato: 'Lista', obrigatorio: false, exemplo: 'Decreto' },
+  { campo: 'numero', rotulo: 'Número', descricao: 'Número do documento ou do processo', formato: 'Texto (até 60)', obrigatorio: false, exemplo: '123/2026' },
+  { campo: 'assunto', rotulo: 'Assunto', descricao: 'Resumo do conteúdo (ementa, objeto)', formato: 'Texto (até 500)', obrigatorio: false, exemplo: 'Nomeação de servidores' },
+  { campo: 'interessado', rotulo: 'Interessado', descricao: 'Pessoa, empresa ou setor a quem o documento se refere', formato: 'Texto (até 300)', obrigatorio: false, exemplo: 'Maria da Silva' },
+  { campo: 'palavras_chave', rotulo: 'Palavras-chave', descricao: 'Termos para pesquisa, separados por vírgula', formato: 'Lista de textos (até 30)', obrigatorio: false, exemplo: 'nomeação, educação' },
+  { campo: 'data_documento', rotulo: 'Data do documento', descricao: 'Data de produção', formato: 'Data (DD/MM/AAAA)', obrigatorio: true, exemplo: '10/05/2026' },
+  { campo: 'exercicio', rotulo: 'Exercício', descricao: 'Ano a que o documento se refere', formato: 'Número (AAAA)', obrigatorio: true, exemplo: '2026' },
+  { campo: 'descricao', rotulo: 'Descrição', descricao: 'Descrição livre do documento', formato: 'Texto (até 2000)', obrigatorio: false, exemplo: 'Decreto de nomeação' },
+  { campo: 'classificacao', rotulo: 'Classificação', descricao: 'Classe do Plano de Classificação (CONARQ)', formato: 'Código + descrição', obrigatorio: false, exemplo: '022.1 — Admissão' },
+  { campo: 'fase', rotulo: 'Fase arquivística', descricao: 'Corrente, intermediária, permanente ou eliminado', formato: 'Lista', obrigatorio: true, exemplo: 'Corrente' },
+  { campo: 'prazos', rotulo: 'Prazos de guarda', descricao: 'Datas previstas de transferência e destinação (TTD)', formato: 'Datas', obrigatorio: false, exemplo: '31/12/2031' },
+  { campo: 'nivel_acesso', rotulo: 'Nível de acesso', descricao: 'Público, restrito ou sigiloso (classificado pela LAI)', formato: 'Lista', obrigatorio: true, exemplo: 'Restrito' },
+  { campo: 'dados_pessoais', rotulo: 'Dados pessoais (LGPD)', descricao: 'Se o documento contém dados pessoais comuns ou sensíveis', formato: 'Lista', obrigatorio: true, exemplo: 'Dados pessoais' },
+  { campo: 'hash_sha256', rotulo: 'Hash SHA-256', descricao: 'Resumo criptográfico do arquivo, para provar integridade', formato: '64 caracteres hexadecimais', obrigatorio: true, exemplo: 'e3b0c442…b855' },
+  { campo: 'paginas', rotulo: 'Páginas', descricao: 'Quantidade de páginas do PDF', formato: 'Número', obrigatorio: false, exemplo: '12' },
+  { campo: 'digitalizacao', rotulo: 'Digitalização', descricao: 'Responsável, data e local da digitalização (Decreto 10.278/2020)', formato: 'Texto + data', obrigatorio: false, exemplo: 'João — 20/05/2026 — Arquivo Central' },
+  { campo: 'local_fisico', rotulo: 'Localização do original', descricao: 'Caixa/estante onde está o papel', formato: 'Código do local', obrigatorio: false, exemplo: 'PRED1/SALA2/EST3/CX45' },
+  { campo: 'nome_arquivo', rotulo: 'Nome do arquivo', descricao: 'Nome original do PDF enviado', formato: 'Texto', obrigatorio: true, exemplo: 'decreto-123-2026.pdf' },
+];
+
+/** Padrao de nomes e pastas usado na exportacao integral do acervo. */
+export const PADRAO_NOMES_EXPORTACAO =
+  '<secretaria>/<exercício>/<módulo>/<tipo documental>/<data AAAA-MM-DD>_<número ou identificador>.pdf — sem acentos, espaços viram hífen';
+
+export const ROTULO_TIPO_CAMPO: Record<TipoCampo, string> = {
+  texto: 'Texto',
+  texto_longo: 'Texto longo',
+  numero: 'Número',
+  data: 'Data',
+  selecao: 'Lista',
+};
