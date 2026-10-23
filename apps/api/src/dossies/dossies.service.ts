@@ -476,7 +476,7 @@ export class DossiesService {
       doc.font('Helvetica').fontSize(8);
       for (const e of [...v.eventos].reverse()) {
         if (doc.y > doc.page.height - 70) doc.addPage();
-        doc.text(`${new Date(e.data).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} — ${EVENTO_DOSSIE_LABEL[e.tipo]} — ${e.descricao}${e.usuario ? ` (${e.usuario})` : ''}`, 50);
+        doc.text(`${new Date(e.data).toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' })} — ${EVENTO_DOSSIE_LABEL[e.tipo]} — ${e.descricao}${e.usuario ? ` (${e.usuario})` : ''}`, 50);
       }
       doc.end();
     });

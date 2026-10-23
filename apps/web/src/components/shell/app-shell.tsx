@@ -1,19 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useTheme } from 'next-themes';
-import { LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun, X, type LucideIcon } from 'lucide-react';
+import { LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun, UserRound, X, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
+import { DropdownMenu } from '@/components/ui/dropdown-menu';
 
 export interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  /** Selo de contagem (ex.: novidades nao lidas). */
+  badge?: number;
 }
 export interface NavGroup {
   title: string | null;
@@ -52,6 +55,7 @@ export function AppShell({
   banner,
   switcher,
   corAtiva = 'bg-brand-600',
+  contaHref,
   children,
 }: {
   appName: string;
@@ -67,19 +71,22 @@ export function AppShell({
   switcher?: (compacta: boolean) => ReactNode;
   /** Fundo do item ativo do menu (cor do modulo em uso). */
   corAtiva?: string;
+  /** "Minha conta" no menu do avatar. */
+  contaHref?: string;
   children: ReactNode;
 }) {
-  const [recolhida, setRecolhida] = useState(false);
+  // A casca so monta no cliente (depois do bootstrap da sessao), entao da para
+  // ler o localStorage ja no primeiro render: a sidebar nao pisca expandida.
+  const [recolhida, setRecolhida] = useState(() => {
+    try {
+      return localStorage.getItem(CHAVE_RECOLHIDA) === '1';
+    } catch {
+      return false; // localStorage indisponivel (modo privado): segue expandida
+    }
+  });
   const [drawerAberto, setDrawerAberto] = useState(false);
   const pathname = usePathname();
 
-  useEffect(() => {
-    try {
-      setRecolhida(localStorage.getItem(CHAVE_RECOLHIDA) === '1');
-    } catch {
-      // localStorage indisponivel (modo privado): segue expandida
-    }
-  }, []);
   // Troca de rota fecha o drawer do celular.
   useEffect(() => setDrawerAberto(false), [pathname]);
 
@@ -104,7 +111,7 @@ export function AppShell({
             aria-hidden
           />
         )}
-        <Sidebar appName={appName} subtitle={subtitle} icon={icon} groups={groups} user={user} onLogout={onLogout} switcher={switcher} corAtiva={corAtiva} />
+        <Sidebar appName={appName} subtitle={subtitle} icon={icon} groups={groups} user={user} onLogout={onLogout} switcher={switcher} corAtiva={corAtiva} contaHref={contaHref} />
         <div
           data-print-reset
           className={cn('flex min-h-screen flex-col transition-[padding] duration-200', recolhida ? 'md:pl-[76px]' : 'md:pl-[264px]')}
@@ -129,6 +136,7 @@ function Sidebar({
   onLogout,
   switcher,
   corAtiva,
+  contaHref,
 }: {
   appName: string;
   subtitle: string;
@@ -138,9 +146,12 @@ function Sidebar({
   onLogout: () => Promise<void> | void;
   switcher?: (compacta: boolean) => ReactNode;
   corAtiva: string;
+  contaHref?: string;
 }) {
   const { recolhida, drawerAberto, setDrawerAberto } = useShell();
   const pathname = usePathname();
+  const router = useRouter();
+  const { resolvedTheme, setTheme } = useTheme();
   const [confirmarSaida, setConfirmarSaida] = useState(false);
   const [saindo, setSaindo] = useState(false);
   // No celular (drawer) sempre expandida.
@@ -150,7 +161,7 @@ function Sidebar({
     <>
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex flex-col bg-[#0f172a] text-white transition-[transform,width] duration-200',
+          'fixed inset-y-0 left-0 z-50 flex flex-col bg-[var(--sidebar-bg,#0f172a)] text-white transition-[transform,width] duration-200',
           'w-[86%] max-w-[300px] md:max-w-none',
           drawerAberto ? 'translate-x-0 shadow-xl' : '-translate-x-full md:translate-x-0',
           compacta ? 'md:w-[76px]' : 'md:w-[264px]',
@@ -193,7 +204,7 @@ function Sidebar({
                   <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white/35">{g.title}</p>
                 ))}
               <ul className="space-y-1">
-                {g.items.map(({ href, label, icon: Icon }) => {
+                {g.items.map(({ href, label, icon: Icon, badge }) => {
                   const ativo = pathname === href || pathname.startsWith(`${href}/`);
                   return (
                     <li key={href}>
@@ -207,8 +218,16 @@ function Sidebar({
                           ativo ? cn(corAtiva, 'text-white shadow-sm') : 'text-white/65 hover:bg-white/10 hover:text-white',
                         )}
                       >
-                        <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
+                        <span className="relative">
+                          <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
+                          {!!badge && compacta && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-danger-500" aria-hidden />}
+                        </span>
                         {!compacta && <span className="truncate">{label}</span>}
+                        {!!badge && !compacta && (
+                          <span className="ml-auto rounded-full bg-danger-500 px-1.5 text-[11px] font-bold tabular-nums text-white" aria-label={`${badge} não lida(s)`}>
+                            {badge}
+                          </span>
+                        )}
                       </Link>
                     </li>
                   );
@@ -221,7 +240,44 @@ function Sidebar({
         {/* Rodape: usuario, tema e sair */}
         {/* Uma linha so (avatar, nome, tema, sair): nao rouba altura do menu em telas baixas. */}
         <div className={cn('shrink-0 border-t border-white/10 p-3', compacta ? 'flex flex-col items-center gap-1' : 'flex items-center gap-2')}>
-          {!compacta && user && (
+          {user && contaHref && (
+            <DropdownMenu
+              side="top"
+              align="start"
+              className={cn(!compacta && 'min-w-0 flex-1')}
+              items={[
+                { label: 'Minha conta', icon: UserRound, onSelect: () => router.push(contaHref) },
+                {
+                  label: resolvedTheme === 'dark' ? 'Tema claro' : 'Tema escuro',
+                  icon: resolvedTheme === 'dark' ? Sun : Moon,
+                  onSelect: () => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark'),
+                },
+                { label: 'Sair da conta', icon: LogOut, danger: true, onSelect: () => setConfirmarSaida(true) },
+              ]}
+              trigger={({ aberto, alternar }) => (
+                <button
+                  type="button"
+                  onClick={alternar}
+                  aria-haspopup="menu"
+                  aria-expanded={aberto}
+                  title={compacta ? user.nome : undefined}
+                  className={cn(
+                    'flex min-w-0 items-center gap-2.5 rounded-[10px] text-left transition hover:bg-white/10',
+                    compacta ? 'h-10 w-10 justify-center' : 'w-full p-1',
+                  )}
+                >
+                  <Avatar nome={user.nome} tone="dark" />
+                  {!compacta && (
+                    <span className="min-w-0">
+                      <span className="block truncate text-[13px] font-semibold">{user.nome}</span>
+                      <span className="block truncate text-[11px] text-white/45">{user.papel}</span>
+                    </span>
+                  )}
+                </button>
+              )}
+            />
+          )}
+          {!compacta && user && !contaHref && (
             <div className="flex min-w-0 flex-1 items-center gap-2.5 pl-1">
               <Avatar nome={user.nome} tone="dark" />
               <div className="min-w-0">

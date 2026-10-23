@@ -12,9 +12,10 @@ import {
 } from '@jdoc/shared';
 import { api } from '@/lib/api';
 import { inputCls, labelCls, SelectMenu } from '@/components/ui';
+import { fmtDate } from '@/lib/format';
 
 const fmt = (iso: string | null): string =>
-  iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR') : '—';
+  fmtDate(iso, '—');
 
 /**
  * Campos de gestao arquivistica nos modais de documento: classe do Plano de

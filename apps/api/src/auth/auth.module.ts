@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ImpersonacaoInterceptor } from './impersonacao.interceptor';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
+import { RecuperacaoSenhaService } from './recuperacao-senha.service';
 import { AuthController } from './auth.controller';
 import { CrossTenantLoginController } from './cross-tenant-login.controller';
 import { PasswordService } from './password.service';
@@ -14,13 +17,16 @@ import { PermissionsGuard } from './permissions.guard';
   controllers: [AuthController, CrossTenantLoginController],
   providers: [
     AuthService,
+    RecuperacaoSenhaService,
     PasswordService,
     BruteForceService,
     RefreshTokenService,
     TenantJwtGuard,
     PermissionsGuard,
+    { provide: APP_INTERCEPTOR, useClass: ImpersonacaoInterceptor },
   ],
   exports: [
+    AuthService,
     PasswordService,
     BruteForceService,
     RefreshTokenService,

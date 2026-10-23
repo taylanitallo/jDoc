@@ -18,9 +18,10 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { Badge, Button, Field, Input, Modal, SelectMenu, Textarea, inputCls, type Tone } from '@/components/ui';
 import { useToast } from '@/components/toast';
+import { fmtDate } from '@/lib/format';
 
 export const GRAU_TOM: Record<GrauSigilo, Tone> = { reservado: 'warning', secreto: 'orange', ultrassecreto: 'danger', pessoal: 'violet' };
-const br = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR');
+const br = (iso: string) => fmtDate(iso);
 
 /**
  * Bloco "Sigilo (LAI)" na edicao do documento: mostra o termo vigente ou permite

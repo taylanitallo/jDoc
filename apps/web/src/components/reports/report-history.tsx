@@ -7,6 +7,7 @@ import { ApiError, api } from '@/lib/api';
 import { Badge, Modal, btnGhost, cardCls, formatBytes } from '@/components/ui';
 import { EmptyState } from '@/components/empty-state';
 import { useToast } from '@/components/toast';
+import { fmtDate, fmtDateTime, fmtTime } from '@/lib/format';
 
 interface ReportJobView {
   id: string;
@@ -311,9 +312,9 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
                   <td className="p-3 tabular-nums text-ink-500">
                     {job.fileSize != null ? formatBytes(job.fileSize) : '—'}
                   </td>
-                  <td className="p-3 text-ink-500" title={created.toLocaleString('pt-BR')}>
-                    <div className="text-ink-800">{created.toLocaleDateString('pt-BR')}</div>
-                    <div className="text-xs">{created.toLocaleTimeString('pt-BR')}</div>
+                  <td className="p-3 text-ink-500" title={fmtDateTime(created)}>
+                    <div className="text-ink-800">{fmtDate(created)}</div>
+                    <div className="text-xs">{fmtTime(created)}</div>
                   </td>
                   <td className="p-3">
                     <div className="flex items-center justify-end gap-2">
@@ -405,7 +406,7 @@ export function ReportHistory({ slug, tipo, reload }: ReportHistoryProps) {
                   {job.fileSize != null ? formatBytes(job.fileSize) : '—'}
                 </dd>
                 <dt className="text-ink-500">Criado em</dt>
-                <dd className="text-right text-ink-800">{created.toLocaleString('pt-BR')}</dd>
+                <dd className="text-right text-ink-800">{fmtDateTime(created)}</dd>
               </dl>
               {job.status === 'erro' && job.erroMensagem && (
                 <p className="mt-2 text-xs text-danger-600">{job.erroMensagem}</p>

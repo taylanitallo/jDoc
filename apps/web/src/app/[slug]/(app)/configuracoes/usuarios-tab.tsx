@@ -4,45 +4,19 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
-import type { UnidadeOrcamentaria, UsuarioTenant } from '@jdoc/shared';
-import { MODULES, MODULE_ACTIONS, MODULOS_RBAC_POR_SISTEMA } from '@jdoc/shared';
+import type { PerfilOrgaoResumo, UnidadeOrcamentaria, UsuarioTenant } from '@jdoc/shared';
+import { fmtCpf } from '@/lib/format';
+import { PermissionMatrix } from '@/components/platform/permission-matrix';
 import { useBranding } from '@/components/branding';
 import { useToast } from '@/components/toast';
 import { Pencil, Key, Plus, Trash2, Users as UsersIcon } from 'lucide-react';
 import { EmptyState } from '@/components/empty-state';
-import { Avatar, Badge, Modal, btnGhost, btnPrimary, cardCls, inputCls, labelCls, type Tone, SelectMenu } from '@/components/ui';
+import { Avatar, Badge, Modal, btnGhost, btnPrimary, cardCls, inputCls, labelCls, type Tone, SelectMenu, Input } from '@/components/ui';
 
 const PERFIL_TOM: Record<string, Tone> = { admin: 'violet', operador: 'info', consulta: 'neutral' };
 const PERFIL_ROTULO: Record<string, string> = { admin: 'Administrador', operador: 'Operador', consulta: 'Consulta' };
 
-const MODULE_LABELS: Record<string, string> = {
-  receitas: 'Receitas',
-  despesas: 'Despesas',
-  balancete: 'Balancete',
-  extrato: 'Extrato',
-  outros: 'Outros',
-  configuracoes: 'Configurações',
-  prestacao_contas: 'Prestação de contas',
-  acervo: 'Acervo',
-  acervo_restrito: 'Acervo — docs restritos (só Ler)',
-  classificacao: 'Plano de Classificação',
-  temporalidade: 'Temporalidade',
-  arquivo_fisico: 'Arquivo físico',
-  integridade: 'Integridade (preservação digital)',
-  atendimento: 'Atendimento e consultas',
-  sigilo: 'Sigilo (LAI)',
-  dossies: 'Dossiês e processos',
-  descricao: 'Descrição arquivística (NOBRADE)',
-  legislacao: 'Legislação (texto compilado)',
-};
 
-const ACTION_LABELS: Record<string, string> = {
-  read: 'Ler',
-  create: 'Criar',
-  update: 'Editar',
-  delete: 'Excluir',
-  export: 'Exportar',
-};
 
 export function UsuariosTab() {
   const { slug } = useParams<{ slug: string }>();
@@ -206,11 +180,15 @@ function UsuarioModal({
   onDone: () => void;
 }) {
   const { modulos } = useBranding();
-  // Modulos RBAC de sistema nao contratado nao aparecem (nao faz sentido conceder).
-  const doOutroSistema = new Set(
-    (['financeiro', 'arquivo'] as const).filter((s) => !modulos.includes(s)).flatMap((s) => MODULOS_RBAC_POR_SISTEMA[s]),
-  );
-  const modulosVisiveis = MODULES.filter((m) => !doOutroSistema.has(m));
+  // Perfis definidos pela equipe JEOS; "Personalizado" = permissoes marcadas uma a uma.
+  const { data: perfis } = useQuery({
+    queryKey: ['configuracoes', 'perfis'],
+    queryFn: () => api<PerfilOrgaoResumo[]>(`/t/${slug}/configuracoes/perfis`),
+  });
+  const [perfilId, setPerfilId] = useState<string | null>(usuario ? (usuario.perfilId ?? '') : null);
+  const perfilEscolhido = perfilId === null ? (perfis?.find((p) => p.papel === 'operador') ?? perfis?.[0]) : perfis?.find((p) => p.id === perfilId);
+  const personalizado = perfilId === '';
+  const [cpf, setCpf] = useState(fmtCpf(usuario?.cpf));
   const [nome, setNome] = useState(usuario?.nome ?? '');
   const [email, setEmail] = useState(usuario?.email ?? '');
   const [role, setRole] = useState<'admin' | 'operador' | 'consulta'>(usuario?.role ?? 'operador');
@@ -220,25 +198,26 @@ function UsuarioModal({
   const [unidadesIds, setUnidadesIds] = useState<string[]>(usuario?.unidadesIds ?? []);
   const [error, setError] = useState<string | null>(null);
 
-  const togglePermission = (key: string) => {
-    setPermissions((cur) => (cur.includes(key) ? cur.filter((p) => p !== key) : [...cur, key]));
-  };
-
   const toggleUnidade = (id: string) => {
     setUnidadesIds((cur) => (cur.includes(id) ? cur.filter((u) => u !== id) : [...cur, id]));
   };
 
   const save = useMutation({
     mutationFn: () => {
+      const vinculo = {
+        cpf: cpf.replace(/\D/g, '') || null,
+        perfilId: personalizado ? null : (perfilEscolhido?.id ?? null),
+        role: personalizado ? role : (perfilEscolhido?.papel ?? role),
+      };
       if (usuario) {
         return api(`/t/${slug}/configuracoes/usuarios/${usuario.id}`, {
           method: 'PATCH',
-          body: { nome, role, ativo, permissions, unidadesIds },
+          body: { nome, ativo, permissions, unidadesIds, ...vinculo },
         });
       }
       return api(`/t/${slug}/configuracoes/usuarios`, {
         method: 'POST',
-        body: { email, nome, role, senha, permissions, unidadesIds },
+        body: { email, nome, senha, permissions, unidadesIds, ...vinculo },
       });
     },
     onSuccess: () => {
@@ -275,25 +254,47 @@ function UsuarioModal({
             />
           </div>
           <div>
-            <label className={labelCls} htmlFor="usuario-role">Perfil<span className="ml-0.5 text-danger-600">*</span></label>
+            <label className={labelCls} htmlFor="usuario-cpf">CPF</label>
+            <Input id="usuario-cpf" inputMode="numeric" value={cpf} onChange={(e) => setCpf(fmtCpf(e.target.value))} placeholder="000.000.000-00" />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="usuario-perfil">Perfil<span className="ml-0.5 text-danger-600">*</span></label>
             <SelectMenu
-              id="usuario-role"
+              id="usuario-perfil"
               className={inputCls}
-              value={role}
-              onChange={(e) => setRole(e.target.value as 'admin' | 'operador' | 'consulta')}
+              value={personalizado ? '' : (perfilEscolhido?.id ?? '')}
+              onChange={(e) => setPerfilId(e.target.value)}
             >
-              <option value="admin">Administrador</option>
-              <option value="operador">Operador</option>
-              <option value="consulta">Consulta</option>
+              {(perfis ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                </option>
+              ))}
+              <option value="">Personalizado</option>
             </SelectMenu>
           </div>
+          {personalizado && (
+            <div>
+              <label className={labelCls} htmlFor="usuario-role">Papel<span className="ml-0.5 text-danger-600">*</span></label>
+              <SelectMenu
+                id="usuario-role"
+                className={inputCls}
+                value={role}
+                onChange={(e) => setRole(e.target.value as 'admin' | 'operador' | 'consulta')}
+              >
+                <option value="admin">Administrador</option>
+                <option value="operador">Operador</option>
+                <option value="consulta">Consulta</option>
+              </SelectMenu>
+            </div>
+          )}
           {!usuario && (
             <div>
               <label className={labelCls} htmlFor="usuario-senha">Senha provisória<span className="ml-0.5 text-danger-600">*</span></label>
-              <input
+              <Input
                 id="usuario-senha"
                 type="password"
-                className={inputCls}
+                
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
                 placeholder="mínimo 6 caracteres"
@@ -309,44 +310,23 @@ function UsuarioModal({
           </label>
         )}
 
-        {role === 'admin' ? (
+        {!personalizado && perfilEscolhido ? (
+          <div>
+            <p className={labelCls}>Permissões do perfil {perfilEscolhido.nome}</p>
+            {perfilEscolhido.papel === 'admin' ? (
+              <p className="rounded-[10px] bg-ink-50 px-3 py-2 text-xs text-ink-500">Administradores têm acesso total ao órgão.</p>
+            ) : (
+              <PermissionMatrix value={perfilEscolhido.permissoes} sistemas={modulos} readOnly />
+            )}
+          </div>
+        ) : role === 'admin' ? (
           <p className="rounded-[10px] bg-surface px-3 py-2 text-xs text-ink-500">
-            Administradores têm acesso total ao tenant — não é preciso marcar permissões.
+            Administradores têm acesso total ao órgão — não é preciso marcar permissões.
           </p>
         ) : (
           <div>
             <p className={labelCls}>Permissões por módulo</p>
-            <div className={`${cardCls} overflow-x-auto`}>
-              <table className="w-full text-left text-xs">
-                <thead className="bg-ink-50/60">
-                  <tr className="border-b border-ink-200 text-ink-500">
-                    <th className="px-3 py-2">Módulo</th>
-                    {MODULE_ACTIONS.map((a) => (
-                      <th key={a} className="px-2 py-2 text-center">{ACTION_LABELS[a] ?? a}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {modulosVisiveis.map((m) => (
-                    <tr key={m} className="border-b border-ink-200 last:border-0">
-                      <td className="px-3 py-1.5 text-ink-800">{MODULE_LABELS[m] ?? m}</td>
-                      {MODULE_ACTIONS.map((a) => {
-                        const key = `${m}:${a}`;
-                        return (
-                          <td key={a} className="px-2 py-1.5 text-center">
-                            <input
-                              type="checkbox"
-                              checked={permissions.includes(key)}
-                              onChange={() => togglePermission(key)}
-                            />
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <PermissionMatrix value={permissions} onChange={setPermissions} sistemas={modulos} />
           </div>
         )}
 
@@ -420,10 +400,10 @@ function ResetSenhaModal({
           <>
             <div>
               <label className={labelCls} htmlFor="nova-senha">Nova senha provisória<span className="ml-0.5 text-danger-600">*</span></label>
-              <input
+              <Input
                 id="nova-senha"
                 type="password"
-                className={inputCls}
+                
                 value={novaSenha}
                 onChange={(e) => setNovaSenha(e.target.value)}
                 placeholder="mínimo 6 caracteres"

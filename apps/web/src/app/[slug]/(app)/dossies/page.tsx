@@ -21,8 +21,9 @@ import { Badge, Button, Card, Field, Input, Modal, Pagination, SelectMenu, Tabs,
 import { EmptyState } from '@/components/empty-state';
 import { useToast } from '@/components/toast';
 import { cn } from '@/lib/cn';
+import { fmtDate } from '@/lib/format';
 
-const br = (iso: string | null) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR') : '—');
+const br = (iso: string | null) => fmtDate(iso, '—');
 
 export default function DossiesPage() {
   const { slug } = useParams<{ slug: string }>();

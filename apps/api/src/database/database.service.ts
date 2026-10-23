@@ -27,6 +27,12 @@ export class DatabaseService implements OnModuleDestroy {
     this.directString = env.DIRECT_URL ?? env.DATABASE_URL;
   }
 
+  /*
+   * Sem `TimeZone` na conexao, de proposito: datas chegam do Node como
+   * instantes UTC e, com a sessao em Fortaleza, `2024-05-02` gravado numa
+   * coluna `date` virava `2024-05-01`. "Hoje" e prazos usam
+   * `AT TIME ZONE 'America/Fortaleza'` explicito no SQL (FUSO_ORGAO).
+   */
   catalog(): Sql {
     if (!this.catalogPool) {
       this.catalogPool = postgres(this.connString, {

@@ -41,6 +41,7 @@ import {
   type TenantSettings,
   type TenantBranding,
   type TenantAccessClaims,
+  type PerfilOrgaoResumo,
 } from '@jdoc/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { TenantJwtGuard } from '../auth/tenant-jwt.guard';
@@ -438,6 +439,12 @@ export class ConfiguracoesController {
   }
 
   // ===================== Guia 3: Usuarios e Permissoes =====================
+
+  @Permissions('usuarios:read')
+  @Get('perfis')
+  listPerfis(): Promise<PerfilOrgaoResumo[]> {
+    return this.service.listPerfis();
+  }
 
   @Permissions('usuarios:read')
   @Get('usuarios')

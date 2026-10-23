@@ -24,6 +24,7 @@ import { EmptyState } from '@/components/empty-state';
 import { useToast } from '@/components/toast';
 import { SITUACAO_TOM, TextoCompilado, agruparRelacoes } from '@/components/legislacao/compilado';
 import { cn } from '@/lib/cn';
+import { fmtDate } from '@/lib/format';
 
 const br = (iso: string | null) => (iso ? iso.split('-').reverse().join('/') : '—');
 
@@ -109,7 +110,7 @@ export default function NormaPage() {
               {n.revisadaPor && (
                 <p className="mt-1 text-xs text-ink-400">
                   Texto estruturado e revisado por {n.revisadaPor}
-                  {n.revisadaEm ? ` em ${new Date(n.revisadaEm).toLocaleDateString('pt-BR')}` : ''}
+                  {n.revisadaEm ? ` em ${fmtDate(n.revisadaEm)}` : ''}
                 </p>
               )}
             </div>

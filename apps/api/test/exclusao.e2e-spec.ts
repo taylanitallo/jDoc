@@ -78,8 +78,8 @@ beforeAll(async () => {
   await writeFile(join(STORAGE, `jdoc-${T_SAI}`, 'x.pdf'), '%PDF-1.4');
 
   const saHash = await argon2.hash(SA_PASS, { type: argon2.argon2id });
-  await sql`INSERT INTO public.superadmins (email, nome, senha_hash, must_change_password, totp_secret, totp_enabled)
-            VALUES (${SA_EMAIL}, 'SA Excl', ${saHash}, false, ${SA_TOTP}, true)`;
+  await sql`INSERT INTO public.superadmins (email, nome, senha_hash, must_change_password, totp_secret, totp_enabled, role)
+            VALUES (${SA_EMAIL}, 'SA Excl', ${saHash}, false, ${SA_TOTP}, true, 'owner')`;
 
   const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
   for (const padrao of ['bf:*', 'tenant:slug:*']) {
@@ -123,8 +123,12 @@ describe('Exclusao de orgao e usuario', () => {
 
   it('(2) superadmin exclui orgao inativo com o slug digitado', async () => {
     const t = ids[T_SAI]!;
+    // Excluir orgao e acao critica: sem reautenticacao recente, 403.
+    const semReauth = await saApi('delete', `/tenants/${t}`).send({ confirmacao: T_SAI }).expect(403);
+    expect(semReauth.body.code).toBe('reauth_required');
+    await saApi('post', '/auth/reauth').send({ senha: SA_PASS, totp: authenticator.generate(SA_TOTP) }).expect(200);
     await saApi('delete', `/tenants/${t}`).send({ confirmacao: T_SAI }).expect(409);
-    await saApi('patch', `/tenants/${t}/status`).send({ status: 'inativo' }).expect(204);
+    await saApi('patch', `/tenants/${t}/status`).send({ status: 'inativo', motivo: 'teste de exclusao' }).expect(204);
     await saApi('delete', `/tenants/${t}`).send({ confirmacao: 'outro' }).expect(400);
     await saApi('delete', `/tenants/${t}`).send({ confirmacao: T_SAI }).expect(204);
     const [schema] = await sql`SELECT 1 FROM pg_namespace WHERE nspname = ${'tenant_' + T_SAI}`;
@@ -144,9 +148,9 @@ describe('Exclusao de orgao e usuario', () => {
     const api = (m: 'post' | 'delete', path: string) => request(app.getHttpServer())[m](`/t/${T_FICA}${path}`).set('Authorization', `Bearer ${tok}`);
     await api('delete', `/configuracoes/usuarios/${ids[`${T_FICA}:${ADMIN}`]}`).expect(400);
     await api('delete', `/configuracoes/usuarios/${ids[`${T_FICA}:${AUTOR}`]}`).expect(409);
-    const t = ids[T_FICA]!;
-    await saApi('post', `/tenants/${t}/users`).send({ email: 'curta@excl.gov.br', nome: 'Senha Curta', senha: '12345', role: 'consulta' }).expect(400);
-    const novo = (await saApi('post', `/tenants/${t}/users`).send({ email: 'seis@excl.gov.br', nome: 'Senha Seis', senha: '123456', role: 'consulta' }).expect(201)).body.id as string;
+    // Senha minima 6 no cadastro feito pelo proprio orgao (o superadmin gera a senha provisoria).
+    await api('post', '/configuracoes/usuarios').send({ email: 'curta@excl.gov.br', nome: 'Senha Curta', senha: '12345', role: 'consulta' }).expect(400);
+    const novo = (await api('post', '/configuracoes/usuarios').send({ email: 'seis@excl.gov.br', nome: 'Senha Seis', senha: '123456', role: 'consulta' }).expect(201)).body.id as string;
     await api('delete', `/configuracoes/usuarios/${novo}`).expect(204);
   });
 

@@ -878,7 +878,7 @@ export class DocumentsService {
           .fillColor('#e0e7ff')
           .fontSize(9)
           .font('Helvetica')
-          .text(`Gerado em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} — ${resumoPartes.join(' · ')}`, marginX, 48, {
+          .text(`Gerado em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' })} — ${resumoPartes.join(' · ')}`, marginX, 48, {
             align: 'center',
             width: contentWidth,
           });
@@ -1041,7 +1041,7 @@ export class DocumentsService {
         doc
           .fontSize(8)
           .font('Helvetica')
-          .text(`Gerado em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} — ${rows.length} documento(s)`, {
+          .text(`Gerado em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' })} — ${rows.length} documento(s)`, {
             align: 'center',
           });
         doc.moveDown(1);

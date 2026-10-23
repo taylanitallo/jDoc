@@ -20,6 +20,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 @Module({
   imports: [
     ThrottlerModule.forRoot({
+      errorMessage: 'Muitas tentativas. Aguarde um minuto e tente de novo.',
       throttlers: [
         {
           name: 'default',

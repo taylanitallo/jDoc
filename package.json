@@ -16,6 +16,7 @@
     "db:generate": "pnpm --filter @jdoc/database generate",
     "db:migrate": "pnpm --filter @jdoc/database migrate",
     "db:seed": "pnpm --filter @jdoc/database seed",
+    "admin:create": "pnpm --filter @jdoc/database admin:create",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\""
   },
   "devDependencies": {

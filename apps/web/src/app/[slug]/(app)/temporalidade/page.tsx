@@ -12,6 +12,7 @@ import { TabButton } from '@/components/tab-button';
 import { EmptyState } from '@/components/empty-state';
 import { useToast } from '@/components/toast';
 import { Eliminacoes, incluirNaListagem } from './eliminacoes';
+import { fmtDate } from '@/lib/format';
 
 const LISTAS: { id: TemporalidadeLista; label: string; ajuda: string }[] = [
   {
@@ -45,7 +46,7 @@ const MODULO_LABELS: Record<string, string> = {
   acervo: 'Acervo',
 };
 
-const fmtData = (iso: string | null): string => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR') : '—');
+const fmtData = (iso: string | null): string => fmtDate(iso, '—');
 
 async function abrirPdf(path: string): Promise<void> {
   const win = window.open('', '_blank');
@@ -266,7 +267,7 @@ export default function TemporalidadePage() {
                   {g.tipo === 'transferencia' ? 'Guia de Transferência' : 'Guia de Recolhimento'} nº{' '}
                   {String(g.numero).padStart(3, '0')}/{g.ano}
                   <span className="ml-2 text-xs text-ink-500">
-                    {g.total} doc(s) · {new Date(g.criadoEm).toLocaleDateString('pt-BR')} · {g.criadoPor ?? '—'}
+                    {g.total} doc(s) · {fmtDate(g.criadoEm)} · {g.criadoPor ?? '—'}
                   </span>
                 </span>
                 <button

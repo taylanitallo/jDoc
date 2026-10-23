@@ -62,11 +62,11 @@ export const DESCRICAO_DOC_SQL = `COALESCE(NULLIF(d.descricao, ''), NULLIF(d.his
 
 /** Filtro SQL de cada lista da TTD (comparacao com a data de hoje em Brasilia — sempre atual, sem job de recalculo; o servidor roda em UTC). */
 export const LISTA_WHERE: Record<TemporalidadeLista, string> = {
-  a_transferir: `d.fase = 'corrente' AND d.data_prevista_transferencia <= (now() AT TIME ZONE 'America/Sao_Paulo')::date
-                 AND d.data_prevista_destinacao > (now() AT TIME ZONE 'America/Sao_Paulo')::date`,
-  a_eliminar: `d.fase IN ('corrente', 'intermediaria') AND d.data_prevista_destinacao <= (now() AT TIME ZONE 'America/Sao_Paulo')::date
+  a_transferir: `d.fase = 'corrente' AND d.data_prevista_transferencia <= (now() AT TIME ZONE 'America/Fortaleza')::date
+                 AND d.data_prevista_destinacao > (now() AT TIME ZONE 'America/Fortaleza')::date`,
+  a_eliminar: `d.fase IN ('corrente', 'intermediaria') AND d.data_prevista_destinacao <= (now() AT TIME ZONE 'America/Fortaleza')::date
                AND cl.destinacao = 'eliminacao'`,
-  a_recolher: `d.fase IN ('corrente', 'intermediaria') AND d.data_prevista_destinacao <= (now() AT TIME ZONE 'America/Sao_Paulo')::date
+  a_recolher: `d.fase IN ('corrente', 'intermediaria') AND d.data_prevista_destinacao <= (now() AT TIME ZONE 'America/Fortaleza')::date
                AND cl.destinacao = 'guarda_permanente'`,
   sem_classificacao: `d.classificacao_id IS NULL AND d.fase <> 'eliminado'`,
 };
@@ -753,7 +753,7 @@ export class ArquivisticaService {
       doc.fontSize(14).text(`${titulo} Nº ${numeroFmt}`, { align: 'center' });
       doc.fontSize(9).font('Helvetica').text(destino, { align: 'center' });
       doc.moveDown(0.8);
-      doc.fontSize(9).text(`Data: ${g.criado_em.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
+      doc.fontSize(9).text(`Data: ${g.criado_em.toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' })}`);
       doc.text(`Responsável pelo registro: ${g.criado_por_nome ?? '—'}`);
       doc.text(`Quantidade de documentos: ${itens.length}`);
       if (g.observacoes) doc.text(`Observações: ${g.observacoes}`);

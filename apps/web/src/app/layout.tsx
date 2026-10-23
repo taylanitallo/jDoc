@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import './globals.css';
 import { ThemeProvider } from '@/components/theme-provider';
 import { ToastProvider } from '@/components/toast';
+import { SCRIPT_TEMA_MARCA } from '@/lib/brand-theme';
 
 /** Fonte do Design System (variavel --font-inter, usada por --font-sans). */
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
@@ -21,7 +22,7 @@ const noFlashScript = `
   try {
     var t = localStorage.getItem('jdoc-theme');
     var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (t === 'dark' || (!t && prefersDark)) {
+    if (t === 'dark' || ((!t || t === 'system') && prefersDark)) {
       document.documentElement.classList.add('dark');
     }
   } catch (_) {}
@@ -34,6 +35,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <head>
         {/* dangerouslySetInnerHTML necessario para script inline minimo anti-flash */}
         <script dangerouslySetInnerHTML={{ __html: noFlashScript }} />
+        {/* Tema de cor do usuario (cache local), tambem antes da pintura. */}
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_TEMA_MARCA }} />
       </head>
       <body>
         <ThemeProvider>

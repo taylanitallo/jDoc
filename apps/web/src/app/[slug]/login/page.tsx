@@ -6,11 +6,12 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { loginSchema, type LoginInput, type TenantBranding } from '@jdoc/shared';
 import Link from 'next/link';
-import { AlertCircle, ArrowLeft, Download, Eye, EyeOff, Landmark, LogIn, Lock, Mail } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Download, Landmark, LogIn, Lock, Mail } from 'lucide-react';
 import { api, setAccessToken, ApiError } from '@/lib/api';
 import { AuthLayout } from '@/components/shell/auth-layout';
 import { Button, Card, Field, Input, buttonClasses } from '@/components/ui';
 import { desktopLoginBestEffort, isDesktopApp } from '@/lib/desktop-bridge';
+import { removerTemaMarca } from '@/lib/brand-theme';
 
 const DESKTOP_DOWNLOAD_URL =
   'https://buknzokboidzhenafwpi.supabase.co/storage/v1/object/public/downloads/jDoc-Desktop-1.0.4-x64.exe';
@@ -19,7 +20,6 @@ export default function LoginPage() {
   const { slug } = useParams<{ slug: string }>();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [showSenha, setShowSenha] = useState(false);
   const [branding, setBranding] = useState<TenantBranding | null>(null);
   const [desktop, setDesktop] = useState(false);
   const {
@@ -40,12 +40,14 @@ export default function LoginPage() {
 
   useEffect(() => {
     setDesktop(isDesktopApp());
+    // Tela de acesso: ainda nao se sabe quem e, entao sem o tema do usuario.
+    removerTemaMarca();
   }, []);
 
   const onSubmit = async (data: LoginInput) => {
     setError(null);
     try {
-      const result = await api<{ accessToken: string }>(`/t/${slug}/auth/login`, {
+      const result = await api<{ accessToken: string; mustChangePassword: boolean }>(`/t/${slug}/auth/login`, {
         method: 'POST',
         body: data,
       });
@@ -54,6 +56,11 @@ export default function LoginPage() {
       // monitorada) quando rodando dentro do jDoc Desktop. Nao bloqueia nem
       // falha o login do site se o app nativo nao estiver disponivel.
       desktopLoginBestEffort(slug, data.email, data.senha);
+      // Senha provisoria: primeiro troca, em Minha conta.
+      if (result.mustChangePassword) {
+        router.push(`/${slug}/conta?trocar=1`);
+        return;
+      }
       // Com os dois modulos contratados, a tela de escolha decide; com um so, ela segue direto ao Inicio.
       router.push(`/${slug}/modulos`);
     } catch (err) {
@@ -98,24 +105,21 @@ export default function LoginPage() {
 
           <Field label="Senha" htmlFor="senha" required error={errors.senha?.message}>
             <div className="relative">
-              <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" aria-hidden />
               <Input
                 id="senha"
-                type={showSenha ? 'text' : 'password'}
+                type="password"
                 autoComplete="current-password"
                 placeholder="••••••••••"
-                className="pl-9 pr-10"
+                className="pl-9"
                 invalid={!!errors.senha}
                 {...register('senha')}
               />
-              <button
-                type="button"
-                onClick={() => setShowSenha((v) => !v)}
-                aria-label={showSenha ? 'Ocultar senha' : 'Mostrar senha'}
-                className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-[8px] text-ink-400 hover:bg-ink-100 hover:text-ink-700"
-              >
-                {showSenha ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
-              </button>
+              <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" aria-hidden />
+            </div>
+            <div className="mt-2 text-right">
+              <Link href={`/${slug}/esqueci-senha`} className="text-[13px] font-semibold text-brand-600 hover:text-brand-700">
+                Esqueci minha senha
+              </Link>
             </div>
           </Field>
 

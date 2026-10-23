@@ -23,9 +23,10 @@ import { cn } from '@/lib/cn';
 import { TabButton } from '@/components/tab-button';
 import { EmptyState } from '@/components/empty-state';
 import { useToast } from '@/components/toast';
+import { fmtDate } from '@/lib/format';
 
 const ICONE_LOCAL: Record<LocalFisicoView['tipo'], LucideIcon> = { predio: Building2, sala: DoorOpen, estante: Library, prateleira: Rows3, caixa: Archive };
-const fmtData = (iso: string | null) => (iso ? new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('pt-BR') : '—');
+const fmtData = (iso: string | null) => fmtDate(iso, '—');
 
 async function abrirPdf(path: string): Promise<void> {
   const win = window.open('', '_blank');

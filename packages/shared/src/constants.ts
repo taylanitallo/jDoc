@@ -40,6 +40,16 @@ export const MODULES = [
   'descricao',
   /** Legislacao compilada (texto por dispositivo, alteracoes, portal publico). */
   'legislacao',
+  /** Midia legislativa (pacotes mensais para a Camara). */
+  'midia_legislativa',
+  // Cadastros de Configuracoes (ja usados pelas rotas; antes ficavam fora da matriz).
+  'orgaos',
+  'unidades_orcamentarias',
+  'projetos_atividades',
+  'elementos_despesa',
+  'tipos_documento',
+  'usuarios',
+  'layout',
 ] as const;
 export const moduleSchema = z.enum(MODULES);
 export type ModuleName = z.infer<typeof moduleSchema>;
@@ -85,7 +95,7 @@ export const JWT_AUDIENCE = {
 } as const;
 
 /** Fuso dos orgaos atendidos: "hoje" (prazos, datas padrao, nomes de arquivo) nunca em UTC. */
-export const FUSO_ORGAO = 'America/Sao_Paulo';
+export const FUSO_ORGAO = 'America/Fortaleza';
 
 /** Data de hoje (YYYY-MM-DD) no fuso do orgao. Em UTC, a partir das 21h ja seria o dia seguinte. */
 export function hojeIso(agora: Date = new Date()): string {

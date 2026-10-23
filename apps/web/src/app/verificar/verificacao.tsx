@@ -4,6 +4,7 @@ import { useEffect, useState, type DragEvent, type FormEvent, type ReactNode } f
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CircleAlert, CircleCheck, CircleX, FileSearch, Loader2, ShieldCheck, Upload } from 'lucide-react';
+import { JeosFooter } from '@/components/brand/jeos';
 import {
   CODIGO_REGEX,
   formatarCodigo,
@@ -14,6 +15,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { Button, inputClasses, labelClasses } from '@/components/ui';
+import { fmtDate } from '@/lib/format';
 
 /** Moldura publica: tela clara do Design System, sem login. */
 export function MolduraPublica({ children }: { children: ReactNode }) {
@@ -32,7 +34,7 @@ export function MolduraPublica({ children }: { children: ReactNode }) {
       </header>
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-6 sm:py-10">
         <div className="animate-slide-up rounded-[16px] border border-ink-200/70 bg-surface p-5 shadow-xs sm:p-6">{children}</div>
-        <p className="mt-6 text-center text-xs text-ink-500">© 2026 JEOS Sistemas e Assessorias Ltda</p>
+        <JeosFooter className="mt-6" />
       </main>
     </div>
   );
@@ -100,7 +102,7 @@ async function sha256(file: File): Promise<string> {
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-const fmtData = (iso: string | null) => (iso ? new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('pt-BR') : '—');
+const fmtData = (iso: string | null) => fmtDate(iso, '—');
 
 export function ResultadoVerificacao({ codigo }: { codigo: string }) {
   const [dados, setDados] = useState<VerificacaoPublica | null>(null);

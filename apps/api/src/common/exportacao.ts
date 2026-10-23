@@ -60,7 +60,7 @@ export function gerarPdfTabela<T>(
       doc.font('Helvetica').fontSize(8).fillColor('#475569');
       for (const d of cab.detalhes ?? []) doc.text(d, { align: 'center' });
       doc.text(
-        `Emitido em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}${cab.emitidoPor ? ` por ${cab.emitidoPor}` : ''}`,
+        `Emitido em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' })}${cab.emitidoPor ? ` por ${cab.emitidoPor}` : ''}`,
         { align: 'center' },
       );
       doc.moveDown(0.8);

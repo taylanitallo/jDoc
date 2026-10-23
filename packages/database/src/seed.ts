@@ -54,8 +54,8 @@ async function main(): Promise<void> {
     // ---- Superadmin ----
     const superHash = await hash(DEV_PASSWORD);
     await sql`
-      INSERT INTO public.superadmins (email, nome, senha_hash, must_change_password, totp_secret, totp_enabled)
-      VALUES ('super@jeossistemas.com', 'Super Admin JEOS', ${superHash}, false, ${DEV_TOTP_SECRET}, true)
+      INSERT INTO public.superadmins (email, nome, senha_hash, must_change_password, totp_secret, totp_enabled, role)
+      VALUES ('super@jeossistemas.com', 'Super Admin JEOS', ${superHash}, false, ${DEV_TOTP_SECRET}, true, 'owner')
       ON CONFLICT (email) DO UPDATE SET totp_secret = ${DEV_TOTP_SECRET}, totp_enabled = true
     `;
 

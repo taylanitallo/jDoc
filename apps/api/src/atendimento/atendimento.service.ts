@@ -271,7 +271,7 @@ export class AtendimentoService {
       throw new ForbiddenException('O atendimento inclui documento restrito: só quem tem acesso a restritos emite o comprovante.');
     }
     const ctx = requireTenantContext();
-    const dataBr = (iso: string | null) => (iso ? new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—');
+    const dataBr = (iso: string | null) => (iso ? new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' }) : '—');
     const STATUS: Record<string, string> = { aberto: 'Em andamento', atendido: 'Atendido', indeferido: 'Indeferido', cancelado: 'Cancelado' };
     const pdf = await new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFKitDocument({ size: 'A4', margin: 50 });
