@@ -1,7 +1,7 @@
 'use client';
 
-import { forwardRef, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { forwardRef, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { SelectMenu } from './select-menu';
 
@@ -20,8 +20,34 @@ const erroClasses = 'border-danger-500 focus:border-danger-500 focus:ring-danger
 export const labelClasses = 'mb-1.5 block text-[13px] font-semibold text-ink-700';
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }>(
-  function Input({ className, invalid, ...rest }, ref) {
-    return <input ref={ref} aria-invalid={invalid || undefined} className={cn(inputClasses, 'h-10 py-0', invalid && erroClasses, className)} {...rest} />;
+  function Input({ className, invalid, type, ...rest }, ref) {
+    const [visivel, setVisivel] = useState(false);
+    const campo = (
+      <input
+        ref={ref}
+        type={type === 'password' && visivel ? 'text' : type}
+        aria-invalid={invalid || undefined}
+        className={cn(inputClasses, 'h-10 py-0', type === 'password' && 'pr-11', invalid && erroClasses, className)}
+        {...rest}
+      />
+    );
+    if (type !== 'password') return campo;
+    // Todo campo de senha tem o olho (Padrao JEOS), implementado so aqui.
+    return (
+      <div className="relative">
+        {campo}
+        <button
+          type="button"
+          onClick={() => setVisivel((v) => !v)}
+          aria-label={visivel ? 'Ocultar senha' : 'Mostrar senha'}
+          title={visivel ? 'Ocultar senha' : 'Mostrar senha'}
+          disabled={rest.disabled}
+          className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-[10px] text-ink-400 transition hover:text-ink-700"
+        >
+          {visivel ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+        </button>
+      </div>
+    );
   },
 );
 

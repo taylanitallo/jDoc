@@ -31,7 +31,15 @@ Superadmin: `http://localhost:3000/superadmin/login` (TOTP no output do seed).
 
 ```bash
 pnpm -r test                               # unitários (shared + api)
-pnpm --filter @jdoc/api test:e2e          # isolamento multi-tenant (requer docker compose up)
+pnpm --filter @jdoc/api test:e2e          # isolamento multi-tenant (requer docker compose up + pnpm db:migrate)
+pnpm --filter @jdoc/web exec playwright install chromium   # uma vez
+pnpm --filter @jdoc/web test:e2e          # telas: login restrito, idioma, links
+```
+
+Primeiro proprietário do painel (pede a senha no terminal; no primeiro acesso o sistema exige a verificação em 2 etapas):
+
+```bash
+pnpm admin:create -- --email voce@jeossistemas.com --name "Seu Nome"
 ```
 
 ## Estrutura
@@ -49,10 +57,20 @@ packages/
 
 Ver [.env.example](.env.example). Principais: `DATABASE_URL`, `DIRECT_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `COOKIE_SECRET`, `SUPERADMIN_ALLOWED_IPS`, `MAX_UPLOAD_MB`, `FRONTEND_URL`. `SUPABASE_SERVICE_ROLE_KEY` **somente no backend**.
 
+Padrão JEOS (ver [PADRAO_JEOS.md](PADRAO_JEOS.md)):
+
+| Variável | Para quê |
+|---|---|
+| `TZ=America/Fortaleza` | Fuso do servidor (já vem no Dockerfile; as conexões do banco também usam Fortaleza). |
+| `ENCRYPTION_KEY` | 32 bytes em base64 (`openssl rand -base64 32`). Cifra chaves de API, senha do SMTP e o segredo do 2FA. Sem ela, a chave é derivada do `COOKIE_SECRET`; definir depois não perde o que já foi cifrado. |
+| `SLOW_REQUEST_MS` | Acima disto (ms, padrão 1000) a requisição entra em "Requisições lentas". |
+
+O servidor de e-mail (SMTP), as chaves de IA, mapas e WhatsApp são configurados no próprio painel (Superadmin › Configurações, ou por órgão em Chaves de API), não em variáveis.
+
 ## Deploy (resumo)
 
 1. **Supabase:** criar projeto, copiar `DATABASE_URL` (pooler) e `DIRECT_URL` (direta). Rodar `migrate` apontando para a direta.
-2. **Railway:** serviço a partir de `apps/api` (`pnpm --filter @jdoc/api build && node apps/api/dist/main.js`) + Redis addon. Configurar todas as env vars.
+2. **Railway:** serviço pelo `Dockerfile.api` (instala `pg_dump` 17 e roda as migrações antes de subir a API) + Redis addon. Configurar todas as env vars.
 3. **Vercel:** projeto em `apps/web`, `NEXT_PUBLIC_API_URL` apontando para o Railway.
 4. CORS: `FRONTEND_URL` na API = domínio da Vercel.
 

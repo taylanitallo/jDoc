@@ -25,9 +25,20 @@ export function schemaNameForSlug(slug: string): string {
   return schemaNameSchema.parse(name);
 }
 
-export const TENANT_STATUS = ['ativo', 'inativo'] as const;
+/**
+ * ativo; inativo (suspenso: ninguem do orgao entra); manutencao (durante uma
+ * restauracao de backup); arquivado (contrato encerrado, dados preservados).
+ */
+export const TENANT_STATUS = ['ativo', 'inativo', 'manutencao', 'arquivado'] as const;
 export const tenantStatusSchema = z.enum(TENANT_STATUS);
 export type TenantStatus = z.infer<typeof tenantStatusSchema>;
+
+export const TENANT_STATUS_LABEL: Record<TenantStatus, string> = {
+  ativo: 'Ativo',
+  inativo: 'Suspenso',
+  manutencao: 'Em manutenção',
+  arquivado: 'Arquivado',
+};
 
 export const tenantSchema = z.object({
   id: z.string().uuid(),

@@ -344,7 +344,7 @@ export class ArquivoFisicoService {
         doc.fontSize(11).font('Helvetica-Bold').text(ctx.nome.toUpperCase(), { align: 'center' });
         doc.fontSize(14).text(`ESPELHO DE ${TIPO_LOCAL_LABEL[local.tipo].toUpperCase()} ${local.codigo}`, { align: 'center' });
         doc.fontSize(9).font('Helvetica').text(caminhoLocal(local.id, locais), { align: 'center' });
-        doc.moveDown(0.5).text(`Emitido em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} — ${itens.length} documento(s)${ocultos ? ` + ${ocultos} de acesso restrito` : ''}`);
+        doc.moveDown(0.5).text(`Emitido em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' })} — ${itens.length} documento(s)${ocultos ? ` + ${ocultos} de acesso restrito` : ''}`);
         doc.moveDown(0.8);
         cab();
         for (const it of itens) {
@@ -375,7 +375,7 @@ export class ArquivoFisicoService {
              e.finalidade, e.data_saida, e.prazo_devolucao, e.data_devolucao,
              COALESCE(NULLIF(d.descricao, ''), NULLIF(d.historico, ''), d.credor, d.original_name) AS documento_descricao,
              l.codigo AS local_codigo, ur.nome AS registrado_por_nome, uv.nome AS recebido_por_nome,
-             (e.data_devolucao IS NULL AND e.prazo_devolucao < (now() AT TIME ZONE 'America/Sao_Paulo')::date) AS atrasado
+             (e.data_devolucao IS NULL AND e.prazo_devolucao < (now() AT TIME ZONE 'America/Fortaleza')::date) AS atrasado
       FROM emprestimos e
       LEFT JOIN documents d ON d.id = e.document_id
       LEFT JOIN locais_fisicos l ON l.id = e.local_fisico_id
@@ -395,7 +395,7 @@ export class ArquivoFisicoService {
       sql,
       sql`
         (${status} = 'todos' OR e.data_devolucao IS NULL)
-        AND (${status} <> 'atrasados' OR e.prazo_devolucao < (now() AT TIME ZONE 'America/Sao_Paulo')::date)
+        AND (${status} <> 'atrasados' OR e.prazo_devolucao < (now() AT TIME ZONE 'America/Fortaleza')::date)
         AND (e.document_id IS NULL OR ${pode} OR d.nivel_acesso = 'publico')
       `,
     );
@@ -502,7 +502,7 @@ export class ArquivoFisicoService {
       SELECT (SELECT COUNT(*) FROM locais_fisicos WHERE tipo = 'caixa' AND ativo)::bigint AS caixas,
              (SELECT COUNT(*) FROM documents WHERE possui_original_fisico AND deleted_at IS NULL)::bigint AS docs,
              (SELECT COUNT(*) FROM emprestimos WHERE data_devolucao IS NULL)::bigint AS abertos,
-             (SELECT COUNT(*) FROM emprestimos WHERE data_devolucao IS NULL AND prazo_devolucao < (now() AT TIME ZONE 'America/Sao_Paulo')::date)::bigint AS atrasados
+             (SELECT COUNT(*) FROM emprestimos WHERE data_devolucao IS NULL AND prazo_devolucao < (now() AT TIME ZONE 'America/Fortaleza')::date)::bigint AS atrasados
     `;
     const r = rows[0]!;
     return {

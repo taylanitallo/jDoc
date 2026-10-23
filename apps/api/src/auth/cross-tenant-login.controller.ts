@@ -92,6 +92,7 @@ export class CrossTenantLoginController {
           quotaDiscoMb: t.quota_disco_mb,
           // Contexto so para validar credenciais (nenhuma rota de modulo roda aqui).
           modulos: [],
+          menuOverrides: {},
         };
         try {
           const result = await tenantContextStorage.run(ctx, () =>

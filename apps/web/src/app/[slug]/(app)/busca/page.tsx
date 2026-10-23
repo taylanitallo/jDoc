@@ -10,6 +10,7 @@ import { btnGhost, btnPrimary, cardCls, inputCls, PageHeader, Pagination, Select
 import { EmptyState } from '@/components/empty-state';
 import { useToast } from '@/components/toast';
 import { useModuloAtivo } from '@/components/modulo-ativo';
+import { fmtDate } from '@/lib/format';
 
 const MODULOS: Array<{ id: DocModule | ''; label: string }> = [
   { id: '', label: 'Tudo neste módulo' },
@@ -160,7 +161,7 @@ export default function BuscaConteudoPage() {
                 <FileText className="h-4 w-4 text-ink-500" aria-hidden />
                 <span className="font-semibold text-ink-800">{it.titulo}</span>
                 <span className="text-xs text-ink-500">
-                  {MODULO_LABEL[it.module] ?? it.module} · {it.documentDate ? new Date(`${it.documentDate}T12:00:00`).toLocaleDateString('pt-BR') : it.exercicio} · pág. {it.pagina}
+                  {MODULO_LABEL[it.module] ?? it.module} · {it.documentDate ? fmtDate(it.documentDate) : it.exercicio} · pág. {it.pagina}
                 </span>
               </div>
               <p className="mt-2 text-sm leading-relaxed text-ink-500">

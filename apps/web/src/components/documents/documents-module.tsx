@@ -80,6 +80,7 @@ import { useModulo } from '@/components/branding';
 import { Badge, Button, DropdownMenu, buttonClasses, Modal, btnGhost, btnPrimary, cardCls, formatBytes, inputCls, labelCls, Pagination, TONE_VIVID, type Tone, SelectMenu } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { useToast } from '@/components/toast';
+import { fmtDate } from '@/lib/format';
 
 const MODULE_TITLES: Record<DocModule, { title: string; singular: string; description: string; icon: LucideIcon; tone: Tone }> = {
   receitas: { title: 'Receitas', singular: 'Receita', description: 'Receitas orçamentárias e extraorçamentárias do exercício', icon: TrendingUp, tone: 'success' },
@@ -1264,7 +1265,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                   </td>
                 )}
                 <td className="w-24 whitespace-nowrap px-3 py-3 tabular-nums text-ink-800">
-                  {d.documentDate ? new Date(d.documentDate + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
+                  {d.documentDate ? fmtDate(d.documentDate) : '—'}
                   {d.grauSigilo && (
                     <Badge tone={GRAU_TOM[d.grauSigilo]} className="mt-1 flex w-fit">
                       {GRAU_SIGILO_LABEL[d.grauSigilo]}
@@ -1428,7 +1429,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                 <div className="mt-2 flex items-center justify-between border-t border-ink-100 pt-2">
                   <span className="flex items-center gap-1 text-[11px] text-ink-500">
                     <CalendarDays className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                    {d.documentDate ? new Date(d.documentDate + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
+                    {d.documentDate ? fmtDate(d.documentDate) : '—'}
                   </span>
                   <div className="flex items-center gap-3">
                     <span className="flex items-center gap-1 text-[11px] text-ink-500">

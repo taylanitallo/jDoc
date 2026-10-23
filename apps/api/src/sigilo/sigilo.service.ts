@@ -116,7 +116,7 @@ export class SigiloService implements OnModuleInit, OnModuleDestroy {
     const vencidos = await sql<Array<{ id: string; document_id: string; nivel_acesso_anterior: string }>>`
       UPDATE termos_sigilo SET status = 'expirado', encerrado_em = now(),
              motivo_encerramento = 'Fim do prazo de sigilo (art. 24, § 4º, da Lei nº 12.527/2011)'
-      WHERE status = 'vigente' AND prazo_fim <= (now() AT TIME ZONE 'America/Sao_Paulo')::date
+      WHERE status = 'vigente' AND prazo_fim <= (now() AT TIME ZONE 'America/Fortaleza')::date
       RETURNING id, document_id, nivel_acesso_anterior
     `;
     for (const v of vencidos) {
@@ -199,7 +199,7 @@ export class SigiloService implements OnModuleInit, OnModuleDestroy {
       SELECT grau, count(*)::int AS n FROM termos_sigilo WHERE status = 'vigente' GROUP BY grau
     `;
     const [x] = await sql<Array<{ expirando: number; desclassificados: number }>>`
-      SELECT count(*) FILTER (WHERE status = 'vigente' AND prazo_fim <= (now() AT TIME ZONE 'America/Sao_Paulo')::date + 30)::int AS expirando,
+      SELECT count(*) FILTER (WHERE status = 'vigente' AND prazo_fim <= (now() AT TIME ZONE 'America/Fortaleza')::date + 30)::int AS expirando,
              count(*) FILTER (WHERE status <> 'vigente' AND encerrado_em > now() - interval '12 months')::int AS desclassificados
       FROM termos_sigilo
     `;
@@ -337,7 +337,7 @@ export class SigiloService implements OnModuleInit, OnModuleDestroy {
       {
         orgao: ctx.nome,
         titulo: 'Rol de Informações Classificadas e Desclassificadas',
-        detalhes: ['Art. 30 da Lei nº 12.527/2011 — publicação anual', `Período: últimos 12 meses até ${new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`],
+        detalhes: ['Art. 30 da Lei nº 12.527/2011 — publicação anual', `Período: últimos 12 meses até ${new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' })}`],
       },
       [
         {

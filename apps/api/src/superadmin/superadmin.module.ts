@@ -6,6 +6,9 @@ import { SuperadminController } from './superadmin.controller';
 import { SuperadminTenantsService } from './superadmin-tenants.service';
 import { SuperadminUsersService } from './superadmin-users.service';
 import { SuperadminLogsService, SuperadminDashboardService } from './superadmin-logs.service';
+import { PerfisService } from './perfis.service';
+import { IbgeService } from './ibge.service';
+import { PainelService } from './painel.service';
 
 @Module({
   imports: [AuthModule, SuperadminAuthModule, ProvisioningModule],
@@ -15,7 +18,10 @@ import { SuperadminLogsService, SuperadminDashboardService } from './superadmin-
     SuperadminUsersService,
     SuperadminLogsService,
     SuperadminDashboardService,
+    PerfisService,
+    IbgeService,
+    PainelService,
   ],
-  exports: [SuperadminTenantsService],
+  exports: [SuperadminTenantsService, SuperadminUsersService, PerfisService],
 })
 export class SuperadminModule {}

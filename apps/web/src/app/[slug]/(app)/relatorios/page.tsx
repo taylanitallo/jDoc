@@ -53,6 +53,7 @@ import { Anel, BarraEmpilhada, Colunas, Rosca, agruparOutros } from '@/component
 import { useToast } from '@/components/toast';
 import { useModulo } from '@/components/branding';
 import { cn } from '@/lib/cn';
+import { fmtDate } from '@/lib/format';
 
 type Aba = 'inventario' | 'quantitativos' | 'topografico';
 
@@ -76,7 +77,7 @@ const MODULOS = [
   { id: 'extrato', label: 'Extrato', sistema: 'financeiro' },
   { id: 'outros', label: 'Outros arquivos', sistema: 'financeiro' },
 ] as const;
-const dataBr = (iso: string | null) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR') : '—');
+const dataBr = (iso: string | null) => fmtDate(iso, '—');
 const fmt = (n: number) => n.toLocaleString('pt-BR');
 
 /** Filtro -> query string (so o que esta preenchido). */

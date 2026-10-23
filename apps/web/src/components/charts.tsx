@@ -297,3 +297,94 @@ export function BarraEmpilhada({ fatias, className }: { fatias: Fatia[]; classNa
     </div>
   );
 }
+
+/**
+ * Linhas no tempo (uma ou mais series na mesma escala). Passar o mouse mostra
+ * os valores do ponto. SVG proprio, no padrao dos outros graficos.
+ */
+export function Linhas({
+  rotulos,
+  series,
+  formatar = fmt,
+  className,
+}: {
+  rotulos: string[];
+  series: Array<{ nome: string; valores: number[]; cor?: string }>;
+  formatar?: (v: number) => string;
+  className?: string;
+}) {
+  const [ativo, setAtivo] = useState<number | null>(null);
+  const n = rotulos.length;
+  const max = Math.max(1, ...series.flatMap((s) => s.valores));
+  if (n === 0) return <p className="text-sm text-ink-500">Sem dados.</p>;
+  const L = 600;
+  const A = 180;
+  const x = (i: number) => (n === 1 ? L / 2 : (i / (n - 1)) * L);
+  const y = (v: number) => A - (v / max) * (A - 8);
+  const passo = Math.max(1, Math.ceil(n / 8));
+  return (
+    <div className={cn('w-full', className)}>
+      <div className="relative">
+        <svg
+          viewBox={`0 0 ${L} ${A}`}
+          preserveAspectRatio="none"
+          className="h-48 w-full overflow-visible"
+          role="img"
+          aria-label={series.map((s) => s.nome).join(', ')}
+          onMouseLeave={() => setAtivo(null)}
+          onMouseMove={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            setAtivo(Math.round(((e.clientX - r.left) / r.width) * (n - 1)));
+          }}
+        >
+          {[0.25, 0.5, 0.75, 1].map((g) => (
+            <line key={g} x1={0} x2={L} y1={A - g * (A - 8)} y2={A - g * (A - 8)} stroke="var(--color-ink-100)" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+          ))}
+          <line x1={0} x2={L} y1={A} y2={A} stroke="var(--color-ink-200)" vectorEffect="non-scaling-stroke" />
+          {series.map((s, si) => (
+            <polyline
+              key={s.nome}
+              fill="none"
+              stroke={s.cor ?? PALETA[si % PALETA.length]}
+              strokeWidth={2}
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+              points={s.valores.map((v, i) => `${x(i)},${y(v)}`).join(' ')}
+            />
+          ))}
+          {ativo !== null && <line x1={x(ativo)} x2={x(ativo)} y1={0} y2={A} stroke="var(--color-ink-300)" vectorEffect="non-scaling-stroke" />}
+        </svg>
+        {ativo !== null && (
+          <div
+            className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 whitespace-nowrap rounded-[8px] bg-ink-900 px-2 py-1 text-xs text-white shadow-lg"
+            style={{ left: `${(x(ativo) / L) * 100}%` }}
+          >
+            <strong>{rotulos[ativo]}</strong>
+            {series.map((s) => (
+              <span key={s.nome} className="block">
+                {s.nome}: {formatar(s.valores[ativo] ?? 0)}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="mt-1.5 flex justify-between">
+        {rotulos.map((r, i) => (
+          <span key={`${r}-${i}`} className="text-[11px] tabular-nums text-ink-500">
+            {i % passo === 0 ? r : ''}
+          </span>
+        ))}
+      </div>
+      {series.length > 1 && (
+        <div className="mt-2 flex flex-wrap gap-3">
+          {series.map((s, si) => (
+            <span key={s.nome} className="flex items-center gap-1.5 text-xs text-ink-600">
+              <span className="h-2 w-3 rounded-full" style={{ background: s.cor ?? PALETA[si % PALETA.length] }} />
+              {s.nome}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -13,8 +13,9 @@ import {
 import { api, apiBlobUrl, ApiError } from '@/lib/api';
 import { Badge, Modal, btnGhost, btnPrimary, cardCls, inputCls, labelCls } from '@/components/ui';
 import { useToast } from '@/components/toast';
+import { fmtDate } from '@/lib/format';
 
-const fmt = (iso: string | null) => (iso ? new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('pt-BR') : '—');
+const fmt = (iso: string | null) => fmtDate(iso, '—');
 const num = (e: { numero: number; ano: number }) => `${String(e.numero).padStart(3, '0')}/${e.ano}`;
 const COR: Record<EliminacaoView['status'], 'gray' | 'blue' | 'orange' | 'green' | 'red'> = {
   rascunho: 'gray',

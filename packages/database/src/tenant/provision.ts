@@ -1,5 +1,6 @@
 import type { Sql } from 'postgres';
 import { SCHEMA_NAME_REGEX, schemaNameForSlug } from '@jdoc/shared';
+import { aplicarMigracoesOrgao } from '../versioned.js';
 
 /**
  * DDL de provisionamento de um schema de tenant.
@@ -1031,6 +1032,9 @@ export async function provisionTenantSchema(sql: Sql, slug: string): Promise<str
       `CREATE INDEX IF NOT EXISTS idx_tenant_settings_chave ON "${schemaName}".tenant_settings (chave)`,
     );
   });
+
+  // Mudancas posteriores ao bloco acima: arquivos versionados em migrations/orgao.
+  await aplicarMigracoesOrgao(sql, schemaName);
 
   return schemaName;
 }

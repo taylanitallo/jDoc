@@ -11,8 +11,9 @@ import { EmptyState } from '@/components/empty-state';
 import { useToast } from '@/components/toast';
 import { GRAU_TOM } from '@/components/documents/sigilo-documento';
 import { cn } from '@/lib/cn';
+import { fmtDate } from '@/lib/format';
 
-const br = (iso: string | null) => (iso ? new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('pt-BR') : '—');
+const br = (iso: string | null) => fmtDate(iso, '—');
 
 export default function SigiloPage() {
   const { slug } = useParams<{ slug: string }>();

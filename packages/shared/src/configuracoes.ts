@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { camposMetadadosSchema } from './metadados.js';
 import type { Sistema } from './sistemas.js';
+import { cpfValido } from './auth.js';
 
 /**
  * Permissoes proprias de configuracoes.
@@ -133,8 +134,21 @@ export const usuarioTenantSchema = z.object({
   criadoEm: z.string().optional(),
   permissions: z.array(z.string()).default([]),
   unidadesIds: z.array(z.string().uuid()).default([]),
+  cpf: z.string().nullable().optional(),
+  /** null = permissoes individuais ("Personalizado"). */
+  perfilId: z.string().uuid().nullable().optional(),
+  perfilNome: z.string().nullable().optional(),
 });
 export type UsuarioTenant = z.infer<typeof usuarioTenantSchema>;
+
+/** CPF opcional no cadastro do orgao: vazio = sem CPF. */
+const cpfOpcional = z
+  .string()
+  .transform((v) => v.replace(/\D/g, ''))
+  .refine((v) => v === '' || cpfValido(v), 'CPF inválido')
+  .transform((v) => (v === '' ? null : v))
+  .nullable()
+  .optional();
 
 export const usuarioCreateSchema = z.object({
   email: z.string().email().max(254),
@@ -143,6 +157,9 @@ export const usuarioCreateSchema = z.object({
   senha: z.string().min(6).max(128),
   permissions: z.array(z.string()).default([]),
   unidadesIds: z.array(z.string().uuid()).default([]),
+  cpf: cpfOpcional,
+  /** Com perfil, papel e permissoes vem dele (role/permissions sao ignorados). */
+  perfilId: z.string().uuid().nullable().optional(),
 });
 export type UsuarioCreate = z.infer<typeof usuarioCreateSchema>;
 
@@ -152,8 +169,19 @@ export const usuarioUpdateSchema = z.object({
   ativo: z.boolean(),
   permissions: z.array(z.string()).default([]),
   unidadesIds: z.array(z.string().uuid()).default([]),
+  cpf: cpfOpcional,
+  perfilId: z.string().uuid().nullable().optional(),
 });
 export type UsuarioUpdate = z.infer<typeof usuarioUpdateSchema>;
+
+/** Perfil do orgao como o administrador do orgao ve (para escolher no cadastro). */
+export interface PerfilOrgaoResumo {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  papel: 'admin' | 'operador' | 'consulta';
+  permissoes: string[];
+}
 
 export const resetSenhaSchema = z.object({
   userId: z.string().uuid(),

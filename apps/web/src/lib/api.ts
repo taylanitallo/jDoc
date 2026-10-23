@@ -33,9 +33,41 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    /** Codigo estavel da API (`reauth_required`, `mfa_required`, ...). */
+    public readonly code?: string,
   ) {
     super(message);
   }
+}
+
+/** Le `{ error | message, code }` do corpo de erro da API. */
+async function erroDaResposta(res: Response): Promise<ApiError> {
+  let message = 'Erro na requisição';
+  let code: string | undefined;
+  try {
+    const data = (await res.json()) as { message?: unknown; error?: unknown; code?: unknown };
+    if (typeof data.error === 'string' && data.error) message = data.error;
+    else if (typeof data.message === 'string' && data.message) message = data.message;
+    if (typeof data.code === 'string') code = data.code;
+  } catch {
+    // resposta sem corpo
+  }
+  return new ApiError(res.status, message, code);
+}
+
+/**
+ * Reautenticacao para acoes criticas do superadmin: quando a API responde
+ * `403 reauth_required`, o client chama este handler (o modal "Confirme sua
+ * identidade") e, se ele confirmar, repete a mesma requisicao uma vez.
+ */
+let reauthHandler: (() => Promise<boolean>) | null = null;
+export function setReauthHandler(fn: (() => Promise<boolean>) | null): void {
+  reauthHandler = fn;
+}
+
+/** Para envios fora do `api()` (upload com progresso): abre o "Confirme sua identidade". */
+export function pedirReauth(): Promise<boolean> {
+  return reauthHandler ? reauthHandler() : Promise.resolve(false);
 }
 
 /** Infere o slug do tenant a partir do path `/t/<slug>/...`. */
@@ -96,8 +128,12 @@ function redirectToLogin(): void {
   if (typeof window === 'undefined') return;
   const slug = lastTenantSlug;
   accessToken = null;
-  const target = slug ? `/${slug}/login` : '/superadmin/login';
-  if (window.location.pathname !== target) {
+  const atual = window.location.pathname;
+  // Superadmin volta para onde estava depois de entrar de novo (?next=).
+  const target = slug
+    ? `/${slug}/login`
+    : `/superadmin/login${atual.startsWith('/superadmin') && atual !== '/superadmin/login' ? `?next=${encodeURIComponent(atual)}` : ''}`;
+  if (atual !== target.split('?')[0]) {
     window.location.replace(target);
   }
 }
@@ -133,7 +169,13 @@ export async function api<T>(
   // Tenta refresh automatico em 401 (mas nao na propria requisicao de login/refresh —
   // um 401 de login e credencial/2FA invalidos, nao sessao expirada, e nao ha
   // sessao nenhuma ainda pra tentar renovar).
-  const isAuthEntryPoint = path.endsWith('/auth/refresh') || path.endsWith('/auth/login');
+  const isAuthEntryPoint =
+    path.endsWith('/auth/refresh') || path.endsWith('/auth/login') || path.endsWith('/auth/reauth');
+  if (res.status === 401 && impersonando && lastTenantSlug) {
+    encerrarImpersonacao(lastTenantSlug);
+    redirectToLogin();
+    throw new ApiError(401, 'A sessão de "entrar como" terminou');
+  }
   if (res.status === 401 && !options._skipRefresh && !isAuthEntryPoint) {
     const refreshed = await tryRefresh();
     if (refreshed) {
@@ -144,16 +186,15 @@ export async function api<T>(
     }
   }
 
-  if (!res.ok) {
-    let message = 'Erro na requisição';
-    try {
-      const data = (await res.json()) as { message?: string };
-      if (data.message) message = data.message;
-    } catch {
-      // resposta sem corpo
+  if (res.status === 403 && reauthHandler && !options._skipRefresh) {
+    const erro = await erroDaResposta(res.clone());
+    if (erro.code === 'reauth_required') {
+      if (!(await reauthHandler())) throw erro;
+      res = await doFetch();
     }
-    throw new ApiError(res.status, message);
   }
+
+  if (!res.ok) throw await erroDaResposta(res);
 
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -189,16 +230,7 @@ export async function apiBlobUrl(path: string, options: Omit<ApiOptions, '_skipR
       throw new ApiError(401, 'Sessao expirada');
     }
   }
-  if (!res.ok) {
-    let message = 'Erro na requisição';
-    try {
-      const data = (await res.json()) as { message?: string };
-      if (data.message) message = data.message;
-    } catch {
-      // resposta sem corpo
-    }
-    throw new ApiError(res.status, message);
-  }
+  if (!res.ok) throw await erroDaResposta(res);
   return URL.createObjectURL(await res.blob());
 }
 
@@ -210,5 +242,61 @@ export async function apiBlobUrl(path: string, options: Omit<ApiOptions, '_skipR
  */
 export function bootstrapSession(slug: string | null): Promise<RefreshStatus> {
   lastTenantSlug = slug;
+  // Aba aberta pelo "Entrar como" do superadmin: token proprio, sem refresh.
+  const imp = slug ? lerImpersonacao(slug) : null;
+  if (imp) {
+    accessToken = imp;
+    impersonando = true;
+    return Promise.resolve('ok');
+  }
   return refreshStatus();
+}
+
+// ---- "Entrar como" (impersonacao) ----
+// O token fica so nesta aba (sessionStorage) e expira em 30 min; nao ha refresh.
+
+const CHAVE_IMP = (slug: string) => `jdoc-imp:${slug}`;
+/** Nesta aba ha uma sessao de "entrar como": 401 nao tenta refresh (o cookie seria de outra pessoa). */
+let impersonando = false;
+
+/** exp (segundos) do JWT, sem validar (a API valida). */
+function expiracaoJwt(token: string): number {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]!.replace(/-/g, '+').replace(/_/g, '/'))) as { exp?: number };
+    return payload.exp ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function iniciarImpersonacao(slug: string, token: string): void {
+  try {
+    sessionStorage.setItem(CHAVE_IMP(slug), token);
+  } catch {
+    // sem sessionStorage: vale so ate recarregar
+  }
+  accessToken = token;
+  lastTenantSlug = slug;
+  impersonando = true;
+}
+
+export function lerImpersonacao(slug: string): string | null {
+  try {
+    const t = sessionStorage.getItem(CHAVE_IMP(slug));
+    if (t && expiracaoJwt(t) * 1000 > Date.now()) return t;
+    if (t) sessionStorage.removeItem(CHAVE_IMP(slug));
+  } catch {
+    // ignora
+  }
+  return null;
+}
+
+export function encerrarImpersonacao(slug: string): void {
+  try {
+    sessionStorage.removeItem(CHAVE_IMP(slug));
+  } catch {
+    // ignora
+  }
+  accessToken = null;
+  impersonando = false;
 }

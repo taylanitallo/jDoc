@@ -51,9 +51,10 @@ import {
 import { EmptyState } from '@/components/empty-state';
 import { useToast } from '@/components/toast';
 import { cn } from '@/lib/cn';
+import { fmtDate } from '@/lib/format';
 
 type Situacao = 'abertos' | 'atrasados' | 'concluidos' | 'todos';
-const dataBr = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('pt-BR') : '—');
+const dataBr = (iso: string | null) => fmtDate(iso, '—');
 const STATUS: Record<AtendimentoView['status'], { label: string; tone: Tone }> = {
   aberto: { label: 'Em andamento', tone: 'info' },
   atendido: { label: 'Atendido', tone: 'success' },

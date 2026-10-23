@@ -34,9 +34,10 @@ import { Badge, Button, Card, CardHeader, Field, Input, Modal, SelectMenu, StatC
 import { EmptyState } from '@/components/empty-state';
 import { useToast } from '@/components/toast';
 import { cn } from '@/lib/cn';
+import { fmtDate, fmtDateTime } from '@/lib/format';
 
-const br = (iso: string | null) => (iso ? new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('pt-BR') : '—');
-const brHora = (iso: string) => new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+const br = (iso: string | null) => fmtDate(iso, '—');
+const brHora = (iso: string) => fmtDateTime(iso);
 
 type Acao = 'juntar' | 'encerrar' | 'reabrir' | 'apensar' | 'desapensar' | { desentranhar: { id: string; identificacao: string } } | null;
 

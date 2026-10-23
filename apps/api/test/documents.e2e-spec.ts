@@ -78,8 +78,8 @@ beforeAll(async () => {
 
   const saHash = await argon2.hash(SA_PASS, { type: argon2.argon2id });
   await sql`
-    INSERT INTO public.superadmins (email, nome, senha_hash, must_change_password, totp_secret, totp_enabled)
-    VALUES (${SA_EMAIL}, 'SA Doc E2E', ${saHash}, false, ${SA_TOTP}, true)
+    INSERT INTO public.superadmins (email, nome, senha_hash, must_change_password, totp_secret, totp_enabled, role)
+    VALUES (${SA_EMAIL}, 'SA Doc E2E', ${saHash}, false, ${SA_TOTP}, true, 'owner')
   `;
 
   const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');

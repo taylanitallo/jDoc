@@ -541,7 +541,7 @@ export class EliminacaoService {
       doc.fontSize(11).font('Helvetica-Bold').text(ctx.nome.toUpperCase(), { align: 'center' });
       doc.fontSize(14).text(`TERMO DE ELIMINAÇÃO DE DOCUMENTOS Nº ${numeroFmt(e)}`, { align: 'center' });
       doc.moveDown(1.5).font('Helvetica').fontSize(11).text(
-        `Aos ${concluida.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: 'numeric', month: 'long', year: 'numeric' })}, ` +
+        `Aos ${concluida.toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza', day: 'numeric', month: 'long', year: 'numeric' })}, ` +
           `o(a) ${ctx.nome}, de acordo com a Listagem de Eliminação nº ${numeroFmt(e)}, aprovada pela Comissão Permanente de ` +
           `Avaliação de Documentos em ${dataBr(e.dataAprovacao)} (ata nº ${e.ataAprovacao}), e com o Edital de Ciência de ` +
           `Eliminação publicado em ${e.veiculoPublicacao}, em ${dataBr(e.dataPublicacaoEdital)}, procedeu à eliminação dos ` +

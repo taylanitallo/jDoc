@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Archive, FileSearch, FolderOpen, QrCode } from 'lucide-react';
+import { JeosFooter } from '@/components/brand/jeos';
 
 const DESTAQUES = [
   { icon: FolderOpen, texto: 'Financeiro/Contábil e Arquivo em um só lugar' },
@@ -50,17 +51,8 @@ export function AuthLayout({ children, footer = true }: { children: ReactNode; f
           </div>
         </main>
         {footer && (
-          <footer className="px-4 pb-6 text-center text-xs text-ink-500">
-            © 2026{' '}
-            <a
-              href="https://jeossistemas.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium hover:text-ink-800 hover:underline"
-            >
-              JEOS Sistemas e Assessorias Ltda
-            </a>{' '}
-            · v1.0.5
+          <footer className="px-4 pb-6">
+            <JeosFooter extra="v1.0.5" />
           </footer>
         )}
       </div>

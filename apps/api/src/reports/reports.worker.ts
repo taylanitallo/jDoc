@@ -247,7 +247,7 @@ export class ReportsWorker implements OnModuleInit, OnModuleDestroy {
 
       doc.moveDown(2);
       doc.font('Helvetica-Oblique').fontSize(9).text(
-        `Data da emissão do documento: ${new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })} ${new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
+        `Data da emissão do documento: ${new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' })} ${new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Fortaleza' })}`,
       );
 
       doc.end();

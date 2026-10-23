@@ -39,6 +39,7 @@ import { Badge, Button, Card, CardHeader, Field, Input, Modal, SelectMenu, StatC
 import { EmptyState } from '@/components/empty-state';
 import { useToast } from '@/components/toast';
 import { cn } from '@/lib/cn';
+import { fmtDate, fmtDateTime } from '@/lib/format';
 
 const NIVEL_CURTO: Record<NivelDescricao, string> = {
   acervo: 'Acervo',
@@ -64,7 +65,7 @@ const NIVEL_TOM: Record<NivelDescricao, Tone> = {
 };
 const ELEMENTO_POR_CHAVE = Object.fromEntries(ELEMENTOS_NOBRADE.map((e) => [e.chave, e]));
 const ELEMENTO_POR_ID = Object.fromEntries(ELEMENTOS_NOBRADE.map((e) => [e.id, e]));
-const br = (iso: string | null) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR') : 's/d');
+const br = (iso: string | null) => fmtDate(iso, 's/d');
 
 type Aba = '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | 'vinculos';
 const ABAS: Array<{ id: Aba; label: string }> = [
@@ -464,7 +465,7 @@ function Editor({ slug, id, onNovaAbaixo, onExcluida }: { slug: string; id: stri
           </div>
           <h2 className="mt-2 text-xl font-extrabold tracking-tight text-ink-900">{v.titulo}</h2>
           <p className="mt-0.5 text-xs text-ink-400">
-            Atualizada em {new Date(v.atualizadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+            Atualizada em {fmtDateTime(v.atualizadoEm)}
             {v.atualizadoPor ? ` por ${v.atualizadoPor}` : ''}
           </p>
           {v.faltantes.length > 0 && (

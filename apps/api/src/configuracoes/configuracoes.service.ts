@@ -11,6 +11,7 @@ import {
   type OrdenadorDespesa,
   type TipoDocumento,
   type UsuarioTenant,
+  type PerfilOrgaoResumo,
   type UsuarioCreate,
   type UsuarioUpdate,
   type TenantSettings,
@@ -23,6 +24,7 @@ import { AuditService } from '../audit/audit.module';
 import { RefreshTokenService } from '../auth/refresh-token.service';
 import { StorageService, detectImageExt } from '../storage/storage.module';
 import { requireTenantContext } from '../tenancy/tenant-context';
+import { aplicarPerfilAoUsuario, garantirPerfis } from '../perfis/perfis-orgao';
 
 const BRASAO_URL_TTL_S = 3600;
 const BRASAO_MAX_BYTES = 2 * 1024 * 1024;
@@ -970,6 +972,16 @@ export class ConfiguracoesService {
 
   // ===================== Guia 3: Usuarios e Permissoes =====================
 
+  /** Perfis do orgao (definidos pela equipe JEOS) para escolher no cadastro de usuario. */
+  async listPerfis(): Promise<PerfilOrgaoResumo[]> {
+    const ctx = requireTenantContext();
+    const sql = this.db.tenant(ctx.schemaName);
+    await garantirPerfis(sql, this.db.catalog());
+    return sql<PerfilOrgaoResumo[]>`
+      SELECT id, nome, descricao, papel, permissoes FROM perfis ORDER BY sistema DESC, nome
+    `;
+  }
+
   async listUsuarios(
     page: number,
     pageSize: number,
@@ -978,10 +990,24 @@ export class ConfiguracoesService {
     const sql = this.db.tenant(ctx.schemaName);
     const offset = (page - 1) * pageSize;
 
-    const rows = await sql<Array<{ id: string; email: string; nome: string; role: string; ativo: boolean; ultimo_acesso: Date | null; criado_em: Date }>>`
-      SELECT id, email, nome, role, ativo, ultimo_acesso, criado_em
-      FROM users
-      ORDER BY nome ASC
+    await garantirPerfis(sql, this.db.catalog());
+    const rows = await sql<
+      Array<{
+        id: string;
+        email: string;
+        nome: string;
+        role: string;
+        ativo: boolean;
+        ultimo_acesso: Date | null;
+        criado_em: Date;
+        cpf: string | null;
+        perfil_id: string | null;
+        perfil_nome: string | null;
+      }>
+    >`
+      SELECT u.id, u.email, u.nome, u.role, u.ativo, u.ultimo_acesso, u.criado_em, u.cpf, u.perfil_id, p.nome AS perfil_nome
+      FROM users u LEFT JOIN perfis p ON p.id = u.perfil_id
+      ORDER BY u.nome ASC
       LIMIT ${pageSize} OFFSET ${offset}
     `;
 
@@ -1004,6 +1030,9 @@ export class ConfiguracoesService {
         criadoEm: r.criado_em.toISOString(),
         permissions: perms.map((p) => p.permission_key),
         unidadesIds: [],
+        cpf: r.cpf,
+        perfilId: r.perfil_id,
+        perfilNome: r.perfil_nome,
       });
     }
 
@@ -1023,19 +1052,24 @@ export class ConfiguracoesService {
 
     const senhaHash = await argon2.hash(data.senha, { type: argon2.argon2id });
 
-    const rows = await sql<Array<{ id: string }>>`
-      INSERT INTO users (email, nome, senha_hash, role, ativo, must_change_password)
-      VALUES (${data.email}, ${data.nome}, ${senhaHash}, ${data.role}, true, true)
-      RETURNING id
-    `;
-    const id = rows[0]?.id ?? '';
-
-    for (const p of data.permissions) {
-      await sql.unsafe(
-        `INSERT INTO user_permissions (user_id, permission_key) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-        [id, p],
-      );
+    if (data.cpf && (await sql`SELECT 1 FROM users WHERE cpf = ${data.cpf}`).length) {
+      throw new ConflictException('CPF já cadastrado neste órgão');
     }
+    const id = await sql.begin(async (tx) => {
+      const rows = await tx<Array<{ id: string }>>`
+        INSERT INTO users (email, nome, cpf, senha_hash, role, ativo, must_change_password)
+        VALUES (${data.email}, ${data.nome}, ${data.cpf ?? null}, ${senhaHash}, ${data.role}, true, true)
+        RETURNING id
+      `;
+      const novo = rows[0]?.id ?? '';
+      // Com perfil, papel e permissoes vem dele; sem, ficam as marcadas na tela.
+      if (data.perfilId) await aplicarPerfilAoUsuario(tx, novo, data.perfilId);
+      else
+        for (const p of data.permissions) {
+          await tx`INSERT INTO user_permissions (user_id, permission_key) VALUES (${novo}, ${p}) ON CONFLICT DO NOTHING`;
+        }
+      return novo;
+    });
 
     await this.audit.logTenant({
       actorId,
@@ -1058,19 +1092,23 @@ export class ConfiguracoesService {
     const ctx = requireTenantContext();
     const sql = this.db.tenant(ctx.schemaName);
 
-    await sql.unsafe(
-      `UPDATE users SET nome = $1, role = $2, ativo = $3 WHERE id = $4`,
-      [data.nome, data.role, data.ativo, id],
-    );
-
-    // Replace permissions: simple approach
-    await sql.unsafe(`DELETE FROM user_permissions WHERE user_id = $1`, [id]);
-    for (const p of data.permissions) {
-      await sql.unsafe(
-        `INSERT INTO user_permissions (user_id, permission_key) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-        [id, p],
-      );
+    if (data.cpf && (await sql`SELECT 1 FROM users WHERE cpf = ${data.cpf} AND id <> ${id}`).length) {
+      throw new ConflictException('CPF já cadastrado neste órgão');
     }
+    await sql.begin(async (tx) => {
+      await tx`UPDATE users SET nome = ${data.nome}, role = ${data.role}, ativo = ${data.ativo} WHERE id = ${id}`;
+      if (data.cpf !== undefined) await tx`UPDATE users SET cpf = ${data.cpf} WHERE id = ${id}`;
+      if (data.perfilId) {
+        await aplicarPerfilAoUsuario(tx, id, data.perfilId);
+      } else {
+        // Permissoes marcadas uma a uma: o usuario sai do perfil ("Personalizado").
+        await tx`UPDATE users SET perfil_id = NULL WHERE id = ${id}`;
+        await tx`DELETE FROM user_permissions WHERE user_id = ${id}`;
+        for (const p of data.permissions) {
+          await tx`INSERT INTO user_permissions (user_id, permission_key) VALUES (${id}, ${p}) ON CONFLICT DO NOTHING`;
+        }
+      }
+    });
 
     await this.audit.logTenant({
       actorId,

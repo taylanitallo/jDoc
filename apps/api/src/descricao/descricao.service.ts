@@ -422,7 +422,7 @@ export class DescricaoService {
       doc.font('Helvetica-Bold').fontSize(11).text(ctx.nome.toUpperCase(), { align: 'center' });
       doc.moveDown(0.8).fontSize(16).text(titulo, { align: 'center' });
       doc.moveDown(0.3).font('Helvetica').fontSize(8).fillColor('#475569')
-        .text(`Instrumento de pesquisa elaborado segundo a NOBRADE (CONARQ) — emitido em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`, { align: 'center' });
+        .text(`Instrumento de pesquisa elaborado segundo a NOBRADE (CONARQ) — emitido em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' })}`, { align: 'center' });
       doc.fillColor('#0f172a').moveDown(1.2);
 
       for (const uid of ordem) {

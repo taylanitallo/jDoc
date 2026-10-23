@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { tenantRoleSchema, type TenantRole } from './constants.js';
+import type { UiTheme } from './tema.js';
 
 /**
  * Politica de senha: minimo 6 caracteres (pedido do cliente).
@@ -64,6 +65,10 @@ export const tenantAccessClaimsSchema = z.object({
   role: tenantRoleSchema,
   permissions: z.array(z.string()),
   realm: z.literal('tenant'),
+  /** "Entrar como": sessao aberta por um admin da plataforma (faixa de aviso, sem refresh). */
+  imp: z
+    .object({ adminId: z.string().uuid(), adminNome: z.string(), motivo: z.string() })
+    .optional(),
 });
 export type TenantAccessClaims = z.infer<typeof tenantAccessClaimsSchema>;
 
@@ -73,6 +78,8 @@ export type TenantAccessClaims = z.infer<typeof tenantAccessClaimsSchema>;
 export const superadminAccessClaimsSchema = z.object({
   sub: z.string().uuid(),
   realm: z.literal('superadmin'),
+  /** Sessao (familia do refresh) — revogavel e com a janela de reautenticacao. */
+  sid: z.string().min(1).max(64),
 });
 export type SuperadminAccessClaims = z.infer<typeof superadminAccessClaimsSchema>;
 
@@ -106,8 +113,70 @@ export interface ResolveLoginResponse {
 export interface UsuarioAtual {
   nome: string;
   email: string;
+  cpf: string | null;
   role: TenantRole;
   orgao: string;
   /** Admin ou acervo_restrito:read: enxerga documentos de acesso restrito. */
   podeVerRestrito: boolean;
+  /** Tema escolhido pelo usuario (null = nunca escolheu). */
+  uiTheme: UiTheme | null;
+  /** Cor da marca do orgao (Configuracoes > Aparencia), padrao dos usuarios. */
+  corOrgao: string | null;
+  mustChangePassword: boolean;
+  /** Telas desligadas pelo superadmin para este orgao. */
+  menusDesligados: string[];
+  /** Sessao de "entrar como" da equipe JEOS (faixa de aviso no topo). */
+  impersonacao: { adminNome: string; motivo: string } | null;
 }
+
+/** CPF so com digitos, 11 posicoes, com digitos verificadores validos. */
+export function cpfValido(cpf: string): boolean {
+  const d = cpf.replace(/\D/g, '');
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  const dv = (n: number) => {
+    let soma = 0;
+    for (let i = 0; i < n; i++) soma += Number(d[i]) * (n + 1 - i);
+    const r = (soma * 10) % 11;
+    return r === 10 ? 0 : r;
+  };
+  return dv(9) === Number(d[9]) && dv(10) === Number(d[10]);
+}
+
+export const cpfSchema = z
+  .string()
+  .transform((v) => v.replace(/\D/g, ''))
+  .refine(cpfValido, 'CPF inválido');
+
+/** Minha conta: dados que o proprio usuario pode mudar. */
+export const minhaContaSchema = z
+  .object({
+    nome: z.string().trim().min(2, 'Informe o nome').max(200),
+    cpf: cpfSchema.nullable(),
+  })
+  .strict();
+export type MinhaContaInput = z.infer<typeof minhaContaSchema>;
+
+// ---------------- Esqueci a senha ----------------
+
+/** CPF (so digitos) ou e-mail. */
+export const esqueciSenhaSchema = z
+  .object({ identificador: z.string().trim().min(3, 'Informe o CPF ou o e-mail').max(254) })
+  .strict();
+export type EsqueciSenhaInput = z.infer<typeof esqueciSenhaSchema>;
+
+/** Pelo link (token) ou pelo codigo de 6 digitos recebido por e-mail. */
+export const redefinirSenhaSchema = z.union([
+  z.object({ token: z.string().regex(/^[0-9a-f]{64}$/, 'Link inválido'), novaSenha: passwordSchema }).strict(),
+  z
+    .object({
+      identificador: z.string().trim().min(3).max(254),
+      codigo: z.string().regex(/^\d{6}$/, 'O código tem 6 dígitos'),
+      novaSenha: passwordSchema,
+    })
+    .strict(),
+]);
+export type RedefinirSenhaInput = z.infer<typeof redefinirSenhaSchema>;
+
+/** Resposta sempre igual, exista ou nao a conta (nao revela quem e usuario). */
+export const MENSAGEM_ESQUECI_SENHA =
+  'Se houver uma conta com esses dados, enviamos um e-mail com o link e o código para criar uma nova senha.';
