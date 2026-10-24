@@ -45,6 +45,12 @@ export const JOBS = {
     agenda: 'Todo dia às 04h30',
     manual: true,
   },
+  biblioteca_leis: {
+    nome: 'Biblioteca de leis',
+    descricao: 'Traz as leis novas e alteradas do repositório de origem (ctresb/leis), só federal, o estado e o município de cada órgão cadastrado.',
+    agenda: 'Todo dia às 05h30',
+    manual: true,
+  },
   exportacao: {
     nome: 'Exportação integral',
     descricao: 'Gera os pacotes ZIP com todos os documentos, metadados e a trilha de auditoria de um órgão.',
