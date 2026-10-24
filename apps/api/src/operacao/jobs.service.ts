@@ -27,6 +27,8 @@ const AGENDA: Agenda[] = [
   // Continuidade: copia segregada de madrugada; teste de restauracao depois dela.
   { job: 'copia_segregada', hora: '02:30' },
   { job: 'teste_restauracao', hora: '04:30' },
+  // Biblioteca de leis: o repositorio de origem recebe leis novas todo dia.
+  { job: 'biblioteca_leis', hora: '05:30' },
 ];
 
 const TICK_MS = 60_000;
