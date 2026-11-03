@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-quer
 import {
   Activity,
   BadgeCheck,
+  BookMarked,
   Building2,
   Clock3,
   DatabaseBackup,
@@ -54,6 +55,7 @@ const MENU: Array<{ title: string; items: Item[] }> = [
       { href: '/superadmin/backups', label: 'Backups', icon: DatabaseBackup, papeis: OPERACAO, descricao: 'Cópias de segurança e restauração' },
       { href: '/superadmin/jobs', label: 'Jobs', icon: Clock3, papeis: OPERACAO, descricao: 'Execuções de rotinas automáticas' },
       { href: '/superadmin/performance', label: 'Performance', icon: Gauge, papeis: OPERACAO, descricao: 'Tempo de resposta, erros, saúde e correções' },
+      { href: '/superadmin/leis', label: 'Leis de referência', icon: BookMarked, papeis: TODOS, descricao: 'Biblioteca de leis por órgão e sincronização diária' },
       { href: '/superadmin/logs', label: 'Logs', icon: ScrollText, papeis: OPERACAO, descricao: 'Auditoria da plataforma e dos órgãos' },
     ],
   },
