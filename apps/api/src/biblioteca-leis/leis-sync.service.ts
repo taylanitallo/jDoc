@@ -22,7 +22,7 @@ interface Contexto {
   onProgresso?: (r: ResumoSync) => void;
 }
 
-const SIMULTANEOS = 8;
+const SIMULTANEOS = 4;
 const pai = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf('/')));
 const nomeBase = (p: string) => p.slice(p.lastIndexOf('/') + 1);
 
