@@ -1670,6 +1670,16 @@ export class DocumentsService {
     return toView(row, extras.get(id) ?? []);
   }
 
+  /** Dados de acesso do documento, para quem pode le-lo (404/403 caso contrario). */
+  async dadosDeAcesso(
+    user: TenantAccessClaims,
+    id: string,
+  ): Promise<{ module: DocModule; restrito: boolean; sigiloso: boolean; orgaoCodigo: string | null }> {
+    const row = await this.getRowFor(user, id);
+    this.assertPermission(user, row.module, 'read');
+    return { module: row.module, restrito: row.nivel_acesso === 'restrito', sigiloso: !!row.grau_sigilo, orgaoCodigo: row.orgao_codigo };
+  }
+
   /** Abertura do documento pela tela: igual ao get, mas fica na trilha de auditoria. */
   async visualizar(user: TenantAccessClaims, id: string, ip: string): Promise<DocumentView> {
     const doc = await this.get(user, id);

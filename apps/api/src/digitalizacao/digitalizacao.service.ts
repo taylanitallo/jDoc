@@ -260,8 +260,12 @@ export class DigitalizacaoService {
   }
 
   async verificacao(sql: Sql, loteId: string): Promise<VerificacaoAutomaticaLote> {
-    const [v] = await sql<Array<{ documentos: number; sem_arquivo: number; sem_paginas: number; sem_desc: number }>>`
+    const [v] = await sql<Array<{ documentos: number; sem_arquivo: number; sem_paginas: number; sem_desc: number; sem_camada: number; leitura_pendente: number }>>`
       SELECT count(*)::int AS documentos,
+             -- PDF sem camada de texto: a leitura precisou de OCR no servidor ou nao achou texto.
+             count(*) FILTER (WHERE d.file_key IS NOT NULL AND (d.ocr_status = 'sem_texto'
+               OR EXISTS (SELECT 1 FROM document_textos t WHERE t.document_id = d.id AND t.document_file_id IS NULL AND t.origem = 'ocr')))::int AS sem_camada,
+             count(*) FILTER (WHERE d.file_key IS NOT NULL AND d.ocr_status IN ('pendente', 'processando'))::int AS leitura_pendente,
              count(*) FILTER (WHERE d.file_key IS NULL)::int AS sem_arquivo,
              count(*) FILTER (WHERE d.file_key IS NOT NULL AND coalesce(d.paginas, 0) = 0)::int AS sem_paginas,
              count(*) FILTER (WHERE coalesce(nullif(trim(d.descricao), ''), nullif(trim(d.assunto), '')) IS NULL OR d.document_date IS NULL)::int AS sem_desc
@@ -277,6 +281,8 @@ export class DigitalizacaoService {
       semArquivo: v?.sem_arquivo ?? 0,
       semPaginas: v?.sem_paginas ?? 0,
       semDescricaoOuData: v?.sem_desc ?? 0,
+      semCamadaTexto: v?.sem_camada ?? 0,
+      leituraPendente: v?.leitura_pendente ?? 0,
       duplicadosPorHash: dup.map((d) => ({ hash: d.hash, documentos: d.n })),
     };
   }
