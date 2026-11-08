@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -11,7 +12,8 @@ import { JWT_AUDIENCE, JWT_ISSUER, tenantAccessClaimsSchema } from '@jdoc/shared
 import { loadEnv } from '../config/env';
 import { AuditService } from '../audit/audit.module';
 import type { TenantContext } from '../tenancy/tenant-context';
-import { IS_PUBLIC_KEY } from './decorators';
+import { IS_PUBLIC_KEY, SENHA_PROVISORIA_KEY } from './decorators';
+import { RefreshTokenService } from './refresh-token.service';
 
 /**
  * Guard JWT do realm TENANT.
@@ -26,6 +28,7 @@ export class TenantJwtGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
+    private readonly refreshTokens: RefreshTokenService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -68,6 +71,18 @@ export class TenantJwtGuard implements CanActivate {
         metadata: { tokenTenantId: claims.data.tenantId, urlSlug: tenant.slug },
       });
       throw new UnauthorizedException('Nao autenticado');
+    }
+
+    // Sessao encerrada (aparelhos conectados, logout, senha redefinida): acesso cai na hora.
+    if (claims.data.sid && !(await this.refreshTokens.familiaAtiva('tenant', claims.data.sid))) {
+      throw new UnauthorizedException('Nao autenticado');
+    }
+
+    if (
+      claims.data.senhaProvisoria &&
+      !this.reflector.getAllAndOverride<boolean>(SENHA_PROVISORIA_KEY, [context.getHandler(), context.getClass()])
+    ) {
+      throw new ForbiddenException({ message: 'Troque a senha provisória para continuar.', code: 'trocar_senha' });
     }
 
     (req as Request & { user?: unknown }).user = claims.data;

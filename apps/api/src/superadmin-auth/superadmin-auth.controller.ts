@@ -33,7 +33,7 @@ import {
 } from '@jdoc/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { loadEnv } from '../config/env';
-import { Public } from '../auth/decorators';
+import { PermiteSenhaProvisoria, Public } from '../auth/decorators';
 import { SuperadminAuthService } from './superadmin-auth.service';
 import { SuperadminJwtGuard } from './superadmin-jwt.guard';
 import { AdminSessionsService } from './admin-sessions.service';
@@ -95,6 +95,7 @@ export class SuperadminAuthController {
     };
   }
 
+  @PermiteSenhaProvisoria()
   @PermiteSemMfa()
   @Post('auth/logout')
   @HttpCode(204)
@@ -108,6 +109,7 @@ export class SuperadminAuthController {
     res.clearCookie(REFRESH_COOKIE, { path: '/superadmin/auth' });
   }
 
+  @PermiteSenhaProvisoria()
   @PermiteSemMfa()
   @Get('me')
   me(@CurrentAdmin() admin: AdminReq): Promise<AdminAtual> {
@@ -126,6 +128,7 @@ export class SuperadminAuthController {
     return this.auth.reauth(admin, body, origem(req));
   }
 
+  @PermiteSenhaProvisoria()
   @PermiteSemMfa()
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('auth/password')

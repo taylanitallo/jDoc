@@ -230,6 +230,7 @@ const ACOES: Record<string, Frase> = {
   logout_all: (_, q) => `${q} encerrou todas as próprias sessões`,
   senha_alterada: (_, q) => `${q} trocou a própria senha`,
   conta_atualizada: (_, q) => `${q} atualizou os próprios dados`,
+  sessao_encerrada: (_, q) => `${q} encerrou uma sessão em um aparelho conectado`,
   senha_recuperacao_solicitada: (_, q) => `${q} pediu a recuperação de senha`,
   senha_recuperacao_sem_conta: () => 'Pedido de recuperação de senha para dados que não correspondem a nenhuma conta',
   senha_redefinida_por_recuperacao: (_, q) => `${q} criou uma nova senha pela recuperação`,

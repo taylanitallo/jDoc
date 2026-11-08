@@ -114,12 +114,15 @@ function Casca({ children }: { children: ReactNode }) {
 
   useTemaUsuario('superadmin', me?.uiTheme, null, !!me);
 
-  // Sem 2FA ou com senha provisoria: so Minha conta ate resolver.
-  const pendente = !!me && (!me.mfaEnabled || me.mustChangePassword);
+  // Senha provisoria: nada do painel antes de escolher a senha.
+  const senhaProvisoria = !!me?.mustChangePassword;
+  // Sem 2FA: so Minha conta ate resolver.
+  const pendente = !!me && !me.mfaEnabled;
   const naConta = pathname.startsWith('/superadmin/conta');
   useEffect(() => {
-    if (pendente && !naConta) router.replace('/superadmin/conta');
-  }, [pendente, naConta, router]);
+    if (senhaProvisoria) router.replace('/superadmin/trocar-senha');
+    else if (pendente && !naConta) router.replace('/superadmin/conta');
+  }, [senhaProvisoria, pendente, naConta, router]);
 
   const sair = async () => {
     try {
@@ -129,6 +132,8 @@ function Casca({ children }: { children: ReactNode }) {
       router.replace('/superadmin/login');
     }
   };
+
+  if (senhaProvisoria) return null;
 
   const groups: NavGroup[] = me
     ? MENU.map((g) => ({
@@ -149,12 +154,13 @@ function Casca({ children }: { children: ReactNode }) {
         user={me ? { nome: me.nome, papel: PAPEL_ADMIN_LABEL[me.role] } : null}
         onLogout={sair}
         contaHref="/superadmin/conta"
+        aparelhosConectados
         titulo={tituloDa(pathname)}
         banner={
           pendente ? (
             <div className="flex items-center gap-2 border-b border-warning-200 bg-warning-50 px-4 py-2.5 text-sm font-medium text-warning-600 sm:px-6 lg:px-8">
               <Activity className="h-4 w-4 shrink-0" aria-hidden />
-              {me?.mustChangePassword ? 'Troque a senha provisória' : 'Ative a verificação em 2 etapas'} para liberar o painel.
+              Ative a verificação em 2 etapas para liberar o painel.
             </div>
           ) : undefined
         }

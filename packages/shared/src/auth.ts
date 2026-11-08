@@ -55,7 +55,8 @@ export type TwoFaConfirmInput = z.infer<typeof twoFaConfirmSchema>;
 
 export const changePasswordSchema = z
   .object({
-    senhaAtual: z.string().min(1).max(200),
+    /** Dispensada so na troca obrigatoria da senha provisoria (a pessoa acabou de entrar com ela). */
+    senhaAtual: z.string().min(1).max(200).optional(),
     novaSenha: passwordSchema,
   })
   .strict();
@@ -71,6 +72,10 @@ export const tenantAccessClaimsSchema = z.object({
   role: tenantRoleSchema,
   permissions: z.array(z.string()),
   realm: z.literal('tenant'),
+  /** Sessao (familia do refresh): encerrada em "Aparelhos conectados", o token para de valer. */
+  sid: z.string().min(1).max(64).optional(),
+  /** Senha provisoria: so as rotas de ver a conta, trocar a senha e sair ate a troca. */
+  senhaProvisoria: z.literal(true).optional(),
   /** "Entrar como": sessao aberta por um admin da plataforma (faixa de aviso, sem refresh). */
   imp: z
     .object({ adminId: z.string().uuid(), adminNome: z.string(), motivo: z.string() })

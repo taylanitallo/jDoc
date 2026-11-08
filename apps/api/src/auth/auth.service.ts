@@ -6,6 +6,8 @@ import {
   JWT_AUDIENCE,
   JWT_ISSUER,
   TENANT_ROLES,
+  descreverDispositivo,
+  type AdminSessao,
   type ChangePasswordInput,
   type MinhaContaInput,
   type UiTheme,
@@ -115,11 +117,14 @@ export class AuthService {
 
     await this.bruteForce.registerSuccess(accountKey);
 
-    const claims = await this.montarClaims(ctx.schemaName, ctx.tenantId, ctx.slug, user);
+    const refreshToken = await this.refreshTokens.issue('tenant', { userId: user.id, tenantId: ctx.tenantId }, { ip, userAgent });
+    const claims = await this.montarClaims(ctx.schemaName, ctx.tenantId, ctx.slug, user, {
+      senhaProvisoria: user.must_change_password,
+      sid: this.refreshTokens.familia(refreshToken) ?? undefined,
+    });
 
-    const [accessToken, refreshToken] = await Promise.all([
+    const [accessToken] = await Promise.all([
       this.signAccess(claims),
-      this.refreshTokens.issue('tenant', { userId: user.id, tenantId: ctx.tenantId }),
       sql`UPDATE users SET ultimo_acesso = now() WHERE id = ${user.id}`,
     ]);
 
@@ -145,11 +150,22 @@ export class AuthService {
     tenantId: string,
     slug: string,
     user: Pick<UserRow, 'id' | 'role' | 'orgaos_codigos'>,
+    sessao: { senhaProvisoria?: boolean; sid?: string } = {},
   ): Promise<TenantAccessClaims> {
     const permissions = await this.loadPermissions(schemaName, user.id);
     const role = (TENANT_ROLES as readonly string[]).includes(user.role) ? (user.role as TenantRole) : 'consulta';
     const lot = role !== 'admin' && user.orgaos_codigos?.length ? user.orgaos_codigos : undefined;
-    return { sub: user.id, tenantId, tenantSlug: slug, role, permissions, realm: 'tenant', ...(lot ? { lot } : {}) };
+    return {
+      sub: user.id,
+      tenantId,
+      tenantSlug: slug,
+      role,
+      permissions,
+      realm: 'tenant',
+      ...(lot ? { lot } : {}),
+      ...(sessao.sid ? { sid: sessao.sid } : {}),
+      ...(sessao.senhaProvisoria ? { senhaProvisoria: true as const } : {}),
+    };
   }
 
   private async mfaObrigatorio(sql: ReturnType<DatabaseService['tenant']>): Promise<boolean> {
@@ -170,7 +186,7 @@ export class AuthService {
     const ctx = requireTenantContext();
     let rotation;
     try {
-      rotation = await this.refreshTokens.rotate('tenant', token);
+      rotation = await this.refreshTokens.rotate('tenant', token, { ip, userAgent });
     } catch (err) {
       await this.audit.logGlobal({
         actorType: 'security',
@@ -205,7 +221,12 @@ export class AuthService {
       throw new UnauthorizedException('Sessao invalida');
     }
 
-    const accessToken = await this.signAccess(await this.montarClaims(ctx.schemaName, ctx.tenantId, ctx.slug, user));
+    const accessToken = await this.signAccess(
+      await this.montarClaims(ctx.schemaName, ctx.tenantId, ctx.slug, user, {
+        senhaProvisoria: user.must_change_password,
+        sid: this.refreshTokens.familia(rotation.newToken) ?? undefined,
+      }),
+    );
 
     return {
       accessToken,
@@ -261,7 +282,8 @@ export class AuthService {
       iaDesligada: privacidade?.iaDesligada === true,
       uiTheme: u.ui_theme,
       corOrgao,
-      mustChangePassword: u.must_change_password,
+      // No "entrar como" a equipe JEOS nao escolhe a senha de ninguem.
+      mustChangePassword: !imp && u.must_change_password,
       mfaEnabled: u.totp_enabled,
       // Na sessao de "entrar como" a equipe JEOS nao configura 2FA de ninguem.
       mfaPendente: !imp && (await this.mfaPendente(sql, u)),
@@ -294,17 +316,51 @@ export class AuthService {
   }
 
   /** Troca da propria senha; encerra as outras sessoes do usuario. */
-  async trocarSenha(userId: string, input: ChangePasswordInput, ip: string): Promise<void> {
+  async trocarSenha(
+    userId: string,
+    input: ChangePasswordInput,
+    ip: string,
+    sessao: { impersonacao: boolean; sid: string | undefined },
+  ): Promise<void> {
     const ctx = requireTenantContext();
     const sql = this.db.tenant(ctx.schemaName);
-    const [u] = await sql<Array<{ senha_hash: string }>>`SELECT senha_hash FROM users WHERE id = ${userId} AND ativo = true`;
-    if (!u || !(await this.passwords.verify(u.senha_hash, input.senhaAtual))) {
+    const [u] = await sql<Array<{ senha_hash: string; must_change_password: boolean }>>`
+      SELECT senha_hash, must_change_password FROM users WHERE id = ${userId} AND ativo = true
+    `;
+    // Troca obrigatoria: a pessoa acabou de entrar com a senha provisoria, nao precisa repetir.
+    const dispensaAtual = !!u?.must_change_password && !sessao.impersonacao;
+    if (!u || (!dispensaAtual && !(input.senhaAtual && (await this.passwords.verify(u.senha_hash, input.senhaAtual))))) {
       throw new BadRequestException('Senha atual incorreta');
     }
-    if (input.senhaAtual === input.novaSenha) throw new BadRequestException('A nova senha deve ser diferente da atual');
+    if (await this.passwords.verify(u.senha_hash, input.novaSenha)) {
+      throw new BadRequestException('A nova senha deve ser diferente da atual');
+    }
     const hash = await this.passwords.hash(input.novaSenha);
     await sql`UPDATE users SET senha_hash = ${hash}, must_change_password = false, atualizado_em = now() WHERE id = ${userId}`;
+    // Quem tinha a senha antiga nao continua conectado.
+    if (sessao.sid) await this.refreshTokens.revokeOutrasFamilias('tenant', userId, sessao.sid);
     await this.audit.logTenant({ actorId: userId, action: 'senha_alterada', ip, resourceType: 'user', resourceId: userId });
+  }
+
+  // ---------------- Aparelhos conectados ----------------
+
+  async listarSessoes(userId: string, sidAtual: string | undefined): Promise<AdminSessao[]> {
+    const sessoes = await this.refreshTokens.sessoes('tenant', userId);
+    return sessoes.map((s) => ({
+      id: s.id,
+      ip: s.ip,
+      dispositivo: descreverDispositivo(s.userAgent),
+      criadoEm: s.criadoEm.toISOString(),
+      ultimoUso: s.ultimoUso.toISOString(),
+      atual: s.id === sidAtual,
+    }));
+  }
+
+  async encerrarSessao(userId: string, sessaoId: string, ip: string): Promise<void> {
+    if (!(await this.refreshTokens.revokeFamilyDoUsuario('tenant', sessaoId, userId))) {
+      throw new NotFoundException('Sessão não encontrada');
+    }
+    await this.audit.logTenant({ actorId: userId, action: 'sessao_encerrada', ip, resourceType: 'user', resourceId: userId });
   }
 
   // ---------------- Verificacao em 2 etapas ----------------

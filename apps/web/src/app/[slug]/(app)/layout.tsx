@@ -208,11 +208,14 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
   const segmento = pathname.slice(base.length + 1).split('/')[0] ?? '';
   const titulo = TITULOS[segmento] ?? { title: 'jDoc' };
 
-  // Senha provisoria ou 2 etapas exigida e nao configurada: nada alem de Minha conta ate resolver.
-  const trocaObrigatoria = (!!usuario?.mustChangePassword || !!usuario?.mfaPendente) && segmento !== 'conta';
+  // Senha provisoria: nada do sistema antes de escolher a senha.
+  const senhaProvisoria = !!usuario?.mustChangePassword;
+  // 2 etapas exigida e nao configurada: nada alem de Minha conta ate resolver.
+  const mfaObrigatorio = !!usuario?.mfaPendente && segmento !== 'conta';
   useEffect(() => {
-    if (trocaObrigatoria) router.replace(`${base}/conta?trocar=1`);
-  }, [trocaObrigatoria, router, base]);
+    if (senhaProvisoria) router.replace(`${base}/trocar-senha`);
+    else if (mfaObrigatorio) router.replace(`${base}/conta?trocar=1`);
+  }, [senhaProvisoria, mfaObrigatorio, router, base]);
 
   const sair = async () => {
     // "Entrar como": so encerra esta aba (o logout revogaria o cookie de outra sessao).
@@ -230,6 +233,8 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
     }
   };
 
+  if (senhaProvisoria) return null;
+
   // Logo apos o login: os dois quadrados para escolher o modulo (sem menu lateral).
   if (segmento === 'modulos') return <EscolhaModulo slug={slug} nome={usuario?.nome ?? null} onSair={() => void sair()} />;
 
@@ -243,6 +248,7 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
       user={usuario ? { nome: usuario.nome, papel: PAPEL[usuario.role] } : null}
       onLogout={sair}
       contaHref={`${base}/conta`}
+      aparelhosConectados={!usuario?.impersonacao}
       corAtiva={ativo ? MODULO_VISUAL[ativo].solido : undefined}
       titulo={titulo}
       headerActions={

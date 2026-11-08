@@ -5,6 +5,10 @@ export const IS_PUBLIC_KEY = 'isPublic';
 /** Rota publica (sem JWT). Uso restrito: login/refresh/health. */
 export const Public = (): MethodDecorator & ClassDecorator => SetMetadata(IS_PUBLIC_KEY, true);
 
+export const SENHA_PROVISORIA_KEY = 'permiteSenhaProvisoria';
+/** Rota liberada antes da troca da senha provisoria (ver a conta, trocar a senha, sair). */
+export const PermiteSenhaProvisoria = (): MethodDecorator & ClassDecorator => SetMetadata(SENHA_PROVISORIA_KEY, true);
+
 export const PERMISSIONS_KEY = 'requiredPermissions';
 /** Permissoes exigidas (modulo:acao). Sem esta metadata, guard NEGA por padrao. */
 export const Permissions = (...perms: string[]): MethodDecorator & ClassDecorator =>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { UserRound } from 'lucide-react';
 import type { UiTheme, UsuarioAtual } from '@jdoc/shared';
@@ -12,11 +12,12 @@ import { Skeleton } from '@/components/skeleton';
 import { useToast } from '@/components/toast';
 import { TrocarSenha } from '@/components/conta/trocar-senha';
 import { VerificacaoDuasEtapas } from '@/components/conta/duas-etapas';
+import { useRolarAoHash } from '@/components/conta/use-rolar-ao-hash';
+import { SessoesAtivas } from '@/components/conta/sessoes-ativas';
 import { ThemePicker } from '@/components/theme/theme-picker';
 
 export default function MinhaContaPage() {
   const { slug } = useParams<{ slug: string }>();
-  const router = useRouter();
   const qc = useQueryClient();
   const toast = useToast();
   const chave = ['auth', 'me', slug];
@@ -54,6 +55,8 @@ export default function MinhaContaPage() {
     }
   };
 
+  useRolarAoHash(!!usuario);
+
   if (!usuario) return <Skeleton rows={6} />;
 
   const enviarDados = (e: FormEvent) => {
@@ -65,20 +68,8 @@ export default function MinhaContaPage() {
     <div className="space-y-6">
       <PageHeader title="Minha conta" description={`${usuario.email} · ${usuario.orgao}`} />
 
-      {usuario.mustChangePassword && (
-        <TrocarSenha
-          rota={`/t/${slug}/auth/password`}
-          minimo={6}
-          destaque
-          onTrocada={async () => {
-            await qc.invalidateQueries({ queryKey: chave });
-            router.replace(`/${slug}/modulos`);
-          }}
-        />
-      )}
-
       {/* "Entrar como": a equipe JEOS nao mexe no autenticador de ninguem. */}
-      {!usuario.impersonacao && !usuario.mustChangePassword && (
+      {!usuario.impersonacao && (
         <VerificacaoDuasEtapas
           rotaBase={`/t/${slug}/auth/mfa`}
           ativo={usuario.mfaEnabled}
@@ -123,9 +114,14 @@ export default function MinhaContaPage() {
         </form>
       </Card>
 
-      {!usuario.mustChangePassword && <TrocarSenha rota={`/t/${slug}/auth/password`} minimo={6} />}
+      <TrocarSenha rota={`/t/${slug}/auth/password`} minimo={6} />
 
       <ThemePicker escopo={slug} valor={usuario.uiTheme} corOrgao={usuario.corOrgao} onSalvar={salvarTema} />
+
+      {/* "Entrar como": a equipe JEOS nao ve nem encerra os aparelhos de ninguem. */}
+      {!usuario.impersonacao && (
+        <SessoesAtivas rota={`/t/${slug}/auth/sessions`} descricao="Navegadores e aplicativos conectados à sua conta. Sessões sem uso por 7 dias expiram sozinhas." />
+      )}
     </div>
   );
 }

@@ -12,7 +12,7 @@ export function iniciais(nome: string | null | undefined): string {
 const TAMANHO = { sm: 'h-8 w-8 text-[11px]', md: 'h-9 w-9 text-xs', lg: 'h-11 w-11 text-sm' } as const;
 const TOM = {
   brand: 'bg-brand-50 text-brand-600 ring-brand-600/20',
-  neutral: 'bg-ink-100 text-ink-600 ring-ink-600/10',
+  neutral: 'bg-ink-100 text-ink-600 ring-ink-300/60',
   dark: 'bg-white/10 text-white ring-white/15',
 } as const;
 

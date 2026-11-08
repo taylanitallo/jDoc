@@ -43,7 +43,7 @@ export const reauthSchema = z.object({ senha: z.string().min(1).max(200), totp: 
 export type ReauthInput = z.infer<typeof reauthSchema>;
 
 export const trocarSenhaAdminSchema = z
-  .object({ senhaAtual: z.string().min(1).max(200), novaSenha: senhaAdminSchema })
+  .object({ senhaAtual: z.string().min(1).max(200).optional(), novaSenha: senhaAdminSchema })
   .strict();
 export type TrocarSenhaAdminInput = z.infer<typeof trocarSenhaAdminSchema>;
 

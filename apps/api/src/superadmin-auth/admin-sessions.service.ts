@@ -16,6 +16,7 @@ interface Linha {
   email: string;
   role: PapelAdmin;
   totp_enabled: boolean;
+  must_change_password: boolean;
   ativo: boolean;
   revoked_at: Date | null;
   last_seen_at: Date;
@@ -70,7 +71,7 @@ export class AdminSessionsService {
     let linha = emCache && emCache.ate > agora ? emCache.linha : undefined;
     if (!linha) {
       const [l] = await this.db.catalog()<Linha[]>`
-        SELECT s.admin_id, a.nome, a.email, a.role, a.totp_enabled, a.ativo, s.revoked_at, s.last_seen_at, s.reauth_until
+        SELECT s.admin_id, a.nome, a.email, a.role, a.totp_enabled, a.must_change_password, a.ativo, s.revoked_at, s.last_seen_at, s.reauth_until
         FROM platform.admin_sessions s JOIN public.superadmins a ON a.id = s.admin_id
         WHERE s.id = ${sid}
       `;
@@ -94,6 +95,7 @@ export class AdminSessionsService {
       email: linha.email,
       role: linha.role,
       mfaEnabled: linha.totp_enabled,
+      mustChangePassword: linha.must_change_password,
       sid,
       reauthUntil: linha.reauth_until,
     };
