@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
+import { AuthModule } from '../auth/auth.module';
 import { DatabaseModule } from '../database/database.service';
 import { AuditModule } from '../audit/audit.module';
 import { StorageModule } from '../storage/storage.module';
@@ -8,7 +8,7 @@ import { ReportsController } from './reports.controller';
 import { ReportsWorker } from './reports.worker';
 
 @Module({
-  imports: [JwtModule, DatabaseModule, AuditModule, StorageModule],
+  imports: [AuthModule, DatabaseModule, AuditModule, StorageModule],
   controllers: [ReportsController],
   providers: [ReportsService, ReportsWorker],
   exports: [ReportsService],

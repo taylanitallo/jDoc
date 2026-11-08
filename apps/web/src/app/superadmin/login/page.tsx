@@ -43,7 +43,7 @@ function Login() {
       });
       setAccessToken(r.accessToken);
       const seguro = destino && destino.startsWith('/superadmin') && !destino.startsWith('//') ? destino : '/superadmin';
-      router.replace(r.must2FASetup || r.mustChangePassword ? '/superadmin/conta' : seguro);
+      router.replace(r.mustChangePassword ? '/superadmin/trocar-senha' : r.must2FASetup ? '/superadmin/conta' : seguro);
     } catch (err) {
       if (err instanceof ApiError && err.code === 'mfa_required') {
         setEtapa(2);

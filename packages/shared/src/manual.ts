@@ -23,7 +23,7 @@ export const MANUAL: TopicoManual[] = [
     tela: '/conta',
     passos: [
       'Abra o endereço do órgão e informe e-mail e senha.',
-      'No primeiro acesso, troque a senha provisória em Minha conta.',
+      'No primeiro acesso, o sistema pede para criar a sua senha antes de entrar.',
       'Em Minha conta, ative a verificação em 2 etapas: escaneie o QR code no Google Authenticator ou Microsoft Authenticator e confirme o código.',
       'Esqueceu a senha? Use "Esqueci minha senha" na tela de entrada e informe o CPF ou o e-mail.',
     ],

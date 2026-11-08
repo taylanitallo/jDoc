@@ -1,15 +1,16 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Laptop, LogOut, UserRound } from 'lucide-react';
-import { PAPEL_ADMIN_DESCRICAO, PAPEL_ADMIN_LABEL, type AdminAtual, type AdminSessao, type UiTheme } from '@jdoc/shared';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { UserRound } from 'lucide-react';
+import { PAPEL_ADMIN_DESCRICAO, PAPEL_ADMIN_LABEL, type AdminAtual, type UiTheme } from '@jdoc/shared';
 import { api, ApiError } from '@/lib/api';
-import { fmtRelative } from '@/lib/format';
-import { Badge, Button, Card, CardHeader, PageHeader } from '@/components/ui';
+import { Badge, Card, CardHeader, PageHeader } from '@/components/ui';
 import { Skeleton } from '@/components/skeleton';
 import { useToast } from '@/components/toast';
 import { TrocarSenha } from '@/components/conta/trocar-senha';
 import { VerificacaoDuasEtapas } from '@/components/conta/duas-etapas';
+import { useRolarAoHash } from '@/components/conta/use-rolar-ao-hash';
+import { SessoesAtivas } from '@/components/conta/sessoes-ativas';
 import { ThemePicker } from '@/components/theme/theme-picker';
 
 export default function ContaSuperadminPage() {
@@ -28,20 +29,13 @@ export default function ContaSuperadminPage() {
     }
   };
 
+  useRolarAoHash(!!me);
+
   if (!me) return <Skeleton rows={6} />;
 
   return (
     <div className="space-y-6">
       <PageHeader title="Minha conta" description={me.email} />
-
-      {me.mustChangePassword && (
-        <TrocarSenha
-          rota="/superadmin/auth/password"
-          minimo={10}
-          destaque
-          onTrocada={() => qc.invalidateQueries({ queryKey: ['superadmin', 'me'] })}
-        />
-      )}
 
       <VerificacaoDuasEtapas
         rotaBase="/superadmin/auth/mfa"
@@ -73,69 +67,11 @@ export default function ContaSuperadminPage() {
         </dl>
       </Card>
 
-      {!me.mustChangePassword && <TrocarSenha rota="/superadmin/auth/password" minimo={10} />}
+      <TrocarSenha rota="/superadmin/auth/password" minimo={10} />
 
-      <SessoesAtivas />
+      <SessoesAtivas rota="/superadmin/auth/sessions" descricao="Navegadores conectados à sua conta. Sessões sem uso por 12 horas expiram sozinhas." />
 
       <ThemePicker escopo="superadmin" valor={me.uiTheme} corOrgao={null} rotuloOrgao="Usar o padrão" onSalvar={salvarTema} />
     </div>
-  );
-}
-
-function SessoesAtivas() {
-  const qc = useQueryClient();
-  const toast = useToast();
-  const { data: sessoes } = useQuery({
-    queryKey: ['superadmin', 'sessoes'],
-    queryFn: () => api<AdminSessao[]>('/superadmin/auth/sessions'),
-  });
-  const encerrar = useMutation({
-    mutationFn: (id: string) => api(`/superadmin/auth/sessions/${id}`, { method: 'DELETE' }),
-    onSuccess: async () => {
-      toast.success('Sessão encerrada.');
-      await qc.invalidateQueries({ queryKey: ['superadmin', 'sessoes'] });
-    },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Não foi possível encerrar.'),
-  });
-
-  return (
-    <Card>
-      <CardHeader icon={Laptop} title="Sessões ativas" description="Navegadores conectados à sua conta. Sessões sem uso por 12 horas expiram sozinhas." />
-      {!sessoes ? (
-        <div className="p-5">
-          <Skeleton rows={2} />
-        </div>
-      ) : (
-        <ul className="divide-y divide-ink-100">
-          {sessoes.map((s) => (
-            <li key={s.id} className="flex items-center gap-3 px-5 py-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-ink-100 text-ink-600">
-                <Laptop className="h-4 w-4" aria-hidden />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="flex items-center gap-2 text-sm font-semibold text-ink-900">
-                  {s.dispositivo}
-                  {s.atual && <Badge tone="success">Esta sessão</Badge>}
-                </p>
-                <p className="text-xs text-ink-500">
-                  {s.ip ?? 'IP desconhecido'} · último uso {fmtRelative(s.ultimoUso)}
-                </p>
-              </div>
-              {!s.atual && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  leftIcon={<LogOut aria-hidden />}
-                  loading={encerrar.isPending && encerrar.variables === s.id}
-                  onClick={() => encerrar.mutate(s.id)}
-                >
-                  Encerrar
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </Card>
   );
 }

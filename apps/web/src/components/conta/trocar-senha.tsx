@@ -7,18 +7,7 @@ import { Button, Card, CardHeader, Field, Input } from '@/components/ui';
 import { useToast } from '@/components/toast';
 
 /** Troca da propria senha (orgao e superadmin; muda so a rota e o minimo). */
-export function TrocarSenha({
-  rota,
-  minimo,
-  destaque,
-  onTrocada,
-}: {
-  rota: string;
-  minimo: number;
-  /** Senha provisoria: card em destaque com o aviso. */
-  destaque?: boolean;
-  onTrocada?: () => void;
-}) {
+export function TrocarSenha({ rota, minimo }: { rota: string; minimo: number }) {
   const toast = useToast();
   const [atual, setAtual] = useState('');
   const [nova, setNova] = useState('');
@@ -38,7 +27,6 @@ export function TrocarSenha({
       setNova('');
       setConfirma('');
       toast.success('Senha alterada.');
-      onTrocada?.();
     } catch (err) {
       setErro(err instanceof ApiError ? err.message : 'Não foi possível alterar a senha.');
     } finally {
@@ -47,12 +35,8 @@ export function TrocarSenha({
   };
 
   return (
-    <Card className={destaque ? 'ring-2 ring-warning-500/40' : undefined}>
-      <CardHeader
-        icon={KeyRound}
-        title="Senha"
-        description={destaque ? 'Sua senha é provisória. Crie uma senha pessoal para continuar usando o sistema.' : 'Troque sua senha de acesso.'}
-      />
+    <Card id="senha" className="scroll-mt-24">
+      <CardHeader icon={KeyRound} title="Senha" description="Troque sua senha de acesso." />
       <form onSubmit={enviar} className="grid gap-4 p-5 sm:grid-cols-3" noValidate>
         <Field label="Senha atual" htmlFor="senha-atual" required>
           <Input id="senha-atual" type="password" autoComplete="current-password" value={atual} onChange={(e) => setAtual(e.target.value)} />

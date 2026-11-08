@@ -63,8 +63,13 @@ export default function LoginPage() {
       // monitorada) quando rodando dentro do jDoc Desktop. Nao bloqueia nem
       // falha o login do site se o app nativo nao estiver disponivel.
       desktopLoginBestEffort(slug, data.email, data.senha);
-      // Senha provisoria ou 2 etapas exigida pelo orgao: primeiro resolve, em Minha conta.
-      if (result.mustChangePassword || result.mfaPendente) {
+      // Senha provisoria: escolhe a senha antes de entrar no sistema.
+      if (result.mustChangePassword) {
+        router.push(`/${slug}/trocar-senha`);
+        return;
+      }
+      // 2 etapas exigida pelo orgao: primeiro resolve, em Minha conta.
+      if (result.mfaPendente) {
         router.push(`/${slug}/conta?trocar=1`);
         return;
       }

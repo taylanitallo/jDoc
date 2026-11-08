@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   HttpCode,
@@ -26,6 +27,7 @@ import {
   preferenciasSchema,
   twoFaConfirmSchema,
   type TwoFaConfirmInput,
+  type AdminSessao,
   type ChangePasswordInput,
   type LoginInput,
   type MinhaContaInput,
@@ -37,7 +39,7 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { loadEnv } from '../config/env';
 import { AuthService } from './auth.service';
 import { RecuperacaoSenhaService } from './recuperacao-senha.service';
-import { CurrentUser, Permissions, Public } from './decorators';
+import { CurrentUser, Permissions, PermiteSenhaProvisoria, Public } from './decorators';
 import { TenantJwtGuard } from './tenant-jwt.guard';
 import { PermissionsGuard } from './permissions.guard';
 import { Throttle } from '@nestjs/throttler';
@@ -103,6 +105,7 @@ export class AuthController {
     return { accessToken: result.accessToken, mustChangePassword: result.mustChangePassword, mfaPendente: result.mfaPendente };
   }
 
+  @PermiteSenhaProvisoria()
   @Permissions()
   @Post('logout')
   @HttpCode(204)
@@ -117,6 +120,7 @@ export class AuthController {
     res.clearCookie(REFRESH_COOKIE, { path: `/t/${slug}/auth` });
   }
 
+  @PermiteSenhaProvisoria()
   @Permissions()
   @Get('me')
   me(@CurrentUser() user: TenantAccessClaims): Promise<UsuarioAtual> {
@@ -143,6 +147,7 @@ export class AuthController {
     await this.auth.salvarPreferencias(user.sub, body.uiTheme);
   }
 
+  @PermiteSenhaProvisoria()
   @Permissions()
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('password')
@@ -152,7 +157,28 @@ export class AuthController {
     @Body(new ZodValidationPipe(changePasswordSchema)) body: ChangePasswordInput,
     @Req() req: Request,
   ): Promise<void> {
-    await this.auth.trocarSenha(user.sub, body, req.ip ?? '');
+    await this.auth.trocarSenha(user.sub, body, req.ip ?? '', { impersonacao: !!user.imp, sid: user.sid });
+  }
+
+  // ---- Aparelhos conectados ----
+
+  @Permissions()
+  @Get('sessions')
+  sessoes(@CurrentUser() user: TenantAccessClaims): Promise<AdminSessao[]> {
+    if (user.imp) throw new ForbiddenException('Na sessão de "entrar como" não é possível ver os aparelhos');
+    return this.auth.listarSessoes(user.sub, user.sid);
+  }
+
+  @Permissions()
+  @Delete('sessions/:id')
+  @HttpCode(204)
+  async encerrarSessao(
+    @CurrentUser() user: TenantAccessClaims,
+    @Param('id') id: string,
+    @Req() req: Request,
+  ): Promise<void> {
+    if (user.imp) throw new ForbiddenException('Na sessão de "entrar como" não é possível encerrar aparelhos');
+    await this.auth.encerrarSessao(user.sub, id, req.ip ?? '');
   }
 
   // ---- Verificacao em 2 etapas (aplicativo autenticador) ----

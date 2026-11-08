@@ -235,14 +235,18 @@ export class SuperadminAuthService {
 
   async trocarSenha(admin: AdminReq, input: TrocarSenhaAdminInput, origem: { ip: string; userAgent: string }): Promise<void> {
     const a = await this.buscar('id', admin.id);
-    if (!a || !(await this.passwords.verify(a.senha_hash, input.senhaAtual))) {
+    // Troca obrigatoria: o admin acabou de entrar com a senha provisoria, nao precisa repetir.
+    if (!a || (!a.must_change_password && !(input.senhaAtual && (await this.passwords.verify(a.senha_hash, input.senhaAtual))))) {
       throw new BadRequestException('Senha atual incorreta');
     }
-    if (input.senhaAtual === input.novaSenha) throw new BadRequestException('A nova senha deve ser diferente da atual');
+    if (await this.passwords.verify(a.senha_hash, input.novaSenha)) {
+      throw new BadRequestException('A nova senha deve ser diferente da atual');
+    }
     const hash = await this.passwords.hash(input.novaSenha);
     await this.db.catalog()`
       UPDATE public.superadmins SET senha_hash = ${hash}, must_change_password = false WHERE id = ${admin.id}
     `;
+    this.sessions.esquecerAdmin(admin.id); // o guard para de exigir a troca ja na proxima requisicao
     const encerradas = await this.sessions.revogarTodas(admin.id, admin.sid);
     await this.audit.logAdmin(admin, origem, {
       action: 'superadmin_senha_alterada',

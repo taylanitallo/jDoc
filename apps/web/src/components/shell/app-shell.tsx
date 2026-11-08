@@ -1,15 +1,27 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTheme } from 'next-themes';
-import { LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun, UserRound, X, type LucideIcon } from 'lucide-react';
+import {
+  KeySquare,
+  LogOut,
+  Menu,
+  MonitorSmartphone,
+  Moon,
+  Palette,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Sun,
+  UserRound,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
-import { DropdownMenu } from '@/components/ui/dropdown-menu';
 
 export interface NavItem {
   href: string;
@@ -30,6 +42,8 @@ const ShellContext = createContext<{
   alternarRecolhida: () => void;
   drawerAberto: boolean;
   setDrawerAberto: (v: boolean) => void;
+  confirmarSaida: boolean;
+  setConfirmarSaida: (v: boolean) => void;
 } | null>(null);
 
 function useShell() {
@@ -56,6 +70,7 @@ export function AppShell({
   switcher,
   corAtiva = 'bg-brand-600',
   contaHref,
+  aparelhosConectados = false,
   children,
 }: {
   appName: string;
@@ -71,8 +86,10 @@ export function AppShell({
   switcher?: (compacta: boolean) => ReactNode;
   /** Fundo do item ativo do menu (cor do modulo em uso). */
   corAtiva?: string;
-  /** "Minha conta" no menu do avatar. */
+  /** Tela "Minha conta": destino dos atalhos do menu do avatar no cabecalho. */
   contaHref?: string;
+  /** Mostra "Aparelhos conectados" no menu do avatar (a tela precisa ter a secao #aparelhos). */
+  aparelhosConectados?: boolean;
   children: ReactNode;
 }) {
   // A casca so monta no cliente (depois do bootstrap da sessao), entao da para
@@ -85,6 +102,7 @@ export function AppShell({
     }
   });
   const [drawerAberto, setDrawerAberto] = useState(false);
+  const [confirmarSaida, setConfirmarSaida] = useState(false);
   const pathname = usePathname();
 
   // Troca de rota fecha o drawer do celular.
@@ -101,7 +119,7 @@ export function AppShell({
     });
 
   return (
-    <ShellContext.Provider value={{ recolhida, alternarRecolhida, drawerAberto, setDrawerAberto }}>
+    <ShellContext.Provider value={{ recolhida, alternarRecolhida, drawerAberto, setDrawerAberto, confirmarSaida, setConfirmarSaida }}>
       <div className="min-h-screen bg-canvas">
         {/* Overlay do drawer (celular) */}
         {drawerAberto && (
@@ -116,7 +134,7 @@ export function AppShell({
           data-print-reset
           className={cn('flex min-h-screen flex-col transition-[padding] duration-200', recolhida ? 'md:pl-[76px]' : 'md:pl-[264px]')}
         >
-          <Header titulo={titulo} actions={headerActions} user={user} />
+          <Header titulo={titulo} actions={headerActions} user={user} contaHref={contaHref} aparelhosConectados={aparelhosConectados} />
           {banner}
           <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
             <div className="mx-auto w-full max-w-[1400px]">{children}</div>
@@ -148,11 +166,8 @@ function Sidebar({
   corAtiva: string;
   contaHref?: string;
 }) {
-  const { recolhida, drawerAberto, setDrawerAberto } = useShell();
+  const { recolhida, drawerAberto, setDrawerAberto, confirmarSaida, setConfirmarSaida } = useShell();
   const pathname = usePathname();
-  const router = useRouter();
-  const { resolvedTheme, setTheme } = useTheme();
-  const [confirmarSaida, setConfirmarSaida] = useState(false);
   const [saindo, setSaindo] = useState(false);
   // No celular (drawer) sempre expandida.
   const compacta = recolhida && !drawerAberto;
@@ -239,63 +254,40 @@ function Sidebar({
 
         {/* Rodape: usuario, tema e sair */}
         {/* Uma linha so (avatar, nome, tema, sair): nao rouba altura do menu em telas baixas. */}
-        <div className={cn('shrink-0 border-t border-white/10 p-3', compacta ? 'flex flex-col items-center gap-1' : 'flex items-center gap-2')}>
-          {user && contaHref && (
-            <DropdownMenu
-              side="top"
-              align="start"
-              className={cn(!compacta && 'min-w-0 flex-1')}
-              items={[
-                { label: 'Minha conta', icon: UserRound, onSelect: () => router.push(contaHref) },
-                {
-                  label: resolvedTheme === 'dark' ? 'Tema claro' : 'Tema escuro',
-                  icon: resolvedTheme === 'dark' ? Sun : Moon,
-                  onSelect: () => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark'),
-                },
-                { label: 'Sair da conta', icon: LogOut, danger: true, onSelect: () => setConfirmarSaida(true) },
-              ]}
-              trigger={({ aberto, alternar }) => (
-                <button
-                  type="button"
-                  onClick={alternar}
-                  aria-haspopup="menu"
-                  aria-expanded={aberto}
-                  title={compacta ? user.nome : undefined}
-                  className={cn(
-                    'flex min-w-0 items-center gap-2.5 rounded-[10px] text-left transition hover:bg-white/10',
-                    compacta ? 'h-10 w-10 justify-center' : 'w-full p-1',
-                  )}
-                >
-                  <Avatar nome={user.nome} tone="dark" />
-                  {!compacta && (
-                    <span className="min-w-0">
-                      <span className="block truncate text-[13px] font-semibold">{user.nome}</span>
-                      <span className="block truncate text-[11px] text-white/45">{user.papel}</span>
-                    </span>
-                  )}
-                </button>
-              )}
-            />
-          )}
-          {!compacta && user && !contaHref && (
-            <div className="flex min-w-0 flex-1 items-center gap-2.5 pl-1">
-              <Avatar nome={user.nome} tone="dark" />
-              <div className="min-w-0">
-                <p className="truncate text-[13px] font-semibold">{user.nome}</p>
-                <p className="truncate text-[11px] text-white/45">{user.papel}</p>
+        <div className="shrink-0 border-t border-white/10 p-3">
+          <div className={cn(compacta ? 'flex flex-col items-center gap-1' : 'flex items-center gap-2')}>
+            {/* So mostra quem esta logado; as acoes ficam no menu do avatar do cabecalho. */}
+            {user && (
+              <div className={cn('flex items-center gap-2.5', compacta ? 'h-10 w-10 justify-center' : 'min-w-0 flex-1 p-1')}>
+                <Avatar nome={user.nome} tone="dark" />
+                {!compacta && (
+                  <div className="min-w-0">
+                    <p className="truncate text-[13px] font-semibold">{user.nome}</p>
+                    <p className="truncate text-[11px] text-white/45">{user.papel}</p>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
+            <BotaoTema compacta={compacta} />
+            <button
+              type="button"
+              onClick={() => setConfirmarSaida(true)}
+              title="Sair da conta"
+              aria-label="Sair da conta"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] text-white/65 transition hover:bg-danger-500/20 hover:text-white"
+            >
+              <LogOut className="h-[18px] w-[18px]" aria-hidden />
+            </button>
+          </div>
+          {drawerAberto && contaHref && (
+            <Link
+              href={contaHref}
+              onClick={() => setDrawerAberto(false)}
+              className="mt-2 flex items-center gap-2 rounded-[10px] px-3 py-2 text-[13px] font-semibold text-white/65 hover:bg-white/10 md:hidden"
+            >
+              <UserRound className="h-4 w-4" aria-hidden /> Minha conta
+            </Link>
           )}
-          <BotaoTema compacta={compacta} />
-          <button
-            type="button"
-            onClick={() => setConfirmarSaida(true)}
-            title="Sair da conta"
-            aria-label="Sair da conta"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] text-white/65 transition hover:bg-danger-500/20 hover:text-white"
-          >
-            <LogOut className="h-[18px] w-[18px]" aria-hidden />
-          </button>
         </div>
       </aside>
 
@@ -354,14 +346,123 @@ function BotaoTema({ compacta }: { compacta: boolean }) {
   );
 }
 
+/** Menu do avatar no cabecalho (padrao JEOS): atalhos da "Minha conta", tema e sair. */
+function MenuConta({
+  user,
+  contaHref,
+  aparelhosConectados,
+}: {
+  user: { nome: string; papel: string };
+  contaHref: string;
+  aparelhosConectados: boolean;
+}) {
+  const { setConfirmarSaida } = useShell();
+  const { resolvedTheme, setTheme } = useTheme();
+  const pathname = usePathname();
+  const [aberto, setAberto] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const escuro = resolvedTheme === 'dark';
+
+  useEffect(() => setAberto(false), [pathname]);
+
+  useEffect(() => {
+    if (!aberto) return;
+    const fora = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setAberto(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setAberto(false);
+    document.addEventListener('mousedown', fora);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', fora);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [aberto]);
+
+  const atalhos: { label: string; descricao: string; icon: LucideIcon; href: string }[] = [
+    { label: 'Meu perfil', descricao: 'Seus dados de acesso', icon: UserRound, href: contaHref },
+    { label: 'Alterar senha', descricao: 'Troque sua senha de acesso', icon: KeySquare, href: `${contaHref}#senha` },
+    { label: 'Aparência', descricao: 'Cor do sistema e modo escuro', icon: Palette, href: `${contaHref}#aparencia` },
+    ...(aparelhosConectados
+      ? [{ label: 'Aparelhos conectados', descricao: 'Veja e encerre sessões', icon: MonitorSmartphone, href: `${contaHref}#aparelhos` }]
+      : []),
+  ];
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={aberto}
+        aria-label="Menu da conta"
+        className="flex rounded-full outline-none ring-offset-2 ring-offset-surface focus-visible:ring-2 focus-visible:ring-brand-500"
+      >
+        <Avatar nome={user.nome} tone="neutral" />
+      </button>
+      {aberto && (
+        <div
+          role="menu"
+          className="animate-fade-in absolute right-0 top-full z-40 mt-2 w-72 overflow-hidden rounded-[14px] border border-ink-200 bg-surface text-ink-800 shadow-lg"
+        >
+          <div className="flex items-center gap-3 border-b border-ink-100 px-4 py-3.5">
+            <Avatar nome={user.nome} tone="neutral" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold text-ink-900">{user.nome}</p>
+              <p className="truncate text-xs text-ink-500">{user.papel}</p>
+            </div>
+          </div>
+          <div className="py-1">
+            {atalhos.map(({ label, descricao, icon: Icone, href }) => (
+              <Link key={href} href={href} role="menuitem" onClick={() => setAberto(false)} className="flex items-start gap-3 px-4 py-2.5 hover:bg-ink-50">
+                <Icone className="mt-0.5 h-[18px] w-[18px] shrink-0 text-ink-500" aria-hidden />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-ink-800">{label}</span>
+                  <span className="block text-xs text-ink-500">{descricao}</span>
+                </span>
+              </Link>
+            ))}
+          </div>
+          <div className="border-t border-ink-100 py-1">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => setTheme(escuro ? 'light' : 'dark')}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-sm font-semibold text-ink-800 hover:bg-ink-50"
+            >
+              {escuro ? <Sun className="h-[18px] w-[18px] text-ink-500" aria-hidden /> : <Moon className="h-[18px] w-[18px] text-ink-500" aria-hidden />}
+              {escuro ? 'Tema claro' : 'Tema escuro'}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setAberto(false);
+                setConfirmarSaida(true);
+              }}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-sm font-semibold text-danger-600 hover:bg-danger-50"
+            >
+              <LogOut className="h-[18px] w-[18px]" aria-hidden /> Sair da conta
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Header({
   titulo,
   actions,
   user,
+  contaHref,
+  aparelhosConectados,
 }: {
   titulo: { title: string; description?: string };
   actions?: ReactNode;
   user: { nome: string; papel: string } | null;
+  contaHref?: string;
+  aparelhosConectados: boolean;
 }) {
   const { recolhida, alternarRecolhida, setDrawerAberto } = useShell();
   return (
@@ -392,7 +493,7 @@ function Header({
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {actions}
-        {user && <Avatar nome={user.nome} className="hidden sm:inline-flex" />}
+        {user && contaHref && <MenuConta user={user} contaHref={contaHref} aparelhosConectados={aparelhosConectados} />}
       </div>
     </header>
   );

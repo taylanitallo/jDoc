@@ -29,6 +29,7 @@ export interface AdminReq {
   email: string;
   role: PapelAdmin;
   mfaEnabled: boolean;
+  mustChangePassword: boolean;
   sid: string;
   reauthUntil: Date | null;
 }

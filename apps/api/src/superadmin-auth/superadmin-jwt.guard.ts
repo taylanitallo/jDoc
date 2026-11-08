@@ -10,7 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
 import { JWT_AUDIENCE, JWT_ISSUER, superadminAccessClaimsSchema, type PapelAdmin } from '@jdoc/shared';
 import { loadEnv } from '../config/env';
-import { IS_PUBLIC_KEY } from '../auth/decorators';
+import { IS_PUBLIC_KEY, SENHA_PROVISORIA_KEY } from '../auth/decorators';
 import { AdminSessionsService } from './admin-sessions.service';
 import { CRITICO_KEY, PAPEIS_KEY, SEM_MFA_KEY, type AdminReq } from './decorators';
 
@@ -19,6 +19,7 @@ import { CRITICO_KEY, PAPEIS_KEY, SEM_MFA_KEY, type AdminReq } from './decorator
  * - issuer/audience proprios: token de orgao NUNCA passa aqui (e vice-versa).
  * - Allowlist de IP opcional via SUPERADMIN_ALLOWED_IPS (csv).
  * - Sessao validada no banco (encerrada = sem acesso em segundos).
+ * - Senha provisoria: so ver a conta, trocar a senha e sair ate a troca.
  * - 2FA obrigatorio: sem ele, so as rotas de configurar o 2FA.
  * - Papel: `@Papeis(...)`; sem decorator, so o owner.
  * - `@Critico()`: exige reautenticacao recente (`reauth_required`).
@@ -59,6 +60,10 @@ export class SuperadminJwtGuard implements CanActivate {
     const admin = await this.sessions.validar(claims.data.sid, claims.data.sub);
     req.admin = admin;
     req.user = claims.data;
+
+    if (admin.mustChangePassword && !this.reflector.getAllAndOverride<boolean>(SENHA_PROVISORIA_KEY, alvo)) {
+      throw new ForbiddenException({ message: 'Troque a senha provisória para continuar.', code: 'trocar_senha' });
+    }
 
     if (!admin.mfaEnabled && !this.reflector.getAllAndOverride<boolean>(SEM_MFA_KEY, alvo)) {
       throw new ForbiddenException({

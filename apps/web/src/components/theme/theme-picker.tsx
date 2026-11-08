@@ -69,7 +69,7 @@ export function ThemePicker({
   };
 
   return (
-    <Card>
+    <Card id="aparencia" className="scroll-mt-24">
       <CardHeader
         icon={Palette}
         title="Aparência"
