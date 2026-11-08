@@ -259,6 +259,9 @@ function ControleQualidade({ slug, lote, podeAceitar, onFeito }: { slug: string;
             <li className={v.semArquivo ? 'text-danger-600' : ''}>{v.semArquivo} sem arquivo</li>
             <li className={v.semPaginas ? 'text-danger-600' : ''}>{v.semPaginas} sem páginas contadas</li>
             <li className={v.semDescricaoOuData ? 'text-warning-600' : ''}>{v.semDescricaoOuData} sem descrição ou data</li>
+            <li className={v.semCamadaTexto ? 'text-danger-600' : ''}>
+              {v.semCamadaTexto} sem camada de texto (não é PDF pesquisável){v.leituraPendente ? ` · ${v.leituraPendente} em leitura` : ''}
+            </li>
             <li className={v.duplicadosPorHash.length ? 'text-danger-600' : ''}>
               {v.duplicadosPorHash.length ? `${v.duplicadosPorHash.length} arquivo(s) duplicado(s)` : 'Sem arquivos duplicados'}
             </li>

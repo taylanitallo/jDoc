@@ -68,6 +68,28 @@
 - PageHeader: título `text-xl sm:text-2xl font-extrabold tracking-tight text-ink-900`, descrição `text-sm text-ink-500`, link "Voltar" com ChevronLeft opcional, ação à direita.
 - App mobile (usuário de campo): header h-14, conteúdo `max-w-2xl`, bottom nav fixa com ícones h-5, respeitando `env(safe-area-inset-bottom)`.
 
+## Menu da conta (avatar do cabeçalho)
+- **Fica em cima, nunca embaixo:** o menu da conta abre no avatar do canto superior direito do header (último item das ações, visível também no celular). O nome no rodapé da sidebar só mostra quem está logado e não é clicável. Em qualquer trecho deste padrão, "menu do avatar" significa este menu.
+- Botão: círculo com o Avatar de iniciais (tom neutral), `aria-label="Menu da conta"`, `aria-haspopup="menu"`, foco `ring-2 ring-brand-500 ring-offset-2`.
+- Painel: `absolute right-0 top-full z-40 mt-2 w-72 overflow-hidden rounded-[14px] border border-ink-200 bg-surface shadow-lg`, com fade-in. Fecha com Esc, clique fora, ao escolher um item e ao trocar de rota.
+- Topo do painel: `border-b border-ink-100 px-4 py-3.5`, Avatar + nome (`text-sm font-bold text-ink-900`) + papel (`text-xs text-ink-500`).
+- Atalhos (`py-1`), cada um `flex items-start gap-3 px-4 py-2.5 hover:bg-ink-50`, ícone 18px ink-500, título `text-sm font-semibold text-ink-800`, descrição `text-xs text-ink-500`:
+  - Meu perfil (UserRound): "Seus dados de acesso" → Minha conta;
+  - Alterar senha (KeySquare): "Troque sua senha de acesso" → Minha conta `#senha`;
+  - Aparência (Palette): "Cor do sistema e modo escuro" → Minha conta `#aparencia`;
+  - Aparelhos conectados (MonitorSmartphone): "Veja e encerre sessões" → Minha conta `#aparelhos`.
+- Fim do painel (`border-t border-ink-100 py-1`): "Tema escuro"/"Tema claro" (Moon/Sun) e "Sair da conta" (LogOut, `text-danger-600 hover:bg-danger-50`), com o mesmo diálogo de confirmação.
+- Os botões de tema e sair continuam também no rodapé da sidebar. No drawer do celular, abaixo deles, um link "Minha conta".
+
+## Troca obrigatória de senha ("Escolha a sua senha")
+- **Antes de entrar:** quem acessa com senha provisória vai, logo depois do login, para uma tela própria e sem menu (`/trocar-senha`; no superadmin, `/superadmin/trocar-senha`). Nenhuma tela do sistema abre antes da troca. A troca não acontece dentro de "Minha conta".
+- Página: `flex min-h-dvh flex-col items-center justify-center bg-canvas px-4 py-10`, sem foto nem painel lateral.
+- Cartão: `w-full max-w-[420px] rounded-[16px] border border-ink-200/70 bg-surface p-6 shadow-md sm:p-8`. Rodapé JEOS abaixo do cartão, com `mt-6`.
+- Cabeçalho do cartão (`mb-5 flex items-center gap-3`): ícone KeyRound branco num quadrado `h-10 w-10 rounded-[12px] bg-brand-600` e o título "Escolha a sua senha" (`text-lg font-extrabold tracking-tight text-ink-900`).
+- Texto (`mb-5 text-sm text-ink-600`): "Olá, **{nome}**. Você entrou com uma senha provisória. Crie agora a senha que vai usar nos próximos acessos."
+- Campos: "Nova senha" e a confirmação, com o botão de olho. Botão `lg`, largura total: "Salvar e entrar".
+- Regras: não pede a senha atual (a pessoa acabou de entrar com ela), mas a nova precisa ser diferente da provisória. Até a troca, a API recusa tudo com `403 { code: "trocar_senha" }`, exceto ver a própria conta, trocar a senha e sair. O "entrar como" da equipe não é obrigado a trocar. Depois da troca vai para o sistema; se ainda faltar configurar a verificação em 2 etapas obrigatória, vai para "Minha conta".
+
 ## Componentes
 - Card: `rounded-[16px] border border-ink-200/70 bg-surface shadow-xs p-5`. CardHeader com `border-b border-ink-100 px-5 py-4`, título `text-sm font-bold`.
 - StatCard: chip de ícone 40x40 `rounded-[12px]` em par "fundo -50 + ícone -600" (brand/success/warning/danger), rótulo `.label-caps`, valor grande bold ink-900.
@@ -316,6 +338,7 @@ Layout = AppShell do padrão, com sidebar `#0f172a`.
 - **Rodapé da sidebar:**
   - avatar com iniciais, nome e papel;
   - **menu do avatar** (Minha conta, Tema, Sair, com confirmação).
+  - **esse menu abre no avatar do cabeçalho (canto superior direito), nunca no rodapé da sidebar** (ver "Menu da conta" no padrão de layout); o rodapé só mostra quem está logado, mais os botões de tema e sair.
 - **Menu em grupos:**
   - **Visão geral:** Painel.
   - **Clientes:** Clientes, Usuários, Perfis padrão.

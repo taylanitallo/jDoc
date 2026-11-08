@@ -44,6 +44,7 @@ import {
   MoreHorizontal,
   Scale,
   SearchX,
+  Share2,
   TrendingDown,
   TrendingUp,
   type LucideIcon,
@@ -69,6 +70,8 @@ import {
   caminhoLocal,
 } from '@jdoc/shared';
 import { api, apiBlobUrl, ApiError, getAccessToken } from '@/lib/api';
+import { imprimirPdf } from '@/lib/imprimir-pdf';
+import { CompartilharModal } from './compartilhar-modal';
 import { addExtraDocumentFile, attachDocumentFile, uploadDocument } from '@/lib/upload';
 import { useExercicio } from '@/components/topbar';
 import { LabelsImportModal } from '@/components/documents/labels-import-modal';
@@ -570,6 +573,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
   const [deleteApenasSemArquivo, setDeleteApenasSemArquivo] = useState(true);
   const [attaching, setAttaching] = useState<DocumentView | null>(null);
   const [viewPicker, setViewPicker] = useState<DocumentView | null>(null);
+  const [compartilhando, setCompartilhando] = useState<DocumentView | null>(null);
   const [editing, setEditing] = useState<DocumentView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -929,6 +933,38 @@ export function DocumentsModule({ module }: { module: DocModule }) {
       setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Erro ao abrir PDF');
     }
   };
+
+  const imprimirDocumento = async (doc: DocumentView) => {
+    try {
+      const { url } = await api<{ url: string }>(`/t/${slug}/documents/${doc.id}/url`);
+      await imprimirPdf(url);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Erro ao imprimir o PDF');
+    }
+  };
+
+  /** Compartilhar e imprimir: um botao so, para nao alargar a coluna de acoes. */
+  const maisAcoes = (d: DocumentView) => (
+    <DropdownMenu
+      items={[
+        { label: 'Compartilhar', icon: Share2, onSelect: () => setCompartilhando(d) },
+        { label: 'Imprimir', icon: Printer, onSelect: () => void imprimirDocumento(d) },
+      ]}
+      trigger={({ aberto, alternar }) => (
+        <button
+          type="button"
+          title="Compartilhar ou imprimir"
+          aria-label="Compartilhar ou imprimir"
+          aria-haspopup="menu"
+          aria-expanded={aberto}
+          onClick={alternar}
+          className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
+        >
+          <MoreHorizontal className="h-4 w-4" aria-hidden />
+        </button>
+      )}
+    />
+  );
 
   /** Se o documento tem so um PDF, abre direto; se tem mais de um, pergunta qual. */
   const openPdf = (doc: DocumentView) => {
@@ -1340,7 +1376,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                 <td className="w-8 px-1 py-3 text-center">
                   <ConferenciaBadge documento={d} />
                 </td>
-                <td className="w-28 py-2 pl-2 pr-3" onClick={(e) => e.stopPropagation()}>
+                <td className="w-36 py-2 pl-2 pr-3" onClick={(e) => e.stopPropagation()}>
                   <div className="flex justify-end gap-1">
                     {showTrash ? (
                       <button
@@ -1363,6 +1399,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                             <Eye className="h-4 w-4" aria-hidden />
                           </button>
                         )}
+                        {!semArquivo && maisAcoes(d)}
                         {module === 'acervo' && ehNormativo(d) && (
                           <Link
                             href={`/${slug}/normas/documento/${d.id}`}
@@ -1503,6 +1540,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                               <Eye className="h-4 w-4" aria-hidden />
                             </button>
                           )}
+                          {!semArquivo && maisAcoes(d)}
                           {module === 'acervo' && ehNormativo(d) && (
                             <Link
                               href={`/${slug}/normas/documento/${d.id}`}
@@ -1733,6 +1771,14 @@ export function DocumentsModule({ module }: { module: DocModule }) {
             </div>
           </div>
         </Modal>
+      )}
+      {compartilhando && (
+        <CompartilharModal
+          slug={String(slug)}
+          documentId={compartilhando.id}
+          titulo={compartilhando.originalName}
+          onClose={() => setCompartilhando(null)}
+        />
       )}
       {attaching && (
         <AttachPdfModal

@@ -51,7 +51,7 @@ export const LGPD_PLATAFORMA_PADRAO: LgpdPlataforma = {
     'Os documentos não são usados para treinar modelos de inteligência artificial.',
     'Todo acesso fica registrado na trilha de auditoria, que não pode ser alterada.',
     'Ao fim do contrato, o órgão recebe a exportação integral dos documentos e metadados em formatos abertos.',
-    'Incidentes de segurança são comunicados ao órgão sem demora, para as providências do art. 48 da LGPD.',
+    'Incidentes de segurança são comunicados ao órgão em até 24 horas da ciência, com descrição, dados afetados e medidas de contenção, para as providências do art. 48 da LGPD.',
   ],
 };
 

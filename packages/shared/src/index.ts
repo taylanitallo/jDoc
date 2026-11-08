@@ -39,3 +39,4 @@ export * from './continuidade.js';
 export * from './medicao.js';
 export * from './manual.js';
 export * from './biblioteca-leis.js';
+export * from './compartilhamento.js';

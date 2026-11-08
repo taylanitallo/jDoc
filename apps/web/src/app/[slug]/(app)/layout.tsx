@@ -36,8 +36,9 @@ import {
   BookOpenText,
   Calculator,
   FolderKanban,
+  Share2,
 } from 'lucide-react';
-import type { Sistema, UsuarioAtual } from '@jdoc/shared';
+import type { CompartilhadosPage, Sistema, UsuarioAtual } from '@jdoc/shared';
 import { AppShell, type NavGroup } from '@/components/shell/app-shell';
 import { ContaMenu, ExercicioProvider, ExercicioSelect } from '@/components/topbar';
 import { BrandingProvider, useBranding } from '@/components/branding';
@@ -87,6 +88,7 @@ const TITULOS: Record<string, { title: string; description: string }> = {
   conta: { title: 'Minha conta', description: 'Seus dados, senha e aparência' },
   suporte: { title: 'Suporte', description: 'Chamados com a equipe JEOS' },
   novidades: { title: 'Novidades', description: 'O que mudou no sistema' },
+  compartilhados: { title: 'Compartilhados comigo', description: 'Documentos enviados por outros usuários' },
 };
 
 export default function TenantLayout({ children }: { children: ReactNode }) {
@@ -136,6 +138,12 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
 
   const base = `/${slug}`;
   const naoLidas = useNovidadesNaoLidas(slug);
+  const { data: compartilhados } = useQuery({
+    queryKey: ['compartilhados', slug, 'selo'],
+    queryFn: () => api<CompartilhadosPage>(`/t/${slug}/compartilhamentos/recebidos?page=1&pageSize=1`),
+    enabled: !!usuario && !usuario.mustChangePassword,
+    staleTime: 60_000,
+  });
   const { ativo, ambos, trocar } = useModuloAtivo();
   const temFinanceiro = ativo === 'financeiro' && modulos.includes('financeiro');
   const temArquivo = ativo === 'arquivo' && modulos.includes('arquivo');
@@ -184,6 +192,7 @@ function Casca({ slug, children }: { slug: string; children: ReactNode }) {
       title: 'Geral',
       items: [
         { href: `${base}/busca`, label: 'Busca no conteúdo', icon: ScanSearch },
+        { href: `${base}/compartilhados`, label: 'Compartilhados comigo', icon: Share2, badge: compartilhados?.naoVistos },
         ...(usuario?.podeAuditar
           ? [
               { href: `${base}/auditoria`, label: 'Auditoria', icon: ScrollText },

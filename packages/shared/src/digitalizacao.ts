@@ -300,6 +300,10 @@ export interface VerificacaoAutomaticaLote {
   semArquivo: number;
   semPaginas: number;
   semDescricaoOuData: number;
+  /** PDFs sem camada de texto (nao sao PDF pesquisavel; devem vir da estacao ja com OCR). */
+  semCamadaTexto: number;
+  /** PDFs cuja leitura de texto ainda esta na fila. */
+  leituraPendente: number;
   duplicadosPorHash: Array<{ hash: string; documentos: number }>;
 }
 
