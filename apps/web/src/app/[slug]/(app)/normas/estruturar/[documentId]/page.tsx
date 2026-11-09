@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
-import { ArrowLeft, ChevronLeft, ChevronRight, ClipboardPaste, FileText, Merge, Plus, Save, Scale, Trash2, Wand2 } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ClipboardPaste, FileText, Loader2, Merge, Plus, Save, Scale, Trash2, Wand2 } from 'lucide-react';
 import {
   AGRUPADORES,
   TIPOS_DISPOSITIVO,
@@ -39,6 +39,10 @@ interface Estruturado {
 }
 
 let seq = 0;
+/** Logo apos o envio o PDF ainda esta sendo lido: tenta de novo a cada 3 s por ate 90 s. */
+const ESPERA_MS = 3000;
+const MAX_TENTATIVAS = 30;
+
 const novaChave = () => `k${Date.now().toString(36)}${++seq}`;
 
 /** Arvore do parser -> linhas com nivel (profundidade), que e o que o servidor edita. */
@@ -67,8 +71,21 @@ export default function EstruturarPage() {
   const { slug, documentId } = useParams<{ slug: string; documentId: string }>();
   const router = useRouter();
   const toast = useToast();
+  const params = useSearchParams();
+  // Vindo da tela "Nova norma": o tipo escolhido la vale mais que o palpite pelo nome do tipo do Acervo.
+  const tipoInformado = (TIPOS_NORMA as readonly string[]).includes(params.get('tipo') ?? '') ? (params.get('tipo') as TipoNorma) : null;
   const [linhas, setLinhas] = useState<Linha[] | null>(null);
-  const [meta, setMeta] = useState({ tipo: 'lei' as TipoNorma, numero: '', ano: '', dataPublicacao: '', ementa: '', publicada: true });
+  const [meta, setMeta] = useState({
+    tipo: tipoInformado ?? ('lei' as TipoNorma),
+    numero: '',
+    ano: params.get('ano') ?? '',
+    dataPublicacao: '',
+    ementa: '',
+    publicada: params.get('publicada') !== '0',
+  });
+  const [lendo, setLendo] = useState(false);
+  const tentativas = useRef(0);
+  const espera = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [existente, setExistente] = useState<string | null>(null);
   const [colar, setColar] = useState(false);
   const [textoColado, setTextoColado] = useState('');
@@ -81,7 +98,7 @@ export default function EstruturarPage() {
       setExistente(r.normaExistenteId);
       setMeta((m) => ({
         ...m,
-        tipo: (r.sugestao.tipo as TipoNorma) ?? m.tipo,
+        tipo: tipoInformado ?? (r.sugestao.tipo as TipoNorma) ?? m.tipo,
         numero: r.sugestao.numero ?? m.numero,
         ano: r.sugestao.ano ? String(r.sugestao.ano) : m.ano,
         dataPublicacao: r.sugestao.dataPublicacao ?? m.dataPublicacao,
@@ -89,9 +106,17 @@ export default function EstruturarPage() {
       }));
       setErroExtracao(null);
       setColar(false);
+      setLendo(false);
     },
     onError: (e) => {
-      if (e instanceof ApiError && e.status === 422) {
+      if (e instanceof ApiError && e.status === 409 && tentativas.current < MAX_TENTATIVAS) {
+        tentativas.current += 1;
+        setLendo(true);
+        espera.current = setTimeout(() => estruturar.mutate(undefined), ESPERA_MS);
+        return;
+      }
+      setLendo(false);
+      if (e instanceof ApiError && (e.status === 422 || e.status === 409)) {
         setErroExtracao(e.message);
         setColar(true);
       } else toast.error(e instanceof ApiError ? (e.status === 403 ? 'Você não tem permissão para estruturar normas.' : e.message) : 'Falha');
@@ -99,7 +124,11 @@ export default function EstruturarPage() {
   });
   // Primeira tentativa: texto ja extraido do PDF.
   useEffect(() => {
+    tentativas.current = 0;
     estruturar.mutate(undefined);
+    return () => {
+      if (espera.current) clearTimeout(espera.current);
+    };
   }, [documentId]);
 
   const salvar = useMutation({
@@ -230,7 +259,12 @@ export default function EstruturarPage() {
               : undefined
           }
         />
-        {estruturar.isPending && !linhas ? (
+        {lendo && !linhas ? (
+          <div className="flex items-center gap-3 p-6 text-sm text-ink-600">
+            <Loader2 className="h-5 w-5 animate-spin text-brand-600" aria-hidden />
+            Lendo o PDF para separar os artigos. Isso leva alguns segundos.
+          </div>
+        ) : estruturar.isPending && !linhas ? (
           <div className="space-y-2 p-5">
             {[0, 1, 2, 3, 4].map((k) => (
               <div key={k} className="h-12 animate-pulse rounded-[10px] bg-ink-100" />

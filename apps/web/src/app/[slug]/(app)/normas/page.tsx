@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { ExternalLink, Globe, Lock, Scale, Search } from 'lucide-react';
+import { ExternalLink, Globe, Lock, Plus, Scale, Search } from 'lucide-react';
 import {
   SITUACAO_NORMA_LABEL,
   SITUACOES_NORMA,
@@ -15,7 +15,7 @@ import {
   type TipoNorma,
 } from '@jdoc/shared';
 import { api, ApiError } from '@/lib/api';
-import { Badge, Card, Input, Pagination, SelectMenu, TONE_VIVID, inputCls } from '@/components/ui';
+import { Badge, Card, Input, Pagination, SelectMenu, TONE_VIVID, buttonClasses, inputCls } from '@/components/ui';
 import { EmptyState } from '@/components/empty-state';
 import { SITUACAO_TOM } from '@/components/legislacao/compilado';
 import { cn } from '@/lib/cn';
@@ -58,14 +58,14 @@ export default function NormasPage() {
             </p>
           </div>
         </div>
-        <a
-          href={`/${slug}/legislacao`}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-ink-200 bg-surface px-4 py-2 text-sm font-semibold text-ink-700 hover:bg-ink-50"
-        >
-          <Globe className="h-4 w-4" aria-hidden /> Portal público <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-        </a>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <a href={`/${slug}/legislacao`} target="_blank" rel="noreferrer" className={buttonClasses('outline', 'md')}>
+            <Globe className="h-4 w-4" aria-hidden /> Portal público <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+          </a>
+          <Link href={`/${slug}/normas/nova`} className={buttonClasses('primary', 'md')}>
+            <Plus className="h-4 w-4" aria-hidden /> Nova norma
+          </Link>
+        </div>
       </div>
 
       <Card>
@@ -102,7 +102,7 @@ export default function NormasPage() {
             <EmptyState
               icon={Scale}
               title={q || tipo || situacao ? 'Nada encontrado' : 'Nenhuma norma estruturada'}
-              description="No Acervo, abra uma Lei, Decreto ou Portaria e use “Texto compilado” para estruturar o texto a partir do PDF."
+              description="Use “Nova norma” para enviar o PDF de uma lei, decreto ou portaria. O sistema separa os artigos e guarda o PDF no Acervo."
             />
           </div>
         ) : (

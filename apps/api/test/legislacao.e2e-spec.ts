@@ -8,6 +8,7 @@
  *      situacao revogada_parcial, relacoes, consulta por data e bloqueio de reestruturacao
  *  (4) portal publico: so publicada + documento publico; restrito nunca aparece; PDF
  *  (5) busca no texto e revogacao total
+ *  (6) cadastro unico: editar a norma atualiza o documento do Acervo; a listagem do Acervo traz normaId
  */
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
@@ -119,7 +120,11 @@ describe('Legislacao compilada', () => {
     expect(r.dispositivos.map((d) => d.rotulo)).toEqual(['Epígrafe', 'Ementa', 'Preâmbulo', 'CAPÍTULO I', 'Art. 3º', 'I', 'II', 'Art. 4º', 'Art. 5º', 'Fecho']);
     expect(r.dispositivos.find((d) => d.rotulo === 'Art. 4º')!.texto).toBe('São incapazes relativamente a certos atos.');
     ids.dispA = JSON.stringify(r.dispositivos);
-    // sem texto extraido e sem colar = 422
+    // PDF recem-enviado, ainda na fila de leitura = 409 (a tela tenta de novo)
+    await sql.unsafe(`UPDATE ${S}.documents SET ocr_status = 'pendente' WHERE id = $1`, [ids.docB]);
+    await api('post', `/documentos/${ids.docB}/estruturar`).send({}).expect(409);
+    // leitura terminou sem texto (imagem sem OCR) = 422
+    await sql.unsafe(`UPDATE ${S}.documents SET ocr_status = 'sem_texto' WHERE id = $1`, [ids.docB]);
     await api('post', `/documentos/${ids.docB}/estruturar`).send({}).expect(422);
   });
 
@@ -205,5 +210,19 @@ describe('Legislacao compilada', () => {
     expect(r.situacao).toBe('revogada');
     const audit = await sql.unsafe(`SELECT action FROM ${S}.audit_logs WHERE resource_type = 'norma'`);
     expect(audit.map((x) => (x as { action: string }).action)).toEqual(expect.arrayContaining(['norma_estruturada', 'norma_alteracao_registrada']));
+  });
+
+  it('(6) cadastro unico: a norma corrige o documento do Acervo', async () => {
+    await api('patch', `/normas/${ids.A}`).send({ ementa: 'Dispõe sobre a capacidade civil no Município.', numero: '100-A', dataPublicacao: '2010-03-02' }).expect(200);
+    const [d] = await sql.unsafe(`SELECT descricao, metadados, document_date::text AS data FROM ${S}.documents WHERE id = $1`, [ids.docA]);
+    expect(d).toMatchObject({
+      descricao: 'Dispõe sobre a capacidade civil no Município.',
+      data: '2010-03-02',
+      metadados: { numero: '100-A', ementa: 'Dispõe sobre a capacidade civil no Município.', data_publicacao: '2010-03-02' },
+    });
+    const lista = (
+      await request(app.getHttpServer()).get(`/t/${SLUG}/documents?module=acervo&pageSize=50`).set('Authorization', `Bearer ${admin}`).expect(200)
+    ).body as { items: Array<{ id: string; normaId: string | null }> };
+    expect(lista.items.find((x) => x.id === ids.docA)?.normaId).toBe(ids.A);
   });
 });

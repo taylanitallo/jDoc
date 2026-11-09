@@ -131,6 +131,7 @@ interface DocRow {
   possui_original_fisico?: boolean;
   local_fisico_id?: string | null;
   local_fisico_codigo?: string | null;
+  norma_id?: string | null;
 }
 
 function isoDate(d: Date | null | undefined): string | null {
@@ -242,6 +243,7 @@ function toView(r: DocRow, arquivosExtras: DocumentFileView[] = []): DocumentVie
     possuiOriginalFisico: r.possui_original_fisico ?? false,
     localFisicoId: r.local_fisico_id ?? null,
     localFisicoCodigo: r.local_fisico_codigo ?? null,
+    normaId: r.norma_id ?? null,
   };
 }
 
@@ -1529,7 +1531,8 @@ export class DocumentsService {
              d.fase, d.nivel_acesso, d.grau_sigilo, d.data_inicio_contagem, d.data_prevista_transferencia, d.data_prevista_destinacao,
              d.metadados, d.digitalizado, d.responsavel_digitalizacao, d.data_digitalizacao, d.local_digitalizacao, d.ocr_status,
              d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo,
-             d.numero, d.assunto, d.interessado, d.palavras_chave, d.dados_pessoais
+             d.numero, d.assunto, d.interessado, d.palavras_chave, d.dados_pessoais,
+             (SELECT n.id FROM normas n WHERE n.document_id = d.id) AS norma_id
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
@@ -1609,7 +1612,8 @@ export class DocumentsService {
              d.fase, d.nivel_acesso, d.grau_sigilo, d.data_inicio_contagem, d.data_prevista_transferencia, d.data_prevista_destinacao,
              d.metadados, d.digitalizado, d.responsavel_digitalizacao, d.data_digitalizacao, d.local_digitalizacao, d.ocr_status,
              d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo,
-             d.numero, d.assunto, d.interessado, d.palavras_chave, d.dados_pessoais
+             d.numero, d.assunto, d.interessado, d.palavras_chave, d.dados_pessoais,
+             (SELECT n.id FROM normas n WHERE n.document_id = d.id) AS norma_id
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
@@ -1645,7 +1649,8 @@ export class DocumentsService {
              d.fase, d.nivel_acesso, d.grau_sigilo, d.data_inicio_contagem, d.data_prevista_transferencia, d.data_prevista_destinacao,
              d.metadados, d.digitalizado, d.responsavel_digitalizacao, d.data_digitalizacao, d.local_digitalizacao, d.ocr_status,
              d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo,
-             d.numero, d.assunto, d.interessado, d.palavras_chave, d.dados_pessoais
+             d.numero, d.assunto, d.interessado, d.palavras_chave, d.dados_pessoais,
+             (SELECT n.id FROM normas n WHERE n.document_id = d.id) AS norma_id
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id
@@ -2039,7 +2044,8 @@ export class DocumentsService {
              d.fase, d.nivel_acesso, d.grau_sigilo, d.data_inicio_contagem, d.data_prevista_transferencia, d.data_prevista_destinacao,
              d.metadados, d.digitalizado, d.responsavel_digitalizacao, d.data_digitalizacao, d.local_digitalizacao, d.ocr_status,
              d.possui_original_fisico, d.local_fisico_id, lf.codigo AS local_fisico_codigo,
-             d.numero, d.assunto, d.interessado, d.palavras_chave, d.dados_pessoais
+             d.numero, d.assunto, d.interessado, d.palavras_chave, d.dados_pessoais,
+             (SELECT n.id FROM normas n WHERE n.document_id = d.id) AS norma_id
       FROM documents d
       LEFT JOIN budget_units bu ON bu.id = d.budget_unit_id
       LEFT JOIN orgaos o ON o.id = d.orgao_id

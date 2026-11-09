@@ -427,8 +427,11 @@ function erroIaLegivel(erro: string): string {
 }
 
 /** Tipos documentais normativos: ganham o botao "Texto compilado". */
+function tipoNormativo(nome: string | null | undefined): boolean {
+  return /\b(lei|decreto|portaria|resolu|emenda)/i.test(nome ?? '');
+}
 function ehNormativo(d: DocumentView): boolean {
-  return /\b(lei|decreto|portaria|resolu|emenda)/i.test(d.documentTypeNome ?? '');
+  return tipoNormativo(d.documentTypeNome);
 }
 
 const FASE_TOM_DOC: Partial<Record<DocumentView['fase'], 'info' | 'warning' | 'violet' | 'neutral'>> = {
@@ -478,7 +481,16 @@ const DETAIL_COLUMNS: Record<
     {
       header: 'Documento',
       render: acervoTitulo,
-      cell: (d) => <span className="block truncate font-semibold text-ink-900">{acervoTitulo(d)}</span>,
+      cell: (d) => (
+        <>
+          <span className="block truncate font-semibold text-ink-900">{acervoTitulo(d)}</span>
+          {d.normaId && (
+            <Badge tone="brand" className="mt-1 flex w-fit">
+              Legislação
+            </Badge>
+          )}
+        </>
+      ),
       className: 'w-[16%]',
     },
     { header: 'Título/Descrição', render: (d) => d.descricao ?? '—', className: 'w-[19%]' },
@@ -1403,7 +1415,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                         {module === 'acervo' && ehNormativo(d) && (
                           <Link
                             href={`/${slug}/normas/documento/${d.id}`}
-                            title="Texto compilado (legislação)"
+                            title={d.normaId ? 'Abrir em Legislação' : 'Texto compilado (legislação)'}
                             className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
                           >
                             <Scale className="h-4 w-4" aria-hidden />
@@ -1544,7 +1556,7 @@ export function DocumentsModule({ module }: { module: DocModule }) {
                           {module === 'acervo' && ehNormativo(d) && (
                             <Link
                               href={`/${slug}/normas/documento/${d.id}`}
-                              title="Texto compilado (legislação)"
+                              title={d.normaId ? 'Abrir em Legislação' : 'Texto compilado (legislação)'}
                               className="flex h-8 w-8 items-center justify-center rounded-[8px] text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
                             >
                               <Scale className="h-4 w-4" aria-hidden />
@@ -2064,6 +2076,15 @@ function IncludeModal({
                 {docTypes.length === 0 && (
                   <p className="mt-1 text-xs text-ink-500">
                     Nenhum tipo do Acervo cadastrado. Crie em Configurações → Tipos de Documento.
+                  </p>
+                )}
+                {tipoNormativo(tipoAcervo?.nome) && (
+                  <p className="mt-2 rounded-[10px] border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">
+                    Leis, decretos e portarias são cadastrados em Legislação, que já guarda o PDF aqui no Acervo e evita fazer o
+                    cadastro duas vezes.{' '}
+                    <Link href={`/${slug}/normas/nova`} className="font-semibold underline">
+                      Ir para Nova norma
+                    </Link>
                   </p>
                 )}
               </div>
