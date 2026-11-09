@@ -117,8 +117,10 @@ export class LegislacaoService {
     textoColado: string | undefined,
   ): Promise<{ dispositivos: DispositivoParse[]; sugestao: Partial<NormaCreateInput>; normaExistenteId: string | null }> {
     const sql = this.sql();
-    const [doc] = await sql<Array<{ id: string; exercicio: number; metadados: Record<string, unknown>; tipo_nome: string | null; descricao: string | null }>>`
-      SELECT d.id, d.exercicio, d.metadados, t.nome AS tipo_nome, d.descricao
+    const [doc] = await sql<
+      Array<{ id: string; exercicio: number; metadados: Record<string, unknown>; tipo_nome: string | null; descricao: string | null; ocr_status: string | null }>
+    >`
+      SELECT d.id, d.exercicio, d.metadados, t.nome AS tipo_nome, d.descricao, d.ocr_status
       FROM documents d LEFT JOIN document_types t ON t.id = d.document_type_id
       WHERE d.id = ${documentId} AND ${this.filtro(sql, { publico: false, user })}
     `;
@@ -129,6 +131,10 @@ export class LegislacaoService {
         SELECT texto FROM document_textos WHERE document_id = ${documentId} AND document_file_id IS NULL ORDER BY pagina
       `;
       texto = paginas.map((p) => p.texto).join('\n');
+    }
+    if (!texto.trim() && (doc.ocr_status === 'pendente' || doc.ocr_status === 'processando')) {
+      // Recem-enviado pela tela "Nova norma": o front tenta de novo ate a leitura terminar.
+      throw new ConflictException('O PDF ainda está sendo lido. Aguarde alguns segundos.');
     }
     if (!texto.trim()) {
       throw new UnprocessableEntityException('O texto deste PDF ainda não foi extraído (ou é uma imagem sem OCR). Cole o texto da norma para continuar.');
@@ -225,8 +231,33 @@ export class LegislacaoService {
   async atualizar(user: TenantAccessClaims, id: string, input: NormaUpdateInput, ip: string): Promise<NormaView> {
     const sql = this.sql();
     const n = await this.carregar(sql, { publico: false, user }, id);
+    const numero = input.numero ?? n.numero;
+    const ementa = input.ementa ?? n.ementa;
+    const dataPublicacao = input.dataPublicacao === undefined ? iso(n.data_publicacao) : input.dataPublicacao;
+    const [doc] = await sql<Array<{ metadados: Record<string, string> | string | null }>>`SELECT metadados FROM documents WHERE id = ${n.document_id}`;
+    const md: Record<string, string> = (typeof doc?.metadados === 'string' ? JSON.parse(doc.metadados) : doc?.metadados) ?? {};
+    // Cadastro unico: a correcao feita na norma vale para o documento do Acervo. So
+    // reescreve chaves que o documento ja tem (os campos variam por tipo documental).
+    const mdNovo = { ...md };
+    if ('numero' in md) mdNovo['numero'] = numero;
+    if ('ementa' in md) mdNovo['ementa'] = ementa;
+    if ('assunto' in md) mdNovo['assunto'] = ementa;
+    if ('data_publicacao' in md) {
+      if (dataPublicacao) mdNovo['data_publicacao'] = dataPublicacao;
+      else delete mdNovo['data_publicacao'];
+    }
     try {
-      await sql`
+      await sql.begin(async (txRaw) => {
+        const tx = txRaw as unknown as Sql;
+        await tx`
+          UPDATE documents SET
+            descricao = ${ementa},
+            document_date = COALESCE(${dataPublicacao}::date, document_date),
+            metadados = ${tx.json(mdNovo as never)},
+            atualizado_em = now()
+          WHERE id = ${n.document_id}
+        `;
+        await tx`
         UPDATE normas SET
           tipo = ${input.tipo ?? n.tipo},
           numero = ${input.numero ?? n.numero},
@@ -236,6 +267,7 @@ export class LegislacaoService {
           publicada = ${input.publicada ?? n.publicada}
         WHERE id = ${id}
       `;
+      });
     } catch (e) {
       if ((e as { code?: string }).code === '23505') throw new ConflictException('Já existe norma com o mesmo tipo, número e ano');
       throw e;

@@ -319,6 +319,8 @@ export interface DocumentView {
   possuiOriginalFisico: boolean;
   localFisicoId: string | null;
   localFisicoCodigo: string | null;
+  /** Norma da Legislacao ligada a este documento (texto compilado), se houver. */
+  normaId: string | null;
 }
 
 /** Um PDF extra anexado a um documento (alem do principal). */
